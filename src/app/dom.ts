@@ -46,7 +46,18 @@ export function announce(msg: string): void {
   const el = $('#live');
   if (el) el.textContent = msg;
 }
-export function ask(opts: { title: string; body: string; ok?: string; danger?: boolean }): Promise<boolean> {
+/**
+ * Confirm modal. `html` replaces the text body with markup the caller reads back after OK (a small
+ * form); `cancel: false` makes it a plain notice.
+ */
+export function ask(opts: {
+  title: string;
+  body?: string;
+  html?: string;
+  ok?: string;
+  danger?: boolean;
+  cancel?: boolean;
+}): Promise<boolean> {
   return new Promise((resolve) => {
     const m = $('#modal');
     const okB = $<HTMLButtonElement>('#m-ok');
@@ -55,10 +66,12 @@ export function ask(opts: { title: string; body: string; ok?: string; danger?: b
     const body = $('#m-body');
     if (!m || !okB || !cancel || !title || !body) return resolve(false);
     title.textContent = opts.title;
-    body.textContent = opts.body;
+    if (opts.html === undefined) body.textContent = opts.body ?? '';
+    else body.innerHTML = opts.html;
     okB.textContent = opts.ok ?? t('confirm');
     okB.className = `btn ${opts.danger ? 'danger' : 'primary'}`;
     cancel.textContent = t('cancel');
+    cancel.hidden = opts.cancel === false;
     const prev = doc.activeElement as HTMLElement | null;
     m.hidden = false;
     modalDone = (v) => {
@@ -71,6 +84,17 @@ export function ask(opts: { title: string; body: string; ok?: string; danger?: b
   });
 }
 export const closeModal = (v: boolean): void => modalDone?.(v);
+
+/** False when the clipboard is unavailable or refused. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (!navigator.clipboard?.writeText) return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const thumbHTML = (it: Item): string =>
   it.fill

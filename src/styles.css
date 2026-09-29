@@ -1762,7 +1762,9 @@ body.dropping .drop-overlay {
   background: rgba(8, 10, 14, 0.5);
 }
 .modal-box {
-  width: min(420px, 100%);
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -1774,9 +1776,15 @@ body.dropping .drop-overlay {
   font: 700 21px / 1.2 var(--f-display);
   letter-spacing: -0.02em;
 }
-.modal-box p {
+.m-body {
   margin: 0 0 20px;
   color: var(--muted);
+}
+.m-body p {
+  margin: 0 0 12px;
+}
+.m-body p:last-child {
+  margin-bottom: 0;
 }
 .modal-actions {
   display: flex;
@@ -1917,5 +1925,197 @@ body.dropping .drop-overlay {
 @media (max-width: 480px) {
   .top-right {
     gap: 8px;
+  }
+}
+
+/* Published boards: publish form, board page, crowd ranking, author panel */
+.set {
+  border: 0;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.set legend {
+  padding: 0;
+  margin-bottom: 7px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.opt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+.opt input[type="radio"],
+.opt input[type="checkbox"],
+.live-toggle input {
+  margin: 0;
+  accent-color: var(--a);
+}
+.opt-n {
+  width: 68px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.opt.off {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  color: var(--muted);
+}
+.opt.off small {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.opt-dot {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-top: 4px;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+}
+.pub-votes {
+  margin-bottom: 14px;
+}
+.more summary,
+.b-admin summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ink);
+}
+.more .opt {
+  margin-top: 10px;
+}
+.chip-live {
+  color: var(--good);
+  border-color: currentColor;
+}
+.b-head .b-title {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  font: 700 clamp(24px, 3.2vw, 34px) / 1.1 var(--f-display);
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.b-counts {
+  margin: -8px 0 16px;
+  color: var(--muted);
+}
+.b-conn {
+  margin: 0 0 16px;
+}
+.b-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 22px;
+  align-items: start;
+}
+.b-side {
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.b-rank,
+.b-admin {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+.b-rank-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.b-rank-head h2 {
+  margin: 0;
+  font: 700 18px / 1.2 var(--f-display);
+  letter-spacing: -0.02em;
+}
+.live-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.b-refresh {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.b-progress {
+  display: block;
+  margin-top: 12px;
+}
+.b-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.b-rows li {
+  display: grid;
+  grid-template-columns: 24px 32px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+.b-rows li:first-child {
+  border-top: 0;
+}
+.b-rows .thumb {
+  width: 32px;
+  height: 32px;
+}
+.b-rows .num small {
+  margin-left: 4px;
+  color: var(--muted);
+}
+.neck {
+  color: var(--muted);
+  font-weight: 700;
+}
+.b-agree {
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.b-foot {
+  margin: 12px 0 0;
+}
+.b-admin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+.b-admin-body .set {
+  margin: 0;
+}
+.b-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 859px) {
+  .b-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .b-side {
+    position: static;
   }
 }

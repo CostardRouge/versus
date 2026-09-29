@@ -1,19 +1,22 @@
 import { buildDemo, DEMOS, relabelDemos } from '../core/demos';
 import { mkRank } from '../core/model';
+import { boardHash, parseBoardHash } from '../core/published';
 import { methodOf } from '../core/scoring';
 import type { Ranking } from '../core/types';
 import { uid } from '../core/util';
 import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
+import { enterBoard, leaveBoard, renderBoard } from './board';
 import { cp } from './color';
 import { $, ask, narrow, toast } from './dom';
 import { galleryHTML } from './gallery';
 import { applyStatic } from './header';
 import { renderList } from './items';
+import { online } from './remote';
 import { cur, S, save } from './state';
-import { savePrefs } from './storage';
+import { saveOwner, savePrefs } from './storage';
 import { setTab, wsHTML } from './workspace';
 
-/** Top-level view switch (gallery or workspace) and actions on whole rankings. */
+/** Top-level view switch (gallery, workspace or published board), navigation and actions on whole rankings. */
 
 export function render(): void {
   const pop = $('#cpop');
@@ -23,7 +26,9 @@ export function render(): void {
   }
   const view = $('#view');
   if (!view) return;
-  if (S.route.view === 'rank') {
+  if (S.route.view !== 'board') leaveBoard();
+  if (S.route.view === 'board') renderBoard();
+  else if (S.route.view === 'rank') {
     const r = cur();
     if (!r) {
       S.route = { view: 'gallery', tab: 'duel' };
@@ -37,6 +42,11 @@ export function render(): void {
 }
 export function open(id: string | undefined, tab: string | undefined): void {
   if (!id) return;
+  const pub = S.ranks.find((r) => r.id === id)?.pub;
+  if (pub) {
+    openBoard(pub.alias);
+    return;
+  }
   S.route = { view: 'rank', id, tab: tab === 'results' || tab === 'items' ? tab : 'duel' };
   render();
   window.scrollTo?.(0, 0);
@@ -129,7 +139,37 @@ export async function deleteRank(id: string | undefined): Promise<void> {
 
 export function goBack(): void {
   if (S.route.view === 'gallery') return;
+  if (S.route.view === 'board') history.replaceState(null, '', location.pathname + location.search);
   S.route = { view: 'gallery', tab: 'duel' };
   render();
   window.scrollTo?.(0, 0);
+}
+
+/** Opens a published board; its address goes in the URL fragment so the link can be shared. */
+export function openBoard(alias: string | undefined): void {
+  if (!alias) return;
+  S.route = { view: 'board', alias, tab: 'duel' };
+  if (location.hash !== boardHash(alias)) history.pushState(null, '', boardHash(alias));
+  enterBoard(alias, online());
+  render();
+  window.scrollTo?.(0, 0);
+}
+
+/** Follows the URL fragment: opens the board it names, keeping an admin link's owner token out of the URL. */
+export function routeFromHash(): void {
+  const link = parseBoardHash(location.hash);
+  if (!link) {
+    if (S.route.view === 'board') {
+      S.route = { view: 'gallery', tab: 'duel' };
+      render();
+    }
+    return;
+  }
+  if (link.owner) {
+    saveOwner(link.alias, link.owner);
+    history.replaceState(null, '', boardHash(link.alias));
+    // Reconnect so the server knows this connection is the author's.
+    leaveBoard();
+  } else if (S.route.view === 'board' && S.route.alias === link.alias) return;
+  openBoard(link.alias);
 }

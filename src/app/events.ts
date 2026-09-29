@@ -1,9 +1,25 @@
 import { locale, plural, t } from '../i18n';
+import {
+  boardAdminLink,
+  boardChange,
+  boardKeydown,
+  boardPick,
+  boardRefresh,
+  boardReset,
+  boardShare,
+  boardSkip,
+  boardStatus,
+  boardUndo,
+  boardUnlink,
+  boardWithdraw,
+  copyBoardLink,
+} from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
 import { $, closeModal, doc, narrow, toast } from './dom';
 import { choose, duelKeydown, skip, undoLast } from './duel';
 import { changeTheme } from './header';
 import { addColor, addFiles, addLabels, removeItem, renameItem } from './items';
+import { publishRanking } from './publish';
 import {
   changeLang,
   deleteRank,
@@ -11,8 +27,10 @@ import {
   goBack,
   newRank,
   open,
+  openBoard,
   resetDemo,
   resetRank,
+  routeFromHash,
   toggleDemos,
 } from './rankings';
 import { copyRanking } from './results';
@@ -104,6 +122,48 @@ function onClick(e: MouseEvent): void {
     case 'pick-files':
       $('#file-input')?.click();
       break;
+    case 'publish':
+      void publishRanking(cur());
+      break;
+    case 'open-board':
+      openBoard(el.dataset.alias);
+      break;
+    case 'copy-link':
+      void copyBoardLink(el.dataset.alias);
+      break;
+    case 'b-pick':
+      boardPick(el.dataset.side);
+      break;
+    case 'b-skip':
+      boardSkip();
+      break;
+    case 'b-undo':
+      boardUndo();
+      break;
+    case 'b-reset':
+      void boardReset();
+      break;
+    case 'b-refresh':
+      boardRefresh();
+      break;
+    case 'b-share':
+      void boardShare();
+      break;
+    case 'b-admin-link':
+      void boardAdminLink();
+      break;
+    case 'b-close':
+      void boardStatus('closed');
+      break;
+    case 'b-reopen':
+      void boardStatus('open');
+      break;
+    case 'b-withdraw':
+      void boardWithdraw();
+      break;
+    case 'b-unlink':
+      boardUnlink();
+      break;
   }
 }
 
@@ -123,6 +183,7 @@ function onInput(e: Event): void {
 
 function onChange(e: Event): void {
   const tg = e.target as HTMLInputElement;
+  if (S.route.view === 'board' && boardChange(tg)) return;
   const r = cur();
   if (!r || colorChange(tg)) return;
   if (tg.id === 'c-grad') {
@@ -175,7 +236,8 @@ function onKeydown(e: KeyboardEvent): void {
     tg.blur();
     return;
   }
-  duelKeydown(e, tg);
+  if (S.route.view === 'board') boardKeydown(e, tg);
+  else duelKeydown(e, tg);
 }
 
 function onPaste(e: ClipboardEvent): void {
@@ -256,6 +318,7 @@ export function bindEvents(): void {
     true,
   );
   window.addEventListener('resize', placeColor);
+  window.addEventListener('hashchange', routeFromHash);
   narrow.addEventListener('change', () => {
     if (cur()) setTab(S.route.tab);
     placeColor();

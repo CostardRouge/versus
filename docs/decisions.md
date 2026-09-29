@@ -95,3 +95,6 @@ See `docs/published-boards.md`.
 | D48 | Board rules in `src/core/board.ts`; the Durable Object only adapts them (SQLite, WebSockets, alarms) | Decided | Same code in the app and the Worker; unit tested in Node with the rest of the core. |
 | D49 | Worker tests run the real runtime: Wrangler's test harness starts workerd inside Vitest | Decided | Covers SQLite, hibernation, alarms and WebSockets without mocks; `@cloudflare/vitest-pool-workers` doesn't support Vitest 5 yet. |
 | D50 | One module per view in `src/app/` (gallery, workspace, items, duel, results, color), with navigation, events and state apart | Decided | Split from a 1,400-line `ui.ts` before adding published boards; code moved as is, no behavior change. |
+| D51 | Board links in the URL fragment: `#/b/<alias>` to share, `#/b/<alias>?owner=<token>` for the author | Decided | Works on any static host; the token never reaches a server log and is removed from the address bar once stored. |
+| D52 | The app calls the API at `/api` on its own origin (Vite proxy in dev) or `VITE_API_URL`; builds without either hide publishing | Decided | The GitHub Pages build keeps working while the API isn't deployed. |
+| D53 | Never drop an owner token automatically | Decided | A board that looks gone may be a transient API error; the author chooses to go back to the local version. |

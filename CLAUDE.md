@@ -8,7 +8,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
 - Live: https://costardrouge.github.io/versus/ (GitHub Pages, deployed by CI from `main`).
-- Status: local-first; the live app is client-only and stores everything in `localStorage`. A backend prototype for published boards lives in `worker/` (Cloudflare Worker + Durable Objects): it runs locally and in tests, but isn't deployed or wired to the UI yet (see `docs/online-architecture.md`).
+- Status: local-first; the live app is client-only and stores everything in `localStorage`. Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects), UI in `src/app/board.ts` and `publish.ts`. Not deployed yet: they work against `npm run worker:dev`, and production builds hide publishing until `VITE_API_URL` is set (see `docs/published-boards.md`, `docs/online-architecture.md`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
 ## Commands
@@ -37,6 +37,7 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   demos.ts            demo data (EN/FR labels) + deterministic simulation (seeded PRNG)
   board.ts            published boards: publish validation, one voice per pair, visibility, pair assignment, sessions
   protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker
+  published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
@@ -49,6 +50,9 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
   results.ts          podium, table, method comparison, copy
   color.ts            color editor popover
+  publish.ts          publish modal and the settings form shared with the author panel
+  board.ts            published board page: server-assigned duels, crowd ranking (live or frozen), author panel
+  remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
   storage.ts          guarded localStorage access, prefs, migration from prototype keys
@@ -65,7 +69,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings), `versus-prefs` (lang, theme, hideDemos). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages.
 
@@ -84,5 +88,5 @@ docs/                 decisions, roadmap, published boards model, online archite
 
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
-- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (server side prototyped, not in the app yet).
+- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (built, not deployed).
 - `docs/online-architecture.md`: backend for published boards on Cloudflare; prototype in `worker/`, not deployed.

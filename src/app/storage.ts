@@ -1,3 +1,4 @@
+import { VOTER_RE } from '../core/board';
 import type { Ranking } from '../core/types';
 import type { Lang } from '../i18n';
 
@@ -13,6 +14,8 @@ export interface Prefs {
   lang?: Lang;
   hideDemos?: boolean;
   theme?: Theme;
+  /** Live updates of crowd rankings; on unless turned off. */
+  live?: boolean;
 }
 
 /** localStorage can be missing or throw (private mode, blocked storage), so every access is guarded. */
@@ -77,5 +80,39 @@ export function savePrefs(p: Prefs): void {
     storage()?.setItem(PREF_KEY, JSON.stringify(p));
   } catch {
     /* preferences are a convenience; ignore */
+  }
+}
+
+export const VOTER_KEY = 'versus-voter';
+export const OWNERS_KEY = 'versus-owners';
+
+/** This browser's anonymous voter id, created on first use. Without storage it lasts for the page. */
+export function loadVoter(make: () => string): string {
+  const v = readJSON(VOTER_KEY);
+  if (typeof v === 'string' && VOTER_RE.test(v)) return v;
+  const id = make();
+  try {
+    storage()?.setItem(VOTER_KEY, JSON.stringify(id));
+  } catch {
+    /* a new id next time: the voter just counts as someone new */
+  }
+  return id;
+}
+
+/** Owner tokens of the boards published or managed from this browser, by alias. */
+export function loadOwners(): Record<string, string> {
+  const v = readJSON(OWNERS_KEY);
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string'));
+}
+
+export function saveOwner(alias: string, token: string | null): void {
+  const owners = loadOwners();
+  if (token) owners[alias] = token;
+  else delete owners[alias];
+  try {
+    storage()?.setItem(OWNERS_KEY, JSON.stringify(owners));
+  } catch {
+    /* the admin link still works */
   }
 }
