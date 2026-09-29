@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // API for published boards (docs/online-architecture.md). The front stays on GitHub Pages for now.
+  "name": "versus",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-20",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "BOARDS", "class_name": "BoardObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BoardObject"] }]
+}

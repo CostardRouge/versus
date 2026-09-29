@@ -39,7 +39,9 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm test` / `npm run test:watch` | Unit tests (Vitest) |
 | `npm run coverage` | Tests with coverage; the scoring engine must stay above 90% |
 | `npm run lint` / `npm run format` | Biome lint and format check / auto-fix |
-| `npm run typecheck` | TypeScript in strict mode |
+| `npm run typecheck` | TypeScript in strict mode (app and Worker) |
+| `npm run worker:dev` | Published boards API on http://localhost:8787 (Vite proxies `/api` to it) |
+| `npm run worker:deploy` | Deploy the API to Cloudflare (needs a Cloudflare account) |
 
 ## Project structure
 
@@ -49,13 +51,20 @@ src/
     scoring.ts   Bradley-Terry, Elo, win rate, exact sort, pair selection
     colors.ts    hex/HSL conversions, gradients, harmonies
     demos.ts     demo data and deterministic simulation
+    board.ts     published boards: votes, visibility, pair assignment
+    protocol.ts  messages and views shared by the app and the Worker
   i18n/        en.ts (source of keys), fr.ts (type-checked against en), helpers
   app/
     storage.ts   localStorage access and migration from the prototype
     ui.ts        rendering and events
   styles.css
-tests/         Vitest suites, including a jsdom smoke test of the app
+worker/        Cloudflare Worker + one Durable Object per published board (prototype)
+tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Worker tests in workerd
 ```
+
+## Published boards (prototype)
+
+`worker/` holds the API for shared boards: a Worker routes requests, and each published board is a Durable Object with its own SQLite storage and WebSockets. The rules live in `src/core/board.ts`, shared with the app. It runs locally (`npm run worker:dev`) and in the tests; it isn't deployed or wired to the UI yet. See [`docs/online-architecture.md`](docs/online-architecture.md).
 
 ## CI and deployment
 
@@ -68,7 +77,8 @@ The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 - [`CLAUDE.md`](CLAUDE.md): working memory for Claude Code (conventions, code map, domain rules).
 - [`docs/decisions.md`](docs/decisions.md): decision log.
 - [`docs/roadmap.md`](docs/roadmap.md): done, next, later, open questions.
-- [`docs/online-architecture.md`](docs/online-architecture.md): proposed backend for shared, real-time boards.
+- [`docs/published-boards.md`](docs/published-boards.md): agreed behavior of published (shared) boards.
+- [`docs/online-architecture.md`](docs/online-architecture.md): backend for published boards on Cloudflare (prototype in `worker/`).
 
 ## Adding a language
 
