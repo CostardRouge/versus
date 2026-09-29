@@ -1,6 +1,6 @@
 # Published boards (agreed model)
 
-Status: **agreed direction, not implemented**. Discussed on 2026-09-29. Describes how a ranking goes from private to public and how a crowd votes on it. Infrastructure is in `docs/online-architecture.md`. "Published board" and "shared board" mean the same thing.
+Status: **agreed direction**; the server side is prototyped in `worker/` (rules in `src/core/board.ts`), not in the app yet. Discussed on 2026-09-29. Describes how a ranking goes from private to public and how a crowd votes on it. Infrastructure is in `docs/online-architecture.md`. "Published board" and "shared board" mean the same thing.
 
 ## Two kinds of rankings
 

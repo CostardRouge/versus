@@ -8,7 +8,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
 - Live: https://costardrouge.github.io/versus/ (GitHub Pages, deployed by CI from `main`).
-- Status: local-first, client-only. Everything is stored in `localStorage`. No backend yet (see `docs/online-architecture.md`).
+- Status: local-first; the live app is client-only and stores everything in `localStorage`. A backend prototype for published boards lives in `worker/` (Cloudflare Worker + Durable Objects): it runs locally and in tests, but isn't deployed or wired to the UI yet (see `docs/online-architecture.md`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
 ## Commands
@@ -19,9 +19,10 @@ npm run dev          # Vite dev server
 npm run check        # lint + typecheck + tests + build (what CI runs); run before every commit
 npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/functions/statements, ≥ 75% branches)
 npm run format       # Biome auto-fix
+npm run worker:dev   # published boards API on :8787 (Vite proxies /api to it)
 ```
 
-Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test). No UI framework, on purpose.
+Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker. No UI framework, on purpose.
 
 ## Code map
 
@@ -34,18 +35,21 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   scoring.ts          compute() for the 4 methods, pair selection, stability, undo
   colors.ts           hex/HSL, luminance, fillCSS (gradient rendering), harmonies
   demos.ts            demo data (EN/FR labels) + deterministic simulation (seeded PRNG)
+  board.ts            published boards: publish validation, one voice per pair, visibility, pair assignment, sessions
+  protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck
 src/app/storage.ts    guarded localStorage access, prefs, migration from prototype keys
 src/app/ui.ts         rendering (HTML strings) + event delegation (data-action attributes)
-tests/                one suite per core module + app.test.ts (jsdom smoke test on index.html)
+worker/               Cloudflare Worker (router) + BoardObject (one Durable Object per published board: SQLite, WebSockets, TTL alarm); own tsconfig
+tests/                one suite per core module + app.test.ts (jsdom smoke test) + worker.test.ts (end to end in workerd via Wrangler's test harness)
 docs/                 decisions, roadmap, published boards model, online architecture proposal
 ```
 
 ## Conventions
 
 - **All user-facing text goes through `t()`** (`src/i18n`). Add every key to both `en.ts` and `fr.ts` (typecheck enforces parity; tests check placeholders match). Plurals via `plural(n, key)`, percentages via `pct()`.
-- **Business logic lives in `src/core`**, never in `ui.ts`. It will be shared with a future backend (Cloudflare Worker), so keep it free of DOM and browser APIs.
+- **Business logic lives in `src/core`**, never in `ui.ts` or `worker/`. It is shared with the Cloudflare Worker, so keep it free of DOM, browser and Workers APIs; `worker/` only adapts it (storage, sockets, alarms).
 - **UI pattern:** `ui.ts` renders HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by one delegated click handler. Always escape user content with `esc()`.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).

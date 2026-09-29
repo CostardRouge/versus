@@ -7,6 +7,10 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
   },
+  // Published boards API: `npm run worker:dev` serves it on 8787; same origin as the app in dev.
+  server: {
+    proxy: { '/api': { target: 'http://localhost:8787', ws: true } },
+  },
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',

@@ -11,15 +11,18 @@ Last updated 2026-09-29.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (61 tests), CI, GitHub Pages deploy, Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (139 tests), CI, GitHub Pages deploy, Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
+- Backend prototype in `worker/`: Worker router + one Durable Object per published board (SQLite, hibernatable WebSockets, TTL alarm). Publish, public view, server-assigned pairs, votes, undo and reset, visibility enforced by the server, author settings, close/reopen, withdraw with a local copy. Rules in `src/core/board.ts`; end-to-end tests in workerd. Not deployed, not wired to the UI.
 
 ## Next (suggested order)
 
-1. **Backend spike on Cloudflare**: one Worker + one Durable Object per board, publish/join by alias, server-assigned pairs, votes over WebSocket, visibility enforced by the server, TTL cleanup via alarms. Reuse `src/core`.
-2. **Trademark and domain check** for "Versus" (and a custom domain).
-3. **Split `src/app/ui.ts`** (~1,400 lines) into view modules (gallery, workspace list, duel, results, color popover) before adding online features.
-4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover; UI coverage is ~45% today.
+1. **Deploy the backend prototype**: needs a Cloudflare account and an API token stored as a GitHub secret, then a deploy job in CI (`npm run worker:deploy`).
+2. **Split `src/app/ui.ts`** (~1,400 lines) into view modules (gallery, workspace list, duel, results, color popover) before adding online features.
+3. **Published boards in the app**: publish modal, board page fed by the server queue, live ranking with its toggle, author controls (settings, close, withdraw into a local copy), share link and admin link.
+4. **Complete the backend**: D1 registry and admin routes, Turnstile at publication, rate limiting per IP, adding and deleting items after publication (and by visitors when allowed), client-side vote batching, serving the front from Cloudflare (D34).
+5. **Trademark and domain check** for "Versus" (and a custom domain).
+6. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover; UI coverage is ~45% today.
 
 ## Later / ideas
 

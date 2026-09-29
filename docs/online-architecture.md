@@ -1,6 +1,6 @@
 # Online architecture (proposal)
 
-Status: **proposed, not implemented**. Discussed on 2026-09-29. Goal: published (shared, real-time) boards for potentially hundreds of thousands of users, on a near-zero budget. Product behavior of published boards (lifecycle, voting rules, visibility, live updates) is in `docs/published-boards.md`.
+Status: **prototype in `worker/`**, running locally and in tests, not deployed. Discussed on 2026-09-29. Goal: published (shared, real-time) boards for potentially hundreds of thousands of users, on a near-zero budget. Product behavior of published boards (lifecycle, voting rules, visibility, live updates) is in `docs/published-boards.md`.
 
 ## Load estimate
 
@@ -38,6 +38,14 @@ Why each piece:
 - **Same TypeScript core** on both sides: one language, no scoring drift between client and server.
 - **Server-assigned pairs**: required by blind mode (the browser never needs the crowd ranking) and blocks targeted vote stuffing (votes are accepted only on assigned pairs).
 - **D1 registry**: Durable Objects can't be listed with their data, so the admin view needs its own index. Updated at most once a day per board to spare writes.
+
+## Prototype (`worker/`)
+
+- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`); the route list is at the top of the file.
+- `worker/src/board-object.ts`: `BoardObject`, a thin adapter around `src/core/board.ts`. Loads the board from SQLite when it wakes (synchronous reads), keeps each voter's session (queue, skipped pairs, rate limit) in the WebSocket attachment so it survives hibernation, caches the crowd ranking for 1 s, broadcasts at most once per second.
+- Protocol (`src/core/protocol.ts`): the client sends `hello` (voter id, owner token for the author), then `vote`, `skip`, `undo`, `reset`; the server answers `state`, `pairs`, `ranking` (null when not entitled) and `error`.
+- Not built yet: D1 registry and admin routes, Turnstile, rate limiting per IP, item changes after publication, client-side vote batching, static assets on Cloudflare.
+- Known cost: waking a board reads all its votes (one row read each). Fine at this stage; per-pair totals can be cached if large boards wake often.
 
 ## Costs (Cloudflare pricing as of September 2026, check before relying on it)
 
