@@ -39,7 +39,7 @@ src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so
 src/app/storage.ts    guarded localStorage access, prefs, migration from prototype keys
 src/app/ui.ts         rendering (HTML strings) + event delegation (data-action attributes)
 tests/                one suite per core module + app.test.ts (jsdom smoke test on index.html)
-docs/                 decisions, roadmap, online architecture proposal
+docs/                 decisions, roadmap, published boards model, online architecture proposal
 ```
 
 ## Conventions
@@ -69,4 +69,5 @@ docs/                 decisions, roadmap, online architecture proposal
 
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
+- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (not implemented).
 - `docs/online-architecture.md`: proposed backend for shared, real-time boards (not implemented).

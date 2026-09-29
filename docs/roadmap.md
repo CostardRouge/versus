@@ -12,11 +12,12 @@ Last updated 2026-09-29.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
 - Repo tooling: Biome, strict TS, Vitest (61 tests), CI, GitHub Pages deploy, Dependabot, MIT license, README.
+- Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 
 ## Next (suggested order)
 
-1. **Shared board model** (design before code): roles, what's open vs locked, lifecycle. See open questions below.
-2. **Backend spike on Cloudflare**: one Worker + one Durable Object per board, create/join by ID, real-time duel sync over WebSocket, TTL cleanup via alarms. Reuse `src/core`.
+1. **Settle the last open points** of published boards (see below and `docs/published-boards.md`).
+2. **Backend spike on Cloudflare**: one Worker + one Durable Object per board, publish/join by alias, server-assigned pairs, votes over WebSocket, visibility enforced by the server, TTL cleanup via alarms. Reuse `src/core`.
 3. **Trademark and domain check** for "Versus" (and a custom domain).
 4. **Split `src/app/ui.ts`** (~1,400 lines) into view modules (gallery, workspace list, duel, results, color popover) before adding online features.
 5. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover; UI coverage is ~45% today.
@@ -30,15 +31,16 @@ Last updated 2026-09-29.
 - Self-host the fonts (avoid Google Fonts requests; privacy and speed).
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
+- Images on published boards (R2), once reporting and takedown exist.
+- Crowd ranking by aggregating each voter's own ranking (Borda, Kemeny) as an alternative to pooled votes.
+- Publish presets ("Open", "Blind contest") if the publish modal still feels heavy.
 
 ## Open questions for online mode
 
-- **IDs**: short shareable alias (e.g. 8–10 chars, base58) mapped to a Durable Object ID; how to guarantee no collision (check-and-reserve in the object, or use the object's own unique ID).
-- **Ownership and rights**: owner token created with the board (no account at first?). What can visitors do by default: vote only, add items, edit items, change method?
-- **Per-board settings**: open vs locked (add items, rename, delete, change method, reset), visibility (public listing vs link only), duel limits per visitor.
-- **Real-time behavior**: does each visitor have their own duels feeding one shared ranking? Live presence ("12 people voting")? Aggregation rate (broadcast 1–2×/s).
-- **Anti-abuse**: rate limiting per IP/session, vote stuffing, bot protection (Turnstile).
-- **Moderation**: public boards with user text and images need reporting, takedown and an admin view; this is a legal and safety requirement before opening images to the public.
-- **Cleanup**: TTL for inactive boards (e.g. 30–90 days), owner-controlled expiry, export before deletion.
-- **Admin interface**: protected route to list, inspect, lock and delete boards, and see usage against free-tier limits.
-- **Accounts**: none, magic link, or OAuth (GitHub/Google) later?
+- **Validate**: server-assigned pairs (D42) and the minimal publish modal with defaults (D47).
+- **Scoring on published boards**: Balanced only, or the author's choice among Balanced, Dynamic and Simple?
+- **Anti-abuse**: rate limits per connection and IP, Turnstile at publication; an author option to require Turnstile per voter?
+- **Moderation**: even text-only public boards need reporting, takedown and an admin view; a legal and safety requirement, stronger once images open.
+- **Cleanup**: TTL of inactive published boards (proposal: 60 days without a vote), warning the author before deletion.
+- **Voter gallery**: do boards a visitor voted on appear in their gallery ("Joined")?
+- **Accounts**: none at first; magic link or OAuth (GitHub/Google) later?

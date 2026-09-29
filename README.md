@@ -68,6 +68,7 @@ The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 - [`CLAUDE.md`](CLAUDE.md): working memory for Claude Code (conventions, code map, domain rules).
 - [`docs/decisions.md`](docs/decisions.md): decision log.
 - [`docs/roadmap.md`](docs/roadmap.md): done, next, later, open questions.
+- [`docs/published-boards.md`](docs/published-boards.md): agreed behavior of published (shared) boards.
 - [`docs/online-architecture.md`](docs/online-architecture.md): proposed backend for shared, real-time boards.
 
 ## Adding a language

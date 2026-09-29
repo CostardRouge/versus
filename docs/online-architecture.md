@@ -1,6 +1,6 @@
 # Online architecture (proposal)
 
-Status: **proposed, not implemented**. Discussed on 2026-09-29. Goal: shared, real-time boards for potentially hundreds of thousands of users, on a near-zero budget.
+Status: **proposed, not implemented**. Discussed on 2026-09-29. Goal: published (shared, real-time) boards for potentially hundreds of thousands of users, on a near-zero budget. Product behavior of published boards (lifecycle, voting rules, visibility, live updates) is in `docs/published-boards.md`.
 
 ## Load estimate
 
@@ -13,27 +13,31 @@ Status: **proposed, not implemented**. Discussed on 2026-09-29. Goal: shared, re
 
 ```
 Browser (Vite app, local-first)
-   │  personal rankings: localStorage only, no requests
-   │  shared boards: HTTPS + WebSocket
+   │  local rankings: localStorage only, no requests
+   │  published boards: HTTPS + WebSocket
    ▼
-Cloudflare static assets (same domain as the API)
+Cloudflare static assets (same domain as the API; the front moves off GitHub Pages)
    ▼
-Worker (router: create/join board, auth by token, admin routes)
+Worker (router: publish/join board, auth by token, admin routes)
+   ├─ D1: board registry (alias, created, last activity day, status), for admin listing
    ▼
-Durable Object, one per shared board
-   ├─ embedded SQLite: items, duels, settings, owner token hash
+Durable Object, one per published board
+   ├─ embedded SQLite: items, votes (one row per voter and pair), settings, owner token hash
    ├─ WebSockets with hibernation (no cost while idle)
    ├─ single-threaded: no write conflicts
-   ├─ alarms: TTL cleanup of inactive boards
-   └─ runs src/core scoring (same code as the browser)
-R2: shared images (no egress fees)
+   ├─ assigns pairs and runs src/core scoring (same code as the browser)
+   ├─ enforces results visibility (never sends the ranking to a client not entitled to it)
+   └─ alarm: TTL cleanup of inactive boards
+R2: shared images (later, not in v1)
 ```
 
 Why each piece:
 
-- **Local-first** is the main cost lever: only shared boards touch the server.
+- **Local-first** is the main cost lever: only published boards touch the server.
 - **One Durable Object per board** gives a natural unit of state, concurrency and cleanup, and a collision-free ID.
 - **Same TypeScript core** on both sides: one language, no scoring drift between client and server.
+- **Server-assigned pairs**: required by blind mode (the browser never needs the crowd ranking) and blocks targeted vote stuffing (votes are accepted only on assigned pairs).
+- **D1 registry**: Durable Objects can't be listed with their data, so the admin view needs its own index. Updated at most once a day per board to spare writes.
 
 ## Costs (Cloudflare pricing as of September 2026, check before relying on it)
 
@@ -41,22 +45,28 @@ Free plan:
 - Workers: 100,000 requests/day, 10 ms CPU per invocation.
 - Durable Objects: 100,000 requests/day, 13,000 GB-s/day. Incoming WebSocket messages are billed at a 20:1 ratio (100 messages = 5 requests); outgoing messages are free.
 - Durable Object SQLite: 5 M row reads/day, 100,000 row writes/day, 5 GB stored.
+- D1: 5 M row reads/day, 100,000 row writes/day, 5 GB stored.
 - R2: 10 GB-month storage, free egress.
 
 Paid plan: $5/month minimum, including 10 M Worker requests/month; DO includes 1 M requests + 400,000 GB-s/month; SQLite 50 M row writes/month.
 
-Example: 60,000 shared duels/day ≈ 3,000 billable DO requests (20:1) + 60,000 row writes → within the free plan.
+**The binding free-tier limit is SQLite row writes, not requests.** Each vote is one upsert keyed by voter and pair (a `WITHOUT ROWID` table avoids an extra index write), so the free plan holds about 100,000 votes/day across all boards, fewer with extra indexes. Beyond that, the $5 plan covers ~1.6 M row writes/day.
 
-Sources: [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/).
+Example: 60,000 shared votes/day ≈ 3,000 billable DO requests (20:1) + 60,000 row writes → within the free plan.
 
-## Main risk: the viral board
+Sources: [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/).
 
-A Durable Object processes messages one at a time; a board with thousands of simultaneous voters would saturate it. Mitigations:
+## Main risks
+
+**The viral board.** A Durable Object processes messages one at a time; a board with thousands of simultaneous voters would saturate it. Mitigations:
 
 - Batch votes client-side (send every 1–2 s).
-- Broadcast the aggregated ranking at 1–2 Hz instead of on every vote.
+- Broadcast the aggregated ranking at most once per second, only when it changed, and only to clients entitled to see it.
+- Recompute scores at broadcast rate, not on every vote.
 - Spectators are read-only; voting may require a lightweight session.
-- If ever needed: shard votes across several objects and merge (BT is order-independent, so merging duel sets is exact).
+- If ever needed: shard votes across several objects by voter and merge (BT is order-independent, and sharding by voter keeps one voice per pair exact).
+
+**Multiplied identities.** A voter is an anonymous id per browser, so a private window is a new voter. One voice per pair and server-assigned pairs cap what one identity can do; the rest relies on rate limits per connection and IP, and Turnstile (at publication, optionally per voter).
 
 ## Alternatives considered
 
@@ -70,12 +80,12 @@ A Durable Object processes messages one at a time; a board with thousands of sim
 
 **Plan B, free:** the home Dell Optiplex (Ubuntu Server) exposed through Cloudflare Tunnel, with Node + SQLite. Good for a private beta; depends on home bandwidth and uptime, so not suited to viral traffic.
 
-## How the stack answers the open questions
+## How the stack answers the design questions
 
-- **IDs without collision:** the Durable Object's unique ID, plus a short alias for sharing, reserved atomically.
-- **Owner rights:** an owner token generated at creation (stored hashed); later accounts if needed.
-- **Open vs locked settings:** stored in the board's SQLite and enforced in the object.
-- **Cleanup:** per-board alarm resetting on activity; deletion after the TTL.
-- **Admin:** protected Worker routes (Cloudflare Access or a secret) to list, lock and delete boards.
+- **IDs without collision:** a random 10-character base58 alias used as the Durable Object's name (`idFromName`). Publishing fails if that object already holds a board, and the client draws another alias. No mapping table.
+- **Owner rights:** an owner token generated at publication, stored hashed in the object. The author keeps it in `localStorage` and in an admin link (`…/b/<alias>#owner=…`: the fragment never reaches server logs or referrers). No accounts at first.
+- **Settings:** stored in the board's SQLite and enforced in the object (visibility, vote changes, visitors adding items).
+- **Cleanup:** the alarm is set to last vote + TTL. When it fires, it checks the last vote time and either reschedules or deletes the board: no extra write per vote.
+- **Admin:** protected Worker routes (a secret, then Cloudflare Access) reading the D1 registry to list, inspect, lock and delete boards, and to watch usage against free-tier limits.
 
-Details to settle are listed in `docs/roadmap.md` (open questions).
+Remaining questions are listed in `docs/published-boards.md` (still open) and `docs/roadmap.md`.
