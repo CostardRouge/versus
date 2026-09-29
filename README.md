@@ -67,3 +67,7 @@ The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 1. Copy `src/i18n/fr.ts` to a new file and translate the values; TypeScript flags any missing key.
 2. Register it in `src/i18n/index.ts` (`LANGS`, `MESSAGES`, `PLURALS`) and add a button in `index.html`.
 3. Add the language to the labels in `src/core/demos.ts`.
+
+## License
+
+[MIT](LICENSE) © 2026 Steeve Pommier

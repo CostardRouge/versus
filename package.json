@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "Rank anything by comparing two items at a time.",
+  "license": "MIT",
+  "author": "Steeve Pommier",
   "type": "module",
   "engines": {
     "node": ">=22"
