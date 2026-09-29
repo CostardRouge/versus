@@ -39,8 +39,19 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck
-src/app/storage.ts    guarded localStorage access, prefs, migration from prototype keys
-src/app/ui.ts         rendering (HTML strings) + event delegation (data-action attributes)
+src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
+  ui.ts               mount(): loads data, adds demos, binds events, first render
+  state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
+  rankings.ts         render() (gallery or workspace) and ranking-level actions (new, open, reset, duplicate, delete, language)
+  gallery.ts          gallery cards
+  workspace.ts        workspace shell, tabs, method menu, renderMain() (duel or results)
+  items.ts            side list (live-sorted, FLIP) and item edits (add text/colors/images, rename, remove)
+  duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
+  results.ts          podium, table, method comparison, copy
+  color.ts            color editor popover
+  events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
+  header.ts, format.ts  static header texts and theme / score, record and date formatting
+  storage.ts          guarded localStorage access, prefs, migration from prototype keys
 worker/               Cloudflare Worker (router) + BoardObject (one Durable Object per published board: SQLite, WebSockets, TTL alarm); own tsconfig
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + worker.test.ts (end to end in workerd via Wrangler's test harness)
 docs/                 decisions, roadmap, published boards model, online architecture
@@ -49,8 +60,8 @@ docs/                 decisions, roadmap, published boards model, online archite
 ## Conventions
 
 - **All user-facing text goes through `t()`** (`src/i18n`). Add every key to both `en.ts` and `fr.ts` (typecheck enforces parity; tests check placeholders match). Plurals via `plural(n, key)`, percentages via `pct()`.
-- **Business logic lives in `src/core`**, never in `ui.ts` or `worker/`. It is shared with the Cloudflare Worker, so keep it free of DOM, browser and Workers APIs; `worker/` only adapts it (storage, sockets, alarms).
-- **UI pattern:** `ui.ts` renders HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by one delegated click handler. Always escape user content with `esc()`.
+- **Business logic lives in `src/core`**, never in `src/app/` or `worker/`. It is shared with the Cloudflare Worker, so keep it free of DOM, browser and Workers APIs; `worker/` only adapts it (storage, sockets, alarms).
+- **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.

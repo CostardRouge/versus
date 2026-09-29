@@ -55,8 +55,11 @@ src/
     protocol.ts  messages and views shared by the app and the Worker
   i18n/        en.ts (source of keys), fr.ts (type-checked against en), helpers
   app/
-    storage.ts   localStorage access and migration from the prototype
-    ui.ts        rendering and events
+    ui.ts        mount(): the entry point
+    gallery.ts, workspace.ts, items.ts, duel.ts, results.ts, color.ts   one module per view
+    rankings.ts  navigation and actions on whole rankings
+    events.ts    delegated event listeners
+    state.ts, dom.ts, header.ts, format.ts, storage.ts   shared state, DOM helpers, header, formatting, localStorage
   styles.css
 worker/        Cloudflare Worker + one Durable Object per published board (prototype)
 tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Worker tests in workerd
