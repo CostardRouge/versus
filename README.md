@@ -63,6 +63,13 @@ tests/         Vitest suites, including a jsdom smoke test of the app
 
 The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 
+## Project notes
+
+- [`CLAUDE.md`](CLAUDE.md): working memory for Claude Code (conventions, code map, domain rules).
+- [`docs/decisions.md`](docs/decisions.md): decision log.
+- [`docs/roadmap.md`](docs/roadmap.md): done, next, later, open questions.
+- [`docs/online-architecture.md`](docs/online-architecture.md): proposed backend for shared, real-time boards.
+
 ## Adding a language
 
 1. Copy `src/i18n/fr.ts` to a new file and translate the values; TypeScript flags any missing key.
