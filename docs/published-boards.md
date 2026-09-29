@@ -1,6 +1,6 @@
 # Published boards (agreed model)
 
-Status: **agreed direction**; the server side is prototyped in `worker/` (rules in `src/core/board.ts`), not in the app yet. Discussed on 2026-09-29. Describes how a ranking goes from private to public and how a crowd votes on it. Infrastructure is in `docs/online-architecture.md`. "Published board" and "shared board" mean the same thing.
+Status: **implemented, not deployed**: server in `worker/` (rules in `src/core/board.ts`), app in `src/app/publish.ts` and `src/app/board.ts`. Runs locally with `npm run worker:dev`. Discussed on 2026-09-29. Describes how a ranking goes from private to public and how a crowd votes on it. Infrastructure is in `docs/online-architecture.md`. "Published board" and "shared board" mean the same thing.
 
 ## Two kinds of rankings
 
@@ -20,6 +20,8 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - **Close**: votes are frozen and the board is read-only; results become visible to everyone (this is when a blind board is revealed). The author can reopen it.
 - **Withdraw**: the board is deleted from the server and its link shows "withdrawn". The author keeps a local copy with the crowd's result (items + every vote as an anonymous duel). Very large boards may need per-pair totals instead of individual duels to fit in `localStorage`.
 - While published, the author's gallery shows the board with a "Published" or "Closed" badge; its content lives on the server.
+- **Links** live in the URL fragment: `#/b/<alias>` to share, `#/b/<alias>?owner=<token>` as the admin link. Opening an admin link stores the token in this browser and removes it from the address bar.
+- If a board turns out to be gone (withdrawn elsewhere or expired), nothing is deleted automatically: the author's page offers to go back to the local version, which also forgets the owner token.
 - v1: text and color items only. A ranking containing images can't be published (the modal says why). Images come later, with R2 storage and moderation.
 
 ## Voting rules
@@ -63,7 +65,7 @@ The board's Durable Object assigns pairs, not the browser:
 
 ## Live updates
 
-- On by default; each viewer can turn them off.
+- On by default; each viewer can turn them off (remembered in this browser's preferences).
 - On: the ranking reorders at most once per second, only when it changed, with a soft animation (none under `prefers-reduced-motion`).
 - Off: the ranking stays frozen and a badge shows "37 new votes · Refresh".
 - Items whose error margins overlap are shown as neck and neck rather than in a falsely precise order, so close items don't flicker.

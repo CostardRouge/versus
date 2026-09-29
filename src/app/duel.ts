@@ -90,7 +90,8 @@ export function duelHTML(r: Ranking): string {
     </div>
   </div>`;
 }
-export function bindStage(): void {
+/** Swipe and tap on the stage. The board page reuses it with its own pick and busy state. */
+export function bindStage(pick: (side: string | undefined) => void = choose, isBusy = (): boolean => busy): void {
   const st = $('#stage');
   if (!st) return;
   let x0: number | null = null;
@@ -101,7 +102,7 @@ export function bindStage(): void {
     for (const p of ['--dx', '--pa', '--pb']) st.style.removeProperty(p);
   };
   st.addEventListener('pointerdown', (e) => {
-    if (busy || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (isBusy() || (e.pointerType === 'mouse' && e.button !== 0)) return;
     x0 = e.clientX;
     dx = 0;
     pid = e.pointerId;
@@ -131,11 +132,11 @@ export function bindStage(): void {
     if (e.type === 'pointerup' && !moved) {
       clear();
       const card = doc.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.card');
-      if (card) choose(card.dataset.side);
+      if (card) pick(card.dataset.side);
       return;
     }
-    if (e.type === 'pointerup' && dx < -thr) choose('a');
-    else if (e.type === 'pointerup' && dx > thr) choose('b');
+    if (e.type === 'pointerup' && dx < -thr) pick('a');
+    else if (e.type === 'pointerup' && dx > thr) pick('b');
     else clear();
   };
   st.addEventListener('pointerup', end);

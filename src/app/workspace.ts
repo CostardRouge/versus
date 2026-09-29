@@ -5,6 +5,7 @@ import { methodText as M, t } from '../i18n';
 import { $, $$, imgSvg, narrow, toast } from './dom';
 import { bindStage, duelHTML } from './duel';
 import { markPair, renderList } from './items';
+import { online } from './remote';
 import { resultsHTML } from './results';
 import { cur, S, save, type Tab } from './state';
 
@@ -28,6 +29,7 @@ export function wsHTML(r: Ranking): string {
       <button class="back" type="button" data-action="back">${t('back')}</button>
       <input id="rank-title" class="title-input" value="${esc(r.title)}" aria-label="${t('rankNameAria')}" maxlength="80" autocomplete="off">${r.demo ? `<span class="chip">${t('demoChip')}</span>` : ''}
       ${methodMenuHTML(methodOf(r))}
+      ${online() && !r.demo ? `<button class="btn sm" type="button" data-action="publish">${t('publish')}</button>` : ''}
       <div class="tabs" role="tablist">
         <button class="tab tab-items" type="button" role="tab" data-action="tab" data-tab="items">${t('tabItems')}<span class="n" id="n-items"></span></button>
         <button class="tab" type="button" role="tab" data-action="tab" data-tab="duel">${t('tabDuel')}</button>

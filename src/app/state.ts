@@ -7,15 +7,20 @@ import { type Prefs, saveRanks } from './storage';
 
 export type Tab = 'items' | 'duel' | 'results';
 interface Route {
-  view: 'gallery' | 'rank';
+  view: 'gallery' | 'rank' | 'board';
+  /** Local ranking id (rank view). */
   id?: string;
+  /** Published board alias (board view). */
+  alias?: string;
   tab: Tab;
 }
 
-export const S: { ranks: Ranking[]; prefs: Prefs; route: Route } = {
+export const S: { ranks: Ranking[]; prefs: Prefs; route: Route; voter: string } = {
   ranks: [],
   prefs: {},
   route: { view: 'gallery', tab: 'duel' },
+  /** This browser's anonymous voter id on published boards. */
+  voter: '',
 };
 let warned = false;
 

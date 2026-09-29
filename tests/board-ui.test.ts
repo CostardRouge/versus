@@ -1,0 +1,353 @@
+// @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { BoardView, ClientMessage, RankingView, ServerMessage } from '../src/core/protocol';
+import type { Ranking } from '../src/core/types';
+
+/** The publish modal and the board page, against a fake API and fake WebSockets. */
+
+const ALIAS = 'Ab3dEf7hJk';
+const OWNER = 'b'.repeat(64);
+
+class FakeSocket {
+  static all: FakeSocket[] = [];
+  readyState = 0;
+  sent: ClientMessage[] = [];
+  private listeners: Record<string, ((e: unknown) => void)[]> = {};
+  constructor(readonly url: string) {
+    FakeSocket.all.push(this);
+  }
+  addEventListener(type: string, fn: (e: unknown) => void): void {
+    this.listeners[type] = [...(this.listeners[type] ?? []), fn];
+  }
+  private emit(type: string, e: unknown): void {
+    for (const fn of this.listeners[type] ?? []) fn(e);
+  }
+  send(data: string): void {
+    this.sent.push(JSON.parse(data) as ClientMessage);
+  }
+  close(): void {
+    this.readyState = 3;
+  }
+  open(): void {
+    this.readyState = 1;
+    this.emit('open', {});
+  }
+  receive(msg: ServerMessage): void {
+    this.emit('message', { data: JSON.stringify(msg) });
+  }
+  drop(code: number): void {
+    this.readyState = 3;
+    this.emit('close', { code });
+  }
+  static last(): FakeSocket {
+    const s = FakeSocket.all.at(-1);
+    if (!s) throw new Error('no socket');
+    return s;
+  }
+}
+
+type Call = { method: string; url: string; body: unknown; auth: string | null };
+const calls: Call[] = [];
+let respond: (c: Call) => { status: number; body: unknown } = () => ({ status: 404, body: { error: 'not_found' } });
+
+const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+const body = (html.match(/<body>([\s\S]*)<\/body>/)?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
+const $ = (sel: string) => document.querySelector<HTMLElement>(sel);
+const click = (sel: string) => {
+  const el = $(sel);
+  if (!el) throw new Error(`missing ${sel}`);
+  el.click();
+};
+const flush = () => vi.advanceTimersByTimeAsync(0);
+const change = (el: HTMLInputElement) => el.dispatchEvent(new Event('change', { bubbles: true }));
+
+const items = ['Margherita', 'Regina', 'Calzone'].map((label, i) => ({
+  id: `p${i}`,
+  label,
+  img: null,
+  fill: null,
+  h: 10,
+}));
+const ranking = (order: string[]): RankingView => ({
+  method: 'bt',
+  order,
+  stats: Object.fromEntries(order.map((id, i) => [id, { score: 1600 - i * 100, se: 20, w: 0, l: 0, d: 0 }])),
+});
+const view = (over: Partial<BoardView> = {}): BoardView => ({
+  title: 'Pizzas',
+  items,
+  settings: { method: 'bt', visibility: 'always', revealAfter: 2, allowChange: true, visitorsAddItems: false },
+  status: 'open',
+  created: 1,
+  counts: { votes: 3, voters: 2, online: 2 },
+  ranking: ranking(['p0', 'p1', 'p2']),
+  ...over,
+});
+const state = (over: Partial<BoardView> = {}, owner = false): ServerMessage => ({
+  t: 'state',
+  board: view(over),
+  owner,
+  mine: [],
+  pairs: [
+    ['p0', 'p1'],
+    ['p1', 'p2'],
+    ['p0', 'p2'],
+  ],
+});
+const stored = (): Ranking[] => JSON.parse(localStorage.getItem('versus-v1') ?? '[]');
+
+beforeAll(async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('WebSocket', FakeSocket);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      const headers = (init.headers ?? {}) as Record<string, string>;
+      const call = {
+        method: init.method ?? 'GET',
+        url,
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+        auth: headers.Authorization ?? null,
+      };
+      calls.push(call);
+      const r = respond(call);
+      return new Response(JSON.stringify(r.body), { status: r.status });
+    }),
+  );
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true });
+  window.scrollTo = () => {};
+  localStorage.clear();
+  const withImage: Ranking = {
+    id: 'with-image',
+    title: 'Photos',
+    method: 'bt',
+    items: [
+      { id: 'i1', label: 'Beach', img: 'data:image/jpeg;base64,', fill: null, h: 1 },
+      { id: 'i2', label: 'Hills', img: null, fill: null, h: 2 },
+    ],
+    history: [],
+    pair: null,
+    created: 1,
+    updated: 1,
+  };
+  localStorage.setItem('versus-v1', JSON.stringify([withImage]));
+  document.body.innerHTML = body;
+  const { mount } = await import('../src/app/ui');
+  mount(document);
+});
+
+afterEach(() => {
+  calls.length = 0;
+});
+
+describe('publishing', () => {
+  it('refuses a ranking with images, saying why', () => {
+    click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
+    click('[data-action="publish"]');
+    expect($('#m-title')?.textContent).toBe('Can’t publish yet');
+    expect($('#m-body')?.textContent).toContain('Remove the images');
+    expect($('#m-cancel')?.hidden).toBe(true);
+    click('#m-ok');
+    expect(calls).toHaveLength(0);
+    click('[data-action="back"]');
+  });
+
+  it('publishes with the chosen settings and opens the board as its author', async () => {
+    click('.g-head [data-action="new-rank"]');
+    const input = $('#add-input') as HTMLInputElement;
+    for (const v of ['Margherita', 'Regina', 'Calzone']) {
+      input.value = v;
+      $('#add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
+    click('[data-action="pick"][data-side="a"]');
+    await vi.advanceTimersByTimeAsync(600);
+    click('[data-action="publish"]');
+    expect($('#m-title')?.textContent).toBe('Publish this ranking?');
+    expect($('#m-body .opt.off[aria-disabled="true"]')?.textContent).toContain('Exact sort');
+    expect(document.querySelector('#m-body input[value="sort"]')).toBeNull();
+    expect(($('#pub-votes') as HTMLInputElement).checked).toBe(true);
+    ($('#m-body input[name="pub-vis"][value="after"]') as HTMLInputElement).checked = true;
+    ($('#pub-n') as HTMLInputElement).value = '4';
+    respond = () => ({ status: 201, body: { alias: ALIAS, owner: OWNER } });
+    click('#m-ok');
+    await flush();
+
+    const post = calls.find((c) => c.method === 'POST');
+    expect(post?.url).toBe('/api/boards');
+    expect(post?.body).toMatchObject({
+      settings: { visibility: 'after', revealAfter: 4, method: 'bt', allowChange: true },
+    });
+    expect((post?.body as { duels?: unknown[] } | undefined)?.duels).toHaveLength(1);
+    expect(location.hash).toBe(`#/b/${ALIAS}`);
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
+    expect(stored().find((r) => r.pub)?.pub).toEqual({ alias: ALIAS, status: 'open' });
+    expect($('#view')?.textContent).toContain('Connecting…');
+
+    const ws = FakeSocket.last();
+    expect(ws.url).toBe(`ws://localhost:3000/api/boards/${ALIAS}`);
+    ws.open();
+    expect(ws.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
+    ws.receive(state({}, true));
+    expect($('.b-title')?.textContent).toBe('Pizzas');
+    expect($('#b-admin')).not.toBeNull();
+    expect(document.querySelectorAll('#b-rank .b-rows li')).toHaveLength(3);
+  });
+});
+
+describe('voting', () => {
+  it('sends votes on the queued pair and reverts a refused undo', async () => {
+    const ws = FakeSocket.last();
+    click('[data-action="b-pick"][data-side="a"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p0', b: 'p1', s: 1 });
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+    expect($('.eyebrow')?.textContent).toContain('Your votes: 1');
+    click('[data-action="b-undo"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'undo', a: 'p0', b: 'p1' });
+    expect(($('[data-action="b-undo"]') as HTMLButtonElement).disabled).toBe(true);
+    ws.receive({ t: 'error', code: 'final' });
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    expect($('#toast')?.textContent).toBe('Votes are final on this ranking.');
+    expect(($('[data-action="b-undo"]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('follows the keyboard', async () => {
+    const ws = FakeSocket.last();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true }));
+    expect(ws.sent.at(-1)).toEqual({ t: 'skip', a: 'p1', b: 'p2' });
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p2']], mine: 1 });
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p0', b: 'p2', s: 0.5 });
+    ws.receive({ t: 'pairs', pairs: [], mine: 3 });
+    await vi.advanceTimersByTimeAsync(600);
+    expect($('#b-main')?.textContent).toContain('You voted on every pair');
+  });
+
+  it('holds the ranking while live updates are off', () => {
+    const ws = FakeSocket.last();
+    const liveBox = $('#b-live') as HTMLInputElement;
+    liveBox.checked = false;
+    change(liveBox);
+    ws.receive({ t: 'ranking', counts: { votes: 5, voters: 2, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    expect($('#b-counts')?.textContent).toContain('5 votes');
+    expect($('#b-rank .rlabel')?.textContent).toBe('Margherita');
+    click('[data-action="b-refresh"]');
+    expect($('#b-rank .rlabel')?.textContent).toBe('Calzone');
+    const again = $('#b-live') as HTMLInputElement;
+    again.checked = true;
+    change(again);
+    expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').live).toBe(true);
+  });
+
+  it('says how many votes reveal the ranking', () => {
+    const ws = FakeSocket.last();
+    ws.receive({
+      ...state({ settings: { ...view().settings, visibility: 'after' }, ranking: null }),
+      mine: [{ a: 'p0', b: 'p1', s: 1 }],
+    } as ServerMessage);
+    expect($('#b-rank')?.textContent).toContain('after 2 of your votes (1/2)');
+    ws.receive({ ...state({ settings: { ...view().settings, visibility: 'blind' }, ranking: null }) } as ServerMessage);
+    expect($('#b-rank')?.textContent).toContain('hidden until the author closes the vote');
+  });
+});
+
+describe('author', () => {
+  it('saves settings and closes the vote through the API', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({}, true));
+    respond = (c) => ({ status: 200, body: c.method === 'PATCH' ? view().settings : 'closed' });
+    const blind = $('#b-admin input[name="b-vis"][value="blind"]') as HTMLInputElement;
+    blind.checked = true;
+    change(blind);
+    await flush();
+    const patch = calls.find((c) => c.method === 'PATCH');
+    expect(patch).toMatchObject({ url: `/api/boards/${ALIAS}`, auth: `Bearer ${OWNER}` });
+    expect(patch?.body).toMatchObject({ visibility: 'blind' });
+    click('[data-action="b-close"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'POST', url: `/api/boards/${ALIAS}/close` });
+    ws.receive(state({ status: 'closed' }, true));
+    expect($('#b-main')?.textContent).toContain('The vote is closed');
+    expect(stored().find((r) => r.pub)?.pub?.status).toBe('closed');
+  });
+
+  it('withdraws into a local copy with the crowd votes', async () => {
+    const copy = {
+      id: 'x',
+      title: 'Pizzas',
+      method: 'elo',
+      items,
+      history: [
+        { a: 'p0', b: 'p1', s: 1 },
+        { a: 'p1', b: 'p2', s: 0 },
+      ],
+      pair: null,
+      created: 1,
+      updated: 1,
+    };
+    respond = () => ({ status: 200, body: copy });
+    click('[data-action="b-withdraw"]');
+    click('#m-ok');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'DELETE', auth: `Bearer ${OWNER}` });
+    const local = stored().find((r) => r.title === 'New ranking' && r.history.length === 2);
+    expect(local?.pub).toBeUndefined();
+    expect(local?.method).toBe('elo');
+    expect(location.hash).toBe('');
+    expect($('.results')).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
+  });
+});
+
+describe('links', () => {
+  it('opens an admin link as the author and keeps the token out of the URL', async () => {
+    location.hash = `#/b/${ALIAS}?owner=${OWNER}`;
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(location.hash).toBe(`#/b/${ALIAS}`);
+    const ws = FakeSocket.last();
+    ws.open();
+    expect(ws.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
+  });
+
+  it('shows a withdrawn board as gone', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state());
+    ws.drop(4004);
+    expect($('#view')?.textContent).toContain('doesn’t exist or was withdrawn');
+    click('.board [data-action="back"]');
+    expect($('h1')?.textContent).toBe('Your rankings');
+  });
+
+  it('lets the author take back the local version of a board that is gone', async () => {
+    const local = stored().find((r) => r.title === 'New ranking' && r.history.length === 2) as Ranking;
+    click('[data-action="back"]');
+    click(`.rcard [data-action="open"][data-id="${local.id}"][data-tab="duel"]`);
+    click('[data-action="publish"]');
+    respond = () => ({ status: 201, body: { alias: 'Zz3dEf7hJk', owner: OWNER } });
+    click('#m-ok');
+    await flush();
+    FakeSocket.last().drop(4004);
+    // Nothing is dropped until the author decides.
+    expect(stored().find((r) => r.id === local.id)?.pub?.alias).toBe('Zz3dEf7hJk');
+    click('[data-action="b-unlink"]');
+    expect(stored().find((r) => r.id === local.id)?.pub).toBeUndefined();
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}').Zz3dEf7hJk).toBeUndefined();
+    expect(($('#rank-title') as HTMLInputElement).value).toBe('New ranking');
+  });
+
+  it('asks the API when the connection fails and reconnects if the board exists', async () => {
+    location.hash = `#/b/${ALIAS}`;
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state());
+    respond = () => ({ status: 200, body: view() });
+    ws.drop(1006);
+    await flush();
+    expect(($('#b-conn') as HTMLElement).hidden).toBe(false);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(FakeSocket.last()).not.toBe(ws);
+  });
+});

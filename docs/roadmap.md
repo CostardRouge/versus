@@ -14,15 +14,15 @@ Last updated 2026-09-29.
 - Repo tooling: Biome, strict TS, Vitest (139 tests), CI, GitHub Pages deploy, Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
-- Backend prototype in `worker/`: Worker router + one Durable Object per published board (SQLite, hibernatable WebSockets, TTL alarm). Publish, public view, server-assigned pairs, votes, undo and reset, visibility enforced by the server, author settings, close/reopen, withdraw with a local copy. Rules in `src/core/board.ts`; end-to-end tests in workerd. Not deployed, not wired to the UI.
+- Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
+- Backend prototype in `worker/`: Worker router + one Durable Object per published board (SQLite, hibernatable WebSockets, TTL alarm). Publish, public view, server-assigned pairs, votes, undo and reset, visibility enforced by the server, author settings, close/reopen, withdraw with a local copy. Rules in `src/core/board.ts`; end-to-end tests in workerd. Not deployed.
 
 ## Next (suggested order)
 
 1. **Deploy the backend prototype**: needs a Cloudflare account and an API token stored as a GitHub secret, then a deploy job in CI (`npm run worker:deploy`).
-2. **Published boards in the app**: publish modal, board page fed by the server queue, live ranking with its toggle, author controls (settings, close, withdraw into a local copy), share link and admin link.
-3. **Complete the backend**: D1 registry and admin routes, Turnstile at publication, rate limiting per IP, adding and deleting items after publication (and by visitors when allowed), client-side vote batching, serving the front from Cloudflare (D34).
-4. **Trademark and domain check** for "Versus" (and a custom domain).
-5. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover; UI coverage is ~45% today.
+2. **Complete the backend**: D1 registry and admin routes, Turnstile at publication, rate limiting per IP, adding and deleting items after publication (and by visitors when allowed), client-side vote batching, serving the front from Cloudflare (D34).
+3. **Trademark and domain check** for "Versus" (and a custom domain).
+4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point.
 
 ## Later / ideas
 
@@ -34,6 +34,7 @@ Last updated 2026-09-29.
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
 - Images on published boards (R2), once reporting and takedown exist.
+- Boards a visitor voted on listed in their gallery ("Joined").
 - Crowd ranking by aggregating each voter's own ranking (Borda, Kemeny) as an alternative to pooled votes.
 - Publish presets ("Open", "Blind contest") if the publish modal still feels heavy.
 

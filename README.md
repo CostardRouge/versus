@@ -20,6 +20,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **English and French**, detected from the browser and switchable.
 - **Light and dark themes** that follow the system setting or can be pinned from the header; the choice is applied before the first paint.
 - Data stays in the browser (`localStorage`); nothing is sent anywhere.
+- **Published boards** (in development, not deployed): publish a ranking, share the link, and let a crowd vote in real time. See [`docs/published-boards.md`](docs/published-boards.md).
 
 ## Development
 
@@ -40,7 +41,7 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run coverage` | Tests with coverage; the scoring engine must stay above 90% |
 | `npm run lint` / `npm run format` | Biome lint and format check / auto-fix |
 | `npm run typecheck` | TypeScript in strict mode (app and Worker) |
-| `npm run worker:dev` | Published boards API on http://localhost:8787 (Vite proxies `/api` to it) |
+| `npm run worker:dev` | Published boards API on http://localhost:8787 (Vite proxies `/api` to it; run it next to `npm run dev` to publish) |
 | `npm run worker:deploy` | Deploy the API to Cloudflare (needs a Cloudflare account) |
 
 ## Project structure
@@ -57,6 +58,7 @@ src/
   app/
     ui.ts        mount(): the entry point
     gallery.ts, workspace.ts, items.ts, duel.ts, results.ts, color.ts   one module per view
+    publish.ts, board.ts, remote.ts   publishing, the published board page, the API client
     rankings.ts  navigation and actions on whole rankings
     events.ts    delegated event listeners
     state.ts, dom.ts, header.ts, format.ts, storage.ts   shared state, DOM helpers, header, formatting, localStorage

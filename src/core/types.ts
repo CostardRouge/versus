@@ -36,6 +36,8 @@ export interface Ranking {
   created: number;
   updated: number;
   demo?: boolean;
+  /** Set once published: the board's alias and its last known status. The owner token is kept apart. */
+  pub?: { alias: string; status?: BoardStatus };
 }
 
 export interface ItemStats {
