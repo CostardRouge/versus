@@ -1,1 +1,69 @@
-# versus
+# Versus
+
+Rank anything by comparing two items at a time. Add text, images or colors, pick your favorite in each duel (buttons, keyboard or swipe), and let the ranking emerge.
+
+**Live:** https://costardrouge.github.io/versus/
+
+## Features
+
+- **Duels** with buttons, arrow keys (`←` A, `→` B, `↓` tie, `S` skip, `⌘/Ctrl+Z` undo) or swipe.
+- **Items of any kind:** text, images (drag and drop or paste, downscaled in the browser), solid colors and gradients with an inline color editor.
+- **Four scoring methods**, switchable at any time without losing duels:
+  | Method | Algorithm | Best for |
+  | --- | --- | --- |
+  | Balanced (default) | Bradley-Terry, fitted on all duels at once, with a ± margin per item | Photos, products, anything that doesn't change |
+  | Dynamic | Elo, duel by duel | Preferences that evolve over time |
+  | Simple | Smoothed win rate | Readability |
+  | Exact sort | Binary insertion sort | Settling a short list in the fewest duels |
+- **Method comparison** on the results page, to see where the ranking is still fragile.
+- **Demos** built from fixed data (same items and duels for everyone), resettable and translatable.
+- **English and French**, detected from the browser and switchable.
+- Data stays in the browser (`localStorage`); nothing is sent anywhere.
+
+## Development
+
+Requires Node.js 22 (see `.nvmrc`).
+
+```bash
+npm install
+npm run dev        # local server with hot reload
+npm run check      # lint, typecheck, tests, build: what CI runs
+```
+
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | Vite dev server |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Serve the production build |
+| `npm test` / `npm run test:watch` | Unit tests (Vitest) |
+| `npm run coverage` | Tests with coverage; the scoring engine must stay above 90% |
+| `npm run lint` / `npm run format` | Biome lint and format check / auto-fix |
+| `npm run typecheck` | TypeScript in strict mode |
+
+## Project structure
+
+```
+src/
+  core/        pure, framework-free logic (fully unit tested)
+    scoring.ts   Bradley-Terry, Elo, win rate, exact sort, pair selection
+    colors.ts    hex/HSL conversions, gradients, harmonies
+    demos.ts     demo data and deterministic simulation
+  i18n/        en.ts (source of keys), fr.ts (type-checked against en), helpers
+  app/
+    storage.ts   localStorage access and migration from the prototype
+    ui.ts        rendering and events
+  styles.css
+tests/         Vitest suites, including a jsdom smoke test of the app
+```
+
+## CI and deployment
+
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages. Dependabot keeps npm packages and actions up to date.
+
+The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
+
+## Adding a language
+
+1. Copy `src/i18n/fr.ts` to a new file and translate the values; TypeScript flags any missing key.
+2. Register it in `src/i18n/index.ts` (`LANGS`, `MESSAGES`, `PLURALS`) and add a button in `index.html`.
+3. Add the language to the labels in `src/core/demos.ts`.

@@ -1,0 +1,214 @@
+import { describe, expect, it } from 'vitest';
+import { mkItem, mkRank } from '../src/core/model';
+import {
+  compute,
+  ensurePair,
+  exactSort,
+  expected,
+  METHOD_KEYS,
+  nextPair,
+  pairKey,
+  pushDuel,
+  remaining,
+  sortRemaining,
+  stability,
+  target,
+  undoDuel,
+  validHistory,
+} from '../src/core/scoring';
+import type { MethodKey, Ranking } from '../src/core/types';
+import { mulberry32 } from '../src/core/util';
+
+/** A ranking whose hidden preference order is the order of `labels`. */
+function ranking(labels: string[], method: MethodKey): Ranking {
+  const r = mkRank('test', method);
+  r.items = labels.map((l) => mkItem(l));
+  return r;
+}
+
+/** Plays duels picked by the app itself, always preferring the item listed first in `labels`. */
+function playConsistently(r: Ranking, labels: string[], max = 60, seed = 1): number {
+  const rank = (id: string) => labels.indexOf(r.items.find((i) => i.id === id)?.label ?? '');
+  const rng = mulberry32(seed);
+  let played = 0;
+  for (; played < max; played++) {
+    const p = nextPair(r, null, compute(r), rng);
+    if (!p) break;
+    pushDuel(r, p[0], p[1], rank(p[0]) < rank(p[1]) ? 1 : 0);
+  }
+  return played;
+}
+
+const LABELS = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+describe('expected', () => {
+  it('gives even odds for equal ratings and is symmetric', () => {
+    expect(expected(1500, 1500)).toBe(0.5);
+    expect(expected(1700, 1500) + expected(1500, 1700)).toBeCloseTo(1);
+    expect(expected(1900, 1500)).toBeCloseTo(10 / 11);
+  });
+});
+
+describe('pairKey', () => {
+  it('ignores order', () => {
+    expect(pairKey('x', 'y')).toBe(pairKey('y', 'x'));
+  });
+});
+
+describe.each(METHOD_KEYS)('%s method', (method) => {
+  it('recovers a consistent preference order', () => {
+    const r = ranking(LABELS, method);
+    playConsistently(r, LABELS, method === 'sort' ? 100 : 40);
+    expect(compute(r).order.map((i) => i.label)).toEqual(LABELS);
+  });
+
+  it('keeps the insertion order before any duel', () => {
+    const r = ranking(LABELS, method);
+    const C = compute(r);
+    expect(C.n).toBe(0);
+    expect(C.order.map((i) => i.label)).toEqual(LABELS);
+  });
+
+  it('counts wins, losses and ties', () => {
+    const r = ranking(['A', 'B'], method);
+    const [a, b] = r.items.map((i) => i.id) as [string, string];
+    pushDuel(r, a, b, 1);
+    pushDuel(r, a, b, 0.5);
+    const C = compute(r);
+    expect(C.st[a]).toMatchObject({ games: 2, w: 1, l: 0, d: 1 });
+    expect(C.st[b]).toMatchObject({ games: 2, w: 0, l: 1, d: 1 });
+  });
+});
+
+describe('Bradley-Terry', () => {
+  it('does not depend on the order of duels', () => {
+    const r = ranking(LABELS, 'bt');
+    playConsistently(r, ['C', 'A', 'F', 'B', 'E', 'D'], 25);
+    // Add a couple of upsets so the data is not perfectly consistent.
+    const ids = r.items.map((i) => i.id);
+    pushDuel(r, ids[3] as string, ids[2] as string, 1);
+    pushDuel(r, ids[5] as string, ids[1] as string, 0.5);
+    const before = compute(r);
+    const shuffled = { ...r, history: [...r.history].reverse() };
+    const after = compute(shuffled);
+    for (const id of ids) expect(after.st[id]?.score).toBeCloseTo(before.st[id]?.score ?? 0, 6);
+  });
+
+  it('starts at 1500 and narrows the margin as duels accumulate', () => {
+    const r = ranking(['A', 'B'], 'bt');
+    const [a, b] = r.items.map((i) => i.id) as [string, string];
+    const fresh = compute(r).st[a];
+    expect(fresh?.score).toBeCloseTo(1500);
+    pushDuel(r, a, b, 1);
+    const se1 = compute(r).st[a]?.se ?? 0;
+    for (let i = 0; i < 5; i++) pushDuel(r, a, b, i % 2 ? 1 : 0.5);
+    const se6 = compute(r).st[a]?.se ?? 0;
+    expect(se6).toBeLessThan(se1);
+    expect(Number.isFinite(compute(r).st[a]?.score)).toBe(true);
+  });
+});
+
+describe('Elo', () => {
+  it('depends on the order of duels', () => {
+    const r = ranking(['A', 'B', 'C'], 'elo');
+    const [a, b, c] = r.items.map((i) => i.id) as [string, string, string];
+    pushDuel(r, a, b, 1);
+    pushDuel(r, b, c, 1);
+    pushDuel(r, c, a, 1);
+    const forward = compute(r).st[a]?.score;
+    const backward = compute({ ...r, history: [...r.history].reverse() }).st[a]?.score;
+    expect(forward).not.toBeCloseTo(backward ?? 0, 3);
+  });
+
+  it('is zero-sum while both items share the same K factor', () => {
+    const r = ranking(['A', 'B'], 'elo');
+    const [a, b] = r.items.map((i) => i.id) as [string, string];
+    pushDuel(r, a, b, 1);
+    const C = compute(r);
+    expect((C.st[a]?.score ?? 0) + (C.st[b]?.score ?? 0)).toBeCloseTo(3000);
+  });
+});
+
+describe('exact sort', () => {
+  it('finishes within the binary insertion bound and then asks for nothing', () => {
+    const r = ranking(LABELS, 'sort');
+    const played = playConsistently(r, LABELS, 100);
+    expect(played).toBeLessThanOrEqual(sortRemaining(LABELS.length, 1));
+    const C = compute(r);
+    expect(C.ex?.done).toBe(true);
+    expect(nextPair(r)).toBeNull();
+    expect(stability(r, C)).toBe(1);
+    expect(remaining(r, C)).toBe(0);
+  });
+
+  it('asks for the comparison it is missing', () => {
+    const r = ranking(['A', 'B', 'C'], 'sort');
+    const ex = exactSort(r, []);
+    expect(ex.sorted.map((i) => i.label)).toEqual(['A']);
+    expect(ex.need).toEqual([r.items[1]?.id, r.items[0]?.id]);
+  });
+
+  it('marks items not placed yet', () => {
+    const r = ranking(['A', 'B', 'C'], 'sort');
+    const C = compute(r);
+    expect(C.st[r.items[0]?.id ?? '']?.placed).toBe(true);
+    expect(C.st[r.items[2]?.id ?? '']?.placed).toBe(false);
+  });
+});
+
+describe('pair selection', () => {
+  it('returns null with fewer than two items', () => {
+    expect(nextPair(ranking(['A'], 'bt'))).toBeNull();
+  });
+
+  it('avoids the pair that was just skipped when others exist', () => {
+    const r = ranking(['A', 'B', 'C'], 'bt');
+    const [a, b] = r.items.map((i) => i.id) as [string, string];
+    for (let seed = 1; seed < 20; seed++) {
+      const p = nextPair(r, [a, b], compute(r), mulberry32(seed));
+      expect(p && pairKey(p[0], p[1])).not.toBe(pairKey(a, b));
+    }
+  });
+
+  it('keeps a valid pair and replaces one whose item was removed', () => {
+    const r = ranking(['A', 'B', 'C'], 'bt');
+    expect(ensurePair(r)).toBe(true);
+    const kept = r.pair;
+    expect(ensurePair(r)).toBe(false);
+    expect(r.pair).toBe(kept);
+    r.items = r.items.filter((i) => i.id !== kept?.[0]);
+    expect(ensurePair(r)).toBe(true);
+    expect(r.pair).not.toContain(kept?.[0]);
+  });
+});
+
+describe('history', () => {
+  it('ignores duels involving removed items', () => {
+    const r = ranking(['A', 'B', 'C'], 'bt');
+    const [a, b, c] = r.items.map((i) => i.id) as [string, string, string];
+    pushDuel(r, a, b, 1);
+    pushDuel(r, b, c, 1);
+    r.items = r.items.filter((i) => i.id !== c);
+    expect(validHistory(r)).toHaveLength(1);
+    expect(compute(r).n).toBe(1);
+  });
+
+  it('undo removes the last duel and puts its pair back', () => {
+    const r = ranking(['A', 'B'], 'bt');
+    const [a, b] = r.items.map((i) => i.id) as [string, string];
+    pushDuel(r, a, b, 1);
+    expect(undoDuel(r)).toBe(true);
+    expect(r.history).toHaveLength(0);
+    expect(r.pair).toEqual([a, b]);
+    expect(undoDuel(r)).toBe(false);
+  });
+});
+
+describe('stability', () => {
+  it('is 0 below two items and reaches 1 at the target', () => {
+    expect(stability(ranking(['A'], 'bt'))).toBe(0);
+    const r = ranking(LABELS, 'win');
+    playConsistently(r, LABELS, target(r));
+    expect(stability(r)).toBe(1);
+  });
+});

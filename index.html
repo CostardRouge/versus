@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Versus</title>
+    <meta name="description" content="Rank anything by comparing two items at a time: text, images or colors." />
+    <meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)" />
+    <meta property="og:title" content="Versus" />
+    <meta property="og:description" content="Rank anything by comparing two items at a time." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <header class="top">
+        <button class="brand" type="button" data-action="back"><span class="brand-mark" aria-hidden="true">vs</span>Versus</button>
+        <div class="top-right">
+          <span class="top-note" id="top-note"></span>
+          <fieldset class="lang">
+            <button type="button" data-action="lang" data-l="en" aria-pressed="false">EN</button>
+            <button type="button" data-action="lang" data-l="fr" aria-pressed="false">FR</button>
+          </fieldset>
+        </div>
+      </header>
+      <main id="view"></main>
+    </div>
+    <div class="drop-overlay" aria-hidden="true"><div id="drop-text"></div></div>
+    <div id="cpop" class="cpop" role="dialog" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="live" class="sr-only" aria-live="polite"></div>
+    <div id="modal" class="modal" hidden>
+      <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="m-title">
+        <h3 id="m-title">Confirm</h3>
+        <p id="m-body"></p>
+        <div class="modal-actions">
+          <button class="btn ghost" id="m-cancel" type="button"></button>
+          <button class="btn primary" id="m-ok" type="button"></button>
+        </div>
+      </div>
+    </div>
+    <noscript>Versus needs JavaScript to run.</noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
