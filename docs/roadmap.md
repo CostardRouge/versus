@@ -11,18 +11,18 @@ Last updated 2026-09-29.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (139 tests), CI, GitHub Pages deploy, Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (185 tests), CI, GitHub Pages deploy, Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
 - Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
 - Backend prototype in `worker/`: Worker router + one Durable Object per published board (SQLite, hibernatable WebSockets, TTL alarm). Publish, public view, server-assigned pairs, votes, undo and reset, visibility enforced by the server, author settings, close/reopen, withdraw with a local copy. Rules in `src/core/board.ts`; end-to-end tests in workerd. Not deployed.
+- Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
 
 ## Next (suggested order)
 
-1. **Deploy the backend prototype**: needs a Cloudflare account and an API token stored as a GitHub secret, then a deploy job in CI (`npm run worker:deploy`).
-2. **Complete the backend**: D1 registry and admin routes, Turnstile at publication, rate limiting per IP, adding and deleting items after publication (and by visitors when allowed), client-side vote batching, serving the front from Cloudflare (D34).
-3. **Trademark and domain check** for "Versus" (and a custom domain).
-4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point.
+1. **Deploy**: a Cloudflare account, secrets and `npm run worker:deploy` (steps in `docs/online-architecture.md`), then a deploy job in CI with an API token as a GitHub secret.
+2. **Trademark and domain check** for "Versus" (and a custom domain).
+3. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point.
 
 ## Later / ideas
 
@@ -37,6 +37,9 @@ Last updated 2026-09-29.
 - Boards a visitor voted on listed in their gallery ("Joined").
 - Crowd ranking by aggregating each voter's own ranking (Borda, Kemeny) as an alternative to pooled votes.
 - Publish presets ("Open", "Blind contest") if the publish modal still feels heavy.
+- Admin page behind Cloudflare Access (the admin API exists), with usage against free-tier limits.
+- Client-side vote batching, if a board ever goes viral.
+- A report button on published boards, feeding the admin view.
 
 ## Open questions for online mode
 

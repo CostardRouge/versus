@@ -1,10 +1,12 @@
 import { locale, plural, t } from '../i18n';
 import {
+  boardAddItem,
   boardAdminLink,
   boardChange,
   boardKeydown,
   boardPick,
   boardRefresh,
+  boardRemoveItem,
   boardReset,
   boardShare,
   boardSkip,
@@ -164,6 +166,9 @@ function onClick(e: MouseEvent): void {
     case 'b-unlink':
       boardUnlink();
       break;
+    case 'b-remove-item':
+      void boardRemoveItem(id);
+      break;
   }
 }
 
@@ -269,6 +274,11 @@ export function bindEvents(): void {
   doc.addEventListener('keydown', onKeydown);
   doc.addEventListener('paste', onPaste);
   doc.addEventListener('submit', (e) => {
+    if ((e.target as HTMLElement).id === 'b-add-form') {
+      e.preventDefault();
+      void boardAddItem();
+      return;
+    }
     if ((e.target as HTMLElement).id !== 'add-form') return;
     e.preventDefault();
     const r = cur();

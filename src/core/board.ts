@@ -35,6 +35,8 @@ export const LIMITS = { title: 120, label: 200, items: 100, duels: 5000, revealA
 export const UNDO_GRACE_MS = 10_000;
 /** Minimum delay between two votes or skips of one connection (each one triggers pair assignment). */
 export const ACTION_INTERVAL_MS = 150;
+/** Minimum delay between two items added by one connection. */
+export const ADD_INTERVAL_MS = 5_000;
 /** Inactive published boards are deleted after this many days without activity. */
 export const TTL_DAYS = 60;
 
@@ -84,15 +86,27 @@ function parseFill(x: unknown): Fill | null | undefined {
   return { type: x.type, colors: [...colors] };
 }
 
-function parseItem(x: unknown): Result<Item> {
-  if (!isRecord(x) || typeof x.id !== 'string' || !ITEM_ID_RE.test(x.id) || typeof x.label !== 'string') {
-    return fail('bad_request');
-  }
+export interface NewItem {
+  label: string;
+  fill: Fill | null;
+}
+
+/** An item's content: a label, and a fill for colors. No images on published boards (v1). */
+export function parseNewItem(x: unknown): Result<NewItem> {
+  if (!isRecord(x) || typeof x.label !== 'string') return fail('bad_request');
   if (x.img !== null && x.img !== undefined) return fail('images_not_allowed');
   const fill = parseFill(x.fill);
   if (fill === undefined) return fail('bad_request');
   const label = x.label.trim();
   if (label.length > LIMITS.label || (!label && !fill)) return fail('bad_request');
+  return ok({ label, fill });
+}
+
+function parseItem(x: unknown): Result<Item> {
+  if (!isRecord(x) || typeof x.id !== 'string' || !ITEM_ID_RE.test(x.id)) return fail('bad_request');
+  const content = parseNewItem(x);
+  if (!content.ok) return content;
+  const { label, fill } = content.value;
   const h = typeof x.h === 'number' && Number.isInteger(x.h) && x.h >= 0 && x.h < 360 ? x.h : hueOf(label);
   return ok({ id: x.id, label, img: null, fill, h });
 }
@@ -229,6 +243,34 @@ export function setStatus(board: SharedBoard, status: BoardStatus, now: number):
 export function updateSettings(board: SharedBoard, patch: unknown, now: number): void {
   board.settings = patchSettings(board.settings, patch);
   board.touched = now;
+}
+
+const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/** Id for an item added after publication, drawn by the server. */
+export const itemId = (bytes: Uint8Array): string => Array.from(bytes, (b) => ID_CHARS[b & 63]).join('');
+
+/** Adds an item to an open board. Refused when full or when the same label is already there. */
+export function addItem(board: SharedBoard, input: NewItem, id: string, now: number): Result<Item> {
+  if (board.status !== 'open') return fail('closed');
+  if (board.items.length >= LIMITS.items) return fail('full');
+  const key = input.label.toLowerCase();
+  if (board.items.some((i) => i.label.toLowerCase() === key)) return fail('exists');
+  const item: Item = { id, label: input.label, img: null, fill: input.fill, h: hueOf(input.label) };
+  board.items.push(item);
+  board.touched = now;
+  return ok(item);
+}
+
+/** Removes an item and every vote that involves it (they would count for nothing). A board keeps 2 items. */
+export function removeItem(board: SharedBoard, id: string, now: number): Result<Vote[]> {
+  if (!board.items.some((i) => i.id === id)) return fail('not_found');
+  if (board.items.length <= 2) return fail('too_few');
+  board.items = board.items.filter((i) => i.id !== id);
+  const removed = [...board.votes.values()].filter((v) => v.a === id || v.b === id);
+  for (const v of removed) removeVote(board, v.voter, pairKey(v.a, v.b));
+  board.touched = now;
+  return ok(removed);
 }
 
 // ─── Votes ──────────────────────────────────────────────────────────────────
@@ -453,6 +495,21 @@ export function sessionUndo(board: SharedBoard, session: Session, a: string, b: 
   const k = pairKey(a, b);
   const rest = session.queue.filter(([x, y]) => pairKey(x, y) !== k);
   session.queue = [[r.value.a, r.value.b] as [string, string], ...rest].slice(0, LIMITS.queue);
+  return r;
+}
+
+/** An item suggested by a connection: only when the author allows it (or is the one adding), a few seconds apart. */
+export function sessionAdd(
+  board: SharedBoard,
+  session: Session,
+  input: NewItem,
+  id: string,
+  now: number,
+): Result<Item> {
+  if (!session.owner && !board.settings.visitorsAddItems) return fail('forbidden');
+  if (now - (session.lastAddAt ?? 0) < ADD_INTERVAL_MS) return fail('too_fast');
+  const r = addItem(board, input, id, now);
+  if (r.ok) session.lastAddAt = now;
   return r;
 }
 

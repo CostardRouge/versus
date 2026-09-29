@@ -31,7 +31,7 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - **Anonymity**: nobody, the author included, sees who voted what. Only aggregates leave the server.
 - **Changing one's vote** (author setting, on by default): a voter can delete one vote or all of theirs, and vote again. When off, votes are final, except undoing the very last vote for a few seconds (mis-taps).
   - Not a weighting risk: under one voice per pair, changing a vote never adds weight. The setting guards against strategic changes (see the results, then adjust) and suits "final vote" contests. The real abuse vector is multiplying identities (see `docs/online-architecture.md`, main risks).
-- **Items are locked once published**: renaming "Pizza" to "Sushi" after 200 votes would betray those votes. The author can still delete an item (its votes are dropped) and add items; visitors can add items if the author allows it. New items get priority in pair assignment.
+- **Items are locked once published**: renaming "Pizza" to "Sushi" after 200 votes would betray those votes. The author can still remove an item (its votes are dropped, after a confirmation) and add items from the author panel; visitors can suggest items when the author allows it (one every 5 seconds per connection). Same label twice is refused, a board keeps at least 2 items and at most 100. New items get priority in pair assignment.
 - **Scoring**: the author picks Balanced, Dynamic or Simple, and can switch later (everything is recomputed from the same votes).
   - Balanced (Bradley-Terry) is the recommended default. On pooled votes it estimates the probability that a random voter prefers A to B, and absorbs crowd contradictions (A > B, B > C, C > A among different people).
   - Dynamic becomes a "recent trend": it replays votes in arrival order (a changed vote takes its new time). Simple is biased by uneven opponents.
@@ -86,7 +86,7 @@ To keep publishing light, the modal shows four things: the warning, "push my vot
 
 ## Still open
 
-- Anti-abuse beyond rate limits and Turnstile at creation: an author option to require a check (Turnstile) per voter?
+- Anti-abuse beyond per-IP limits and Turnstile at publication: an author option to require a check (Turnstile) per voter?
 - Do boards a visitor voted on appear in their gallery ("Joined")?
-- Moderation of text items (report, takedown), even without images.
+- Moderation: the admin API can remove an item or take a board down; a report button for visitors is still to do.
 - TTL of inactive published boards (proposal: 60 days without a vote) and warning the author before deletion.

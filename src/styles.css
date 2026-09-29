@@ -545,7 +545,8 @@ kbd {
   display: flex;
   gap: 8px;
 }
-#add-input {
+#add-input,
+#b-add-input {
   flex: 1;
   min-width: 0;
   border: 1px solid var(--line);
@@ -553,7 +554,8 @@ kbd {
   border-radius: 12px;
   padding: 10px 12px;
 }
-#add-input:focus {
+#add-input:focus,
+#b-add-input:focus {
   outline: 2px solid var(--a);
   outline-offset: 0;
   border-color: transparent;
@@ -2118,4 +2120,37 @@ body.dropping .drop-overlay {
   .b-side {
     position: static;
   }
+}
+.b-items {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+}
+.b-items li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.b-items .thumb {
+  width: 28px;
+  height: 28px;
+}
+.b-suggest {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+.b-suggest h2 {
+  margin: 0 0 10px;
+  font: 700 16px / 1.2 var(--f-display);
+  letter-spacing: -0.02em;
+}
+.pub-captcha {
+  margin-top: 14px;
+  min-height: 65px;
 }

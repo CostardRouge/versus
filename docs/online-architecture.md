@@ -1,6 +1,6 @@
-# Online architecture (proposal)
+# Online architecture
 
-Status: **prototype in `worker/`**, running locally and in tests, not deployed. Discussed on 2026-09-29. Goal: published (shared, real-time) boards for potentially hundreds of thousands of users, on a near-zero budget. Product behavior of published boards (lifecycle, voting rules, visibility, live updates) is in `docs/published-boards.md`.
+Status: **built in `worker/`**, running locally and in tests, not deployed yet (steps below). Discussed on 2026-09-29. Goal: published (shared, real-time) boards for potentially hundreds of thousands of users, on a near-zero budget. Product behavior of published boards (lifecycle, voting rules, visibility, live updates) is in `docs/published-boards.md`.
 
 ## Load estimate
 
@@ -9,17 +9,17 @@ Status: **prototype in `worker/`**, running locally and in tests, not deployed. 
 - Even at 50 duels per person: ~500,000 messages/day ≈ 6/s on average, a few hundred/s at peak.
 - Conclusion: language speed is irrelevant at this scale. Cost comes from keeping servers and connections alive, so optimize architecture, not language.
 
-## Proposed stack: Cloudflare, TypeScript end to end
+## Stack: Cloudflare, TypeScript end to end
 
 ```
 Browser (Vite app, local-first)
    │  local rankings: localStorage only, no requests
    │  published boards: HTTPS + WebSocket
    ▼
-Cloudflare static assets (same domain as the API; the front moves off GitHub Pages)
+Cloudflare static assets: the app (dist/), served by the same Worker, same origin as the API
    ▼
-Worker (router: publish/join board, auth by token, admin routes)
-   ├─ D1: board registry (alias, created, last activity day, status), for admin listing
+Worker (router: publish/join board, owner and admin auth, per-IP rate limits, Turnstile at publication)
+   ├─ D1: board registry (alias, title, status, counts, last activity), for the admin API
    ▼
 Durable Object, one per published board
    ├─ embedded SQLite: items, votes (one row per voter and pair), settings, owner token hash
@@ -39,13 +39,17 @@ Why each piece:
 - **Server-assigned pairs**: required by blind mode (the browser never needs the crowd ranking) and blocks targeted vote stuffing (votes are accepted only on assigned pairs).
 - **D1 registry**: Durable Objects can't be listed with their data, so the admin view needs its own index. Updated at most once a day per board to spare writes.
 
-## Prototype (`worker/`)
+## Implementation (`worker/`)
 
-- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`); the route list is at the top of the file.
+- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`, items) and `/api/admin` (list, totals, inspect, close, remove an item, take down, with `Authorization: Bearer <ADMIN_TOKEN>`); the route list is at the top of the file.
+- `worker/src/registry.ts` + `worker/migrations/`: the D1 registry. Each board writes its row on publication, status and item changes, and at most once a day for votes; the row goes when the board does.
+- Limits: the `PUBLISH_LIMIT` (5 publications per minute) and `API_LIMIT` (120 requests per minute, WebSocket connections included) rate limiting bindings, keyed by client IP; votes and skips are limited per connection (150 ms), item suggestions per connection (5 s).
+- `worker/src/turnstile.ts`: with `TURNSTILE_SECRET` set, publishing requires a Turnstile token (the app shows the widget when `VITE_TURNSTILE_SITE_KEY` is set).
 - `worker/src/board-object.ts`: `BoardObject`, a thin adapter around `src/core/board.ts`. Loads the board from SQLite when it wakes (synchronous reads), keeps each voter's session (queue, skipped pairs, rate limit) in the WebSocket attachment so it survives hibernation, caches the crowd ranking for 1 s, broadcasts at most once per second.
 - Protocol (`src/core/protocol.ts`): the client sends `hello` (voter id, owner token for the author), then `vote`, `skip`, `undo`, `reset`; the server answers `state`, `pairs`, `ranking` (null when not entitled) and `error`.
 - App side: `src/app/remote.ts` (fetch helpers and a WebSocket that says hello on every connection, reconnects with a growing delay and asks the API whether a board still exists before calling it gone), `src/app/board.ts` (board page), `src/app/publish.ts` (publish modal). The app reaches the API at `/api` on its own origin, or `VITE_API_URL`; a production build without either hides publishing.
-- Not built yet: D1 registry and admin routes, Turnstile, rate limiting per IP, item changes after publication, client-side vote batching, static assets on Cloudflare.
+- The Worker serves the app too (`assets`, from `dist/`). `npm run worker:dev` builds it in `worker` mode (`.env.worker`: `VITE_API_URL=/`), so publishing works on http://localhost:8787 with the real Worker; `npm run dev` keeps hot reload and proxies `/api` to it.
+- Not built: client-side vote batching. Each vote costs 1/20 of a request (WebSocket billing), so batching only pays off for a viral board, and it would need a longer pair queue; left for when a board needs it. No admin page yet: the admin API is meant for curl or a later page behind Cloudflare Access.
 - Known cost: waking a board reads all its votes (one row read each). Fine at this stage; per-pair totals can be cached if large boards wake often.
 
 ## Costs (Cloudflare pricing as of September 2026, check before relying on it)
@@ -98,3 +102,12 @@ Sources: [Durable Objects pricing](https://developers.cloudflare.com/durable-obj
 - **Admin:** protected Worker routes (a secret, then Cloudflare Access) reading the D1 registry to list, inspect, lock and delete boards, and to watch usage against free-tier limits.
 
 Remaining questions are listed in `docs/published-boards.md` (still open) and `docs/roadmap.md`.
+
+## Deploying
+
+Needs a Cloudflare account (free plan is enough to start).
+
+1. `npx wrangler login`, or a `CLOUDFLARE_API_TOKEN` (Workers, D1 and Durable Objects edit rights) for CI.
+2. Secrets: `npx wrangler secret put ADMIN_TOKEN -c worker/wrangler.jsonc` (a long random string); for Turnstile, create a widget in the dashboard, `wrangler secret put TURNSTILE_SECRET`, and put the public site key in `.env.worker` as `VITE_TURNSTILE_SITE_KEY`.
+3. `npm run worker:deploy`: builds the app, deploys the Worker (Wrangler creates the D1 database on the first deploy), then applies the D1 migrations.
+4. Optional: a custom domain on the Worker, then point the GitHub Pages site to it (or retire it).
