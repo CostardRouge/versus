@@ -30,7 +30,10 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - **Changing one's vote** (author setting, on by default): a voter can delete one vote or all of theirs, and vote again. When off, votes are final, except undoing the very last vote for a few seconds (mis-taps).
   - Not a weighting risk: under one voice per pair, changing a vote never adds weight. The setting guards against strategic changes (see the results, then adjust) and suits "final vote" contests. The real abuse vector is multiplying identities (see `docs/online-architecture.md`, main risks).
 - **Items are locked once published**: renaming "Pizza" to "Sushi" after 200 votes would betray those votes. The author can still delete an item (its votes are dropped) and add items; visitors can add items if the author allows it. New items get priority in pair assignment.
-- **Scoring**: Balanced (Bradley-Terry) by default. On pooled votes it estimates the probability that a random voter prefers A to B, and absorbs crowd contradictions (A > B, B > C, C > A among different people). Exact sort is unavailable: binary insertion needs one sequence of comparisons, not concurrent voters. Dynamic would become a "recent trend" (it depends on the order votes arrive); Simple is biased by uneven opponents.
+- **Scoring**: the author picks Balanced, Dynamic or Simple, and can switch later (everything is recomputed from the same votes).
+  - Balanced (Bradley-Terry) is the recommended default. On pooled votes it estimates the probability that a random voter prefers A to B, and absorbs crowd contradictions (A > B, B > C, C > A among different people).
+  - Dynamic becomes a "recent trend": it replays votes in arrival order (a changed vote takes its new time). Simple is biased by uneven opponents.
+  - Exact sort is impossible: binary insertion needs one sequence of comparisons, not concurrent voters. The publish modal still lists it, greyed out with a one-line reason, to teach the difference. Use `aria-disabled` rather than `disabled` so the option and its reason stay readable by screen readers.
 
 ## Pair assignment (server side)
 
@@ -68,19 +71,19 @@ The board's Durable Object assigns pairs, not the browser:
 
 ## Author settings
 
-To keep publishing light, the modal shows three things (warning, "push my votes", visibility). The rest sits under "More options", with defaults, and stays editable in the board's settings.
+To keep publishing light, the modal shows four things: the warning, "push my votes", results visibility and the scoring method. The rest sits under "More options", with defaults, and stays editable in the board's settings.
 
 | Setting | Default | Where | After publishing |
 | --- | --- | --- | --- |
 | Push my local duels as my votes | On | Publish modal | One-time choice |
 | Results visibility | Always | Publish modal | Editable (going blind again hides the ranking, but what was seen was seen) |
+| Scoring method (Exact sort shown, greyed out) | The local ranking's method; Balanced if it was Exact sort | Publish modal | Editable |
 | N for "after N votes" | 10 | More options | Editable |
 | Voters can change their votes | On | More options | Editable, applies to future changes |
 | Visitors can add items | Off | More options | Editable |
 
 ## Still open
 
-- Scoring on published boards: Balanced only, or the author's choice among Balanced, Dynamic and Simple?
 - Anti-abuse beyond rate limits and Turnstile at creation: an author option to require a check (Turnstile) per voter?
 - Do boards a visitor voted on appear in their gallery ("Joined")?
 - Moderation of text items (report, takedown), even without images.

@@ -16,11 +16,10 @@ Last updated 2026-09-29.
 
 ## Next (suggested order)
 
-1. **Settle the last open points** of published boards (see below and `docs/published-boards.md`).
-2. **Backend spike on Cloudflare**: one Worker + one Durable Object per board, publish/join by alias, server-assigned pairs, votes over WebSocket, visibility enforced by the server, TTL cleanup via alarms. Reuse `src/core`.
-3. **Trademark and domain check** for "Versus" (and a custom domain).
-4. **Split `src/app/ui.ts`** (~1,400 lines) into view modules (gallery, workspace list, duel, results, color popover) before adding online features.
-5. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover; UI coverage is ~45% today.
+1. **Backend spike on Cloudflare**: one Worker + one Durable Object per board, publish/join by alias, server-assigned pairs, votes over WebSocket, visibility enforced by the server, TTL cleanup via alarms. Reuse `src/core`.
+2. **Trademark and domain check** for "Versus" (and a custom domain).
+3. **Split `src/app/ui.ts`** (~1,400 lines) into view modules (gallery, workspace list, duel, results, color popover) before adding online features.
+4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover; UI coverage is ~45% today.
 
 ## Later / ideas
 
@@ -37,8 +36,8 @@ Last updated 2026-09-29.
 
 ## Open questions for online mode
 
-- **Validate**: server-assigned pairs (D42) and the minimal publish modal with defaults (D47).
-- **Scoring on published boards**: Balanced only, or the author's choice among Balanced, Dynamic and Simple?
+None of these blocks the backend spike; all must be settled before a public launch.
+
 - **Anti-abuse**: rate limits per connection and IP, Turnstile at publication; an author option to require Turnstile per voter?
 - **Moderation**: even text-only public boards need reporting, takedown and an admin view; a legal and safety requirement, stronger once images open.
 - **Cleanup**: TTL of inactive published boards (proposal: 60 days without a vote), warning the author before deletion.

@@ -86,9 +86,9 @@ See `docs/published-boards.md`.
 | D39 | Voters can delete and redo their votes; the author can turn this off | Proposed | Not a weighting risk under D38; guards against strategic changes. Undoing the last vote stays possible for a few seconds. |
 | D40 | Results visibility is an author setting: always (default), after N votes, blind until closing | Proposed | Enforced by the server. Duel cards never show the crowd's score or rank. |
 | D41 | Live updates on by default; each viewer can turn them off | Proposed | Off = frozen ranking + "N new votes · Refresh". |
-| D42 | The server assigns pairs and accepts votes only on assigned pairs | Open | Needed for blind mode; blocks targeted vote stuffing. Awaiting validation. |
+| D42 | The server assigns pairs and accepts votes only on assigned pairs | Proposed | Needed for blind mode; blocks targeted vote stuffing. |
 | D43 | No images on published boards in v1 | Proposed | Images (R2) come with reporting and takedown. |
 | D44 | Items are locked once published (deleting and adding stay possible) | Proposed | Editing an item would betray its votes. |
-| D45 | Exact sort unavailable on published boards; Balanced by default | Proposed | Binary insertion can't serve concurrent voters. Whether the author may pick Dynamic or Simple is open. |
+| D45 | The author picks the method among Balanced (recommended), Dynamic and Simple; Exact sort is shown greyed out | Proposed | Binary insertion can't serve concurrent voters; showing it disabled with its reason teaches the difference. Switchable after publishing. |
 | D46 | Votes are anonymous; a voter is a random id per browser | Proposed | Nobody, the author included, sees who voted what. |
-| D47 | Minimal publish modal (warning, push my votes, visibility); other settings under "More options", with defaults, editable later | Open | Flexibility without a heavy form. Awaiting validation. |
+| D47 | Minimal publish modal (warning, push my votes, visibility, method); other settings under "More options", with defaults, editable later | Proposed | Flexibility without a heavy form. |

@@ -84,7 +84,7 @@ Sources: [Durable Objects pricing](https://developers.cloudflare.com/durable-obj
 
 - **IDs without collision:** a random 10-character base58 alias used as the Durable Object's name (`idFromName`). Publishing fails if that object already holds a board, and the client draws another alias. No mapping table.
 - **Owner rights:** an owner token generated at publication, stored hashed in the object. The author keeps it in `localStorage` and in an admin link (`…/b/<alias>#owner=…`: the fragment never reaches server logs or referrers). No accounts at first.
-- **Settings:** stored in the board's SQLite and enforced in the object (visibility, vote changes, visitors adding items).
+- **Settings:** stored in the board's SQLite and enforced in the object (visibility, scoring method, vote changes, visitors adding items).
 - **Cleanup:** the alarm is set to last vote + TTL. When it fires, it checks the last vote time and either reschedules or deletes the board: no extra write per vote.
 - **Admin:** protected Worker routes (a secret, then Cloudflare Access) reading the D1 registry to list, inspect, lock and delete boards, and to watch usage against free-tier limits.
 
