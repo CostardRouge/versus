@@ -43,7 +43,7 @@ src/app/storage.ts    guarded localStorage access, prefs, migration from prototy
 src/app/ui.ts         rendering (HTML strings) + event delegation (data-action attributes)
 worker/               Cloudflare Worker (router) + BoardObject (one Durable Object per published board: SQLite, WebSockets, TTL alarm); own tsconfig
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + worker.test.ts (end to end in workerd via Wrangler's test harness)
-docs/                 decisions, roadmap, published boards model, online architecture proposal
+docs/                 decisions, roadmap, published boards model, online architecture
 ```
 
 ## Conventions
@@ -73,5 +73,5 @@ docs/                 decisions, roadmap, published boards model, online archite
 
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
-- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (not implemented).
-- `docs/online-architecture.md`: proposed backend for shared, real-time boards (not implemented).
+- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (server side prototyped, not in the app yet).
+- `docs/online-architecture.md`: backend for published boards on Cloudflare; prototype in `worker/`, not deployed.

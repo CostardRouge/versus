@@ -78,7 +78,7 @@ The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 - [`docs/decisions.md`](docs/decisions.md): decision log.
 - [`docs/roadmap.md`](docs/roadmap.md): done, next, later, open questions.
 - [`docs/published-boards.md`](docs/published-boards.md): agreed behavior of published (shared) boards.
-- [`docs/online-architecture.md`](docs/online-architecture.md): proposed backend for shared, real-time boards.
+- [`docs/online-architecture.md`](docs/online-architecture.md): backend for published boards on Cloudflare (prototype in `worker/`).
 
 ## Adding a language
 
