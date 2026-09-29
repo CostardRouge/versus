@@ -18,6 +18,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Method comparison** on the results page, to see where the ranking is still fragile.
 - **Demos** built from fixed data (same items and duels for everyone), resettable and translatable.
 - **English and French**, detected from the browser and switchable.
+- **Light and dark themes** that follow the system setting or can be pinned from the header; the choice is applied before the first paint.
 - Data stays in the browser (`localStorage`); nothing is sent anywhere.
 
 ## Development

@@ -39,6 +39,20 @@ describe('app', () => {
     expect($('h1')?.textContent).toBe('Your rankings');
   });
 
+  it('follows the system theme by default and remembers an explicit choice', () => {
+    const root = document.documentElement;
+    expect(root.dataset.theme).toBeUndefined();
+    expect($('[data-action="theme"][data-t="system"]')?.getAttribute('aria-pressed')).toBe('true');
+    click('[data-action="theme"][data-t="dark"]');
+    expect(root.dataset.theme).toBe('dark');
+    expect($('[data-action="theme"][data-t="dark"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').theme).toBe('dark');
+    click('[data-action="theme"][data-t="light"]');
+    expect(root.dataset.theme).toBe('light');
+    click('[data-action="theme"][data-t="system"]');
+    expect(root.dataset.theme).toBeUndefined();
+  });
+
   it('records a duel from the buttons', () => {
     click('.rcard [data-action="open"][data-id="demo-destinations"][data-tab="duel"]');
     const before = $('.eyebrow')?.textContent;

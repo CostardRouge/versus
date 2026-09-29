@@ -6,9 +6,13 @@ export const PREF_KEY = 'versus-prefs';
 /** Keys used by the earlier prototypes; user-made rankings are carried over once. */
 const LEGACY_KEYS = ['elo-rank-v2', 'elo-rank-v1'];
 
+export type Theme = 'system' | 'light' | 'dark';
+export const isTheme = (v: unknown): v is Theme => v === 'system' || v === 'light' || v === 'dark';
+
 export interface Prefs {
   lang?: Lang;
   hideDemos?: boolean;
+  theme?: Theme;
 }
 
 /** localStorage can be missing or throw (private mode, blocked storage), so every access is guarded. */

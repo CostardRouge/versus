@@ -1,6 +1,7 @@
 /* Base reset (the prototype got these from its host page) */
 html {
   -webkit-text-size-adjust: 100%;
+  color-scheme: light;
 }
 :root {
   padding-top: env(safe-area-inset-top, 0px);
@@ -1515,7 +1516,8 @@ kbd {
   align-items: center;
   gap: 14px;
 }
-.lang {
+.lang,
+.theme {
   margin: 0;
   border: 0;
   min-width: 0;
@@ -1525,7 +1527,8 @@ kbd {
   padding: 3px;
   gap: 2px;
 }
-.lang button {
+.lang button,
+.theme button {
   border: 0;
   background: transparent;
   border-radius: 999px;
@@ -1533,7 +1536,8 @@ kbd {
   font: 500 12px / 1 var(--f-mono);
   color: var(--muted);
 }
-.lang button[aria-pressed="true"] {
+.lang button[aria-pressed="true"],
+.theme button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -1897,5 +1901,21 @@ body.dropping .drop-overlay {
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Theme switch: icon buttons in the same segmented control as the language switch */
+.theme button {
+  display: grid;
+  place-items: center;
+  padding: 4px 7px;
+}
+.theme button:hover,
+.lang button:hover {
+  color: var(--ink);
+}
+@media (max-width: 480px) {
+  .top-right {
+    gap: 8px;
   }
 }

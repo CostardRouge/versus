@@ -27,7 +27,16 @@ import {
   setLang as setI18nLang,
   t,
 } from '../i18n';
-import { loadLegacyRanks, loadPrefs, loadRanks, type Prefs, savePrefs, saveRanks } from './storage';
+import {
+  isTheme,
+  loadLegacyRanks,
+  loadPrefs,
+  loadRanks,
+  type Prefs,
+  savePrefs,
+  saveRanks,
+  type Theme,
+} from './storage';
 
 type Tab = 'items' | 'duel' | 'results';
 interface Route {
@@ -157,6 +166,36 @@ function applyStatic(): void {
   if (drop) drop.textContent = t('dropOverlay');
   $('.lang')?.setAttribute('aria-label', t('langAria'));
   for (const b of $$('.lang button')) b.setAttribute('aria-pressed', String(b.dataset.l === lang));
+  $('.theme')?.setAttribute('aria-label', t('themeAria'));
+  const labels: Record<Theme, string> = { system: t('themeSystem'), light: t('themeLight'), dark: t('themeDark') };
+  for (const b of $$('.theme button')) {
+    const label = labels[b.dataset.t as Theme] ?? '';
+    b.setAttribute('aria-label', label);
+    b.title = label;
+  }
+  applyTheme();
+}
+
+/** Browser chrome colors matching the two palettes (see --bg in styles.css). */
+const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ECEEF2', dark: '#0E1015' };
+
+/** "system" leaves the choice to prefers-color-scheme; light and dark pin the palette via data-theme. */
+function applyTheme(): void {
+  const theme: Theme = S.prefs.theme ?? 'system';
+  const root = doc.documentElement;
+  if (theme === 'system') delete root.dataset.theme;
+  else root.dataset.theme = theme;
+  for (const b of $$('.theme button')) b.setAttribute('aria-pressed', String(b.dataset.t === theme));
+  for (const meta of $$<HTMLMetaElement>('meta[name="theme-color"]')) {
+    const own = meta.media.includes('dark') ? THEME_COLORS.dark : THEME_COLORS.light;
+    meta.content = theme === 'system' ? own : THEME_COLORS[theme];
+  }
+}
+function changeTheme(v: string | undefined): void {
+  if (!isTheme(v)) return;
+  S.prefs.theme = v;
+  savePrefs(S.prefs);
+  applyTheme();
 }
 
 /* ---------- Gallery ---------- */
@@ -1081,6 +1120,9 @@ function onClick(e: MouseEvent): void {
     }
     case 'lang':
       changeLang(el.dataset.l);
+      break;
+    case 'theme':
+      changeTheme(el.dataset.t);
       break;
     case 'method-menu':
       toggleMethodMenu();
