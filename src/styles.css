@@ -2297,7 +2297,8 @@ body.dropping .drop-overlay {
   color: var(--muted);
 }
 /* The view switch: two icons, quiet until pointed at. */
-.fin-views {
+.fin-views,
+.res-views {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
@@ -2305,7 +2306,8 @@ body.dropping .drop-overlay {
   border-radius: 999px;
   background: color-mix(in oklab, var(--surface) 60%, transparent);
 }
-.fin-views button {
+.fin-views button,
+.res-views button {
   width: 32px;
   height: 28px;
   display: grid;
@@ -2318,10 +2320,12 @@ body.dropping .drop-overlay {
     background 0.15s,
     color 0.15s;
 }
-.fin-views button:hover {
+.fin-views button,
+.res-views button:hover {
   color: var(--ink);
 }
-.fin-views button[aria-pressed="true"] {
+.fin-views button,
+.res-views button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -2780,18 +2784,22 @@ body.dropping .drop-overlay {
   stroke-linecap: round;
   transition: opacity 0.2s;
 }
-.fin-same {
-  stroke: var(--line);
+svg[data-slope-svg] path {
+  fill: none;
+  stroke-linecap: round;
+  transition: opacity 0.2s;
+}
+.sl-same {
+  stroke: color-mix(in oklab, var(--muted) 45%, transparent);
   stroke-width: 2;
 }
-.fin-moved {
-  stroke: url(#fin-ab);
+.sl-moved {
   stroke-width: 3;
 }
-.fin-ea {
+.sl-a {
   fill: var(--a);
 }
-.fin-eb {
+.sl-b {
   fill: var(--b);
 }
 .fin-duo.hovering .fin-lines :is(path, circle):not(.hl) {
@@ -3017,4 +3025,321 @@ body.dropping .drop-overlay {
 .noscript p,
 .noscript li {
   color: var(--muted);
+}
+
+/* End of a local ranking: the announcement in the duel pane, then the Ranking tab by itself */
+.end {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 46px 20px 34px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(60% 80% at 20% 0%, color-mix(in oklab, var(--a) 12%, transparent), transparent 70%),
+    radial-gradient(60% 80% at 80% 0%, color-mix(in oklab, var(--b) 12%, transparent), transparent 70%), var(--surface);
+}
+.end-badge {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--on-accent);
+  background: linear-gradient(140deg, var(--a), var(--b));
+  box-shadow: 0 12px 30px -12px color-mix(in oklab, var(--b) 70%, transparent);
+}
+.end-badge svg {
+  width: 40px;
+  height: 40px;
+}
+.end-facts {
+  margin: 0;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.end-h {
+  margin: 0;
+  font: 800 clamp(30px, 4.6vw, 52px) / 1 var(--f-display);
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.end-body {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--muted);
+}
+.end-count {
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.end-count b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.end-bar {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.end-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--a), var(--b));
+  transform-origin: right;
+  animation: end-drain linear forwards;
+}
+.end-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.end-confetti {
+  position: absolute;
+  left: 50%;
+  top: 88px;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.end-confetti i {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: end-burst 1.5s cubic-bezier(0.15, 0.7, 0.3, 1) both;
+  animation-delay: var(--dl);
+}
+.end-ca {
+  background: var(--a);
+}
+.end-cb {
+  background: var(--b);
+}
+.end-cg {
+  background: var(--good);
+}
+.end-badge {
+  animation: end-pop 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.3) both;
+}
+.end-h,
+.end-body,
+.end-count,
+.end-acts {
+  animation: end-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.end-h {
+  animation-delay: 0.15s;
+}
+.end-body {
+  animation-delay: 0.25s;
+}
+.end-count {
+  animation-delay: 0.35s;
+}
+.end-acts {
+  animation-delay: 0.45s;
+}
+.res-enter {
+  animation: end-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes end-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@keyframes end-burst {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.4);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r)) scale(1);
+  }
+}
+@keyframes end-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+@keyframes end-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Ranking tab: lines comparing the ranking's method with another one */
+.res-views {
+  align-self: center;
+}
+.slope {
+  margin-bottom: 18px;
+  padding: 14px 16px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.slope-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.slope-picks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.slope-picks button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.slope-picks button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.slope-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(46px, 9vw, 120px) minmax(0, 1fr);
+}
+.slope-h {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.slope-l .slope-h {
+  justify-content: flex-end;
+}
+.slope ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.slope li {
+  height: 44px;
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+}
+.slope-l li {
+  grid-template-columns: minmax(0, 1fr) 30px 18px;
+}
+.slope-r li {
+  grid-template-columns: 18px 30px minmax(0, 1fr);
+}
+.slope .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.slope-l .nm {
+  text-align: right;
+}
+.slope .pos {
+  text-align: center;
+}
+.slope .thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.slope li.hl {
+  background: var(--bg);
+}
+.slope.hovering li:not(.hl) {
+  opacity: 0.4;
+}
+.slope.hovering svg :is(path, circle):not(.hl) {
+  opacity: 0.15;
+}
+.slope-mid {
+  position: relative;
+  margin-top: 28px;
+}
+.slope-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.slope-foot {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+}
+.slope.draw path {
+  animation: sl-draw 0.7s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: var(--d, 0s);
+}
+@keyframes sl-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+@media (max-width: 859px) {
+  .slope {
+    padding: 12px 10px 8px;
+  }
+  .slope .thumb {
+    width: 26px;
+    height: 26px;
+  }
+  .slope-l li {
+    grid-template-columns: minmax(0, 1fr) 26px 16px;
+  }
+  .slope-r li {
+    grid-template-columns: 16px 26px minmax(0, 1fr);
+  }
+  .slope .nm {
+    font-size: 13.5px;
+  }
 }

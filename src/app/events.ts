@@ -23,8 +23,7 @@ import {
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
 import { $, closeModal, doc, narrow, toast } from './dom';
-import { choose, duelKeydown, skip, undoLast } from './duel';
-import { drawLines } from './finale';
+import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
 import { changeTheme } from './header';
 import { addColor, addFiles, addLabels, removeItem, renameItem } from './items';
 import { publishRanking } from './publish';
@@ -41,7 +40,8 @@ import {
   routeFromHash,
   toggleDemos,
 } from './rankings';
-import { copyRanking } from './results';
+import { copyRanking, setCompare, setRankView } from './results';
+import { drawSlopes } from './slope';
 import { cur, S, save } from './state';
 import { setMethod, setTab, toggleMethodMenu } from './workspace';
 
@@ -126,6 +126,21 @@ function onClick(e: MouseEvent): void {
       break;
     case 'copy':
       copyRanking();
+      break;
+    case 'end-see':
+      endSee();
+      break;
+    case 'end-stay':
+      endStay();
+      break;
+    case 'end-continue':
+      endContinue();
+      break;
+    case 'rank-view':
+      setRankView(el.dataset.view);
+      break;
+    case 'set-compare':
+      setCompare(el.dataset.m);
       break;
     case 'pick-files':
       $('#file-input')?.click();
@@ -351,7 +366,7 @@ export function bindEvents(): void {
   );
   window.addEventListener('resize', () => {
     placeColor();
-    drawLines();
+    drawSlopes();
   });
   window.addEventListener('hashchange', routeFromHash);
   narrow.addEventListener('change', () => {

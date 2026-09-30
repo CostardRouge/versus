@@ -122,3 +122,10 @@ See `docs/published-boards.md`.
 | D70 | Fonts self-hosted with Fontsource, first-render fonts preloaded | Decided | No third-party request on the critical path, no visitor IP sent to Google; screenshots pixel-identical to Google Fonts. |
 | D71 | robots.txt allows every crawler, AI included, except `/api/`; llms.txt describes the app | Decided | Same policy as steevepommier.com. |
 | D72 | JSON-LD author = `https://steevepommier.com/#person` | Decided | The same `@id` on both sites joins them into one entity; the full profile stays there. |
+
+## Local rankings
+
+| # | Decision | Status | Notes |
+| --- | --- | --- | --- |
+| D73 | The end of a local ranking is announced: when a duel completes the exact sort, or first brings a rating method to full stability, the duel pane shows a short celebration and a bar that empties, then the Ranking tab opens by itself | Decided | "Stay here" stops the countdown; rating methods also offer "Keep dueling". No countdown under `prefers-reduced-motion`. |
+| D74 | The Ranking tab has a discreet switch between the podium and lines comparing the ranking's method with another one on the same duels | Decided | No crowd locally, so the lines compare methods (the comparison table stays below). Exact sort is offered only once these duels complete it. Remembered in `rankView`; the lines code is shared with the end-of-vote page (`slope.ts`). |

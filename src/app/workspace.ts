@@ -3,10 +3,12 @@ import type { MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, t } from '../i18n';
 import { $, $$, castSvg, imgSvg, narrow, toast } from './dom';
-import { bindStage, duelHTML } from './duel';
+import { bindStage, duelHTML, endSee } from './duel';
+import { clearEnding, mountEnding, stopEnding } from './ending';
 import { markPair, renderList } from './items';
 import { online } from './remote';
 import { resultsHTML } from './results';
+import { mountSlopes } from './slope';
 import { cur, S, save, type Tab } from './state';
 
 /** Workspace shell: header, tabs, method menu, and the main pane (duel or results). */
@@ -90,6 +92,7 @@ export function setMethod(k: string | undefined): void {
   const key = k as MethodKey;
   toggleMethodMenu(false);
   if (methodOf(r) === key) return;
+  clearEnding();
   r.method = key;
   r.pair = null;
   r.updated = Date.now();
@@ -106,6 +109,13 @@ export function renderMain(r: Ranking): void {
   if (!main) return;
   const tab = effTab();
   main.innerHTML = tab === 'results' ? resultsHTML(r) : duelHTML(r);
-  if (tab === 'duel') bindStage();
+  if (tab === 'duel') {
+    bindStage();
+    mountEnding(endSee);
+  } else {
+    // Leaving the announcement keeps it, without its countdown.
+    stopEnding();
+    mountSlopes(main);
+  }
   markPair(r);
 }

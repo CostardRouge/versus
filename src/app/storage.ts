@@ -18,6 +18,8 @@ export interface Prefs {
   live?: boolean;
   /** How the end-of-vote page shows the result; the podium unless changed. */
   resultView?: 'podium' | 'duo';
+  /** How a local ranking's Ranking tab shows it: podium, or lines comparing two methods. */
+  rankView?: 'podium' | 'lines';
 }
 
 /** localStorage can be missing or throw (private mode, blocked storage), so every access is guarded. */

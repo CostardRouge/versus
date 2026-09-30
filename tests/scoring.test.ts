@@ -5,6 +5,7 @@ import {
   ensurePair,
   exactSort,
   expected,
+  finishedBy,
   METHOD_KEYS,
   nextPair,
   pairKey,
@@ -210,5 +211,40 @@ describe('stability', () => {
     const r = ranking(LABELS, 'win');
     playConsistently(r, LABELS, target(r));
     expect(stability(r)).toBe(1);
+  });
+});
+
+describe('finishedBy', () => {
+  it('spots the duel that completes the exact sort, once', () => {
+    const r = mkRank('t', 'sort');
+    r.items = ['x', 'y', 'z'].map((l) => mkItem(l));
+    let prev = compute(r);
+    const seen: (string | null)[] = [];
+    for (let i = 0; i < 10; i++) {
+      ensurePair(r, prev);
+      if (!r.pair) break;
+      const [a, b] = r.pair;
+      pushDuel(r, a, b, 1);
+      r.pair = null;
+      const next = compute(r);
+      seen.push(finishedBy(r, prev, next));
+      prev = next;
+    }
+    expect(seen.at(-1)).toBe('sort');
+    expect(seen.filter((x) => x !== null)).toHaveLength(1);
+  });
+
+  it('spots a rating method reaching full stability', () => {
+    const r = mkRank('t', 'bt');
+    r.items = ['x', 'y'].map((l) => mkItem(l));
+    const [a, b] = r.items.map((i) => i.id) as [string, string];
+    pushDuel(r, a, b, 1);
+    const before = compute(r);
+    expect(stability(r, before)).toBeLessThan(1);
+    pushDuel(r, a, b, 0);
+    const after = compute(r);
+    expect(finishedBy(r, before, after)).toBe('stable');
+    pushDuel(r, a, b, 1);
+    expect(finishedBy(r, after, compute(r))).toBeNull();
   });
 });
