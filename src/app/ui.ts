@@ -4,6 +4,7 @@ import { detectLang, type Lang, setLang as setI18nLang } from '../i18n';
 import { initDom } from './dom';
 import { bindEvents } from './events';
 import { applyStatic } from './header';
+import { initPwa } from './pwa';
 import { render, routeFromHash } from './rankings';
 import { S, save } from './state';
 import { loadLegacyRanks, loadPrefs, loadRanks, loadVoter } from './storage';
@@ -29,6 +30,7 @@ export function mount(d: Document): void {
   relabelDemos(S.ranks, lang === 'fr' ? 'en' : 'fr', lang);
   save();
   bindEvents();
+  initPwa();
   applyStatic();
   render();
   // A shared link opens its published board.

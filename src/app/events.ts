@@ -28,6 +28,7 @@ import { drawLines } from './finale';
 import { changeTheme } from './header';
 import { addColor, addFiles, addLabels, removeItem, renameItem } from './items';
 import { publishRanking } from './publish';
+import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
   changeLang,
   deleteRank,
@@ -189,6 +190,15 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-finale-who':
       setFinaleWho(el.dataset.who);
+      break;
+    case 'install':
+      void install();
+      break;
+    case 'update':
+      applyUpdate();
+      break;
+    case 'update-later':
+      dismissUpdate();
       break;
   }
 }

@@ -8,7 +8,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
 - Live: https://costardrouge.github.io/versus/ (GitHub Pages, deployed by CI from `main`).
-- Status: local-first; the live app is client-only and stores everything in `localStorage`. Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
+- Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D73). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
 ## How this project is built
@@ -40,11 +40,13 @@ index.html            static shell (header, overlays, modal) + inline script app
                       <!-- seo:head --> and <!-- seo:noscript --> are filled at build time
 build/                build-time only (never shipped): site.ts = every sitewide SEO fact (name, title, description, colors,
                       icons, social card, author); seo.ts = head tags, JSON-LD, manifest, robots, sitemap, llms.txt, _headers;
-                      seo-plugin.ts = the Vite plugin wiring them in
+                      seo-plugin.ts = the Vite plugin wiring them in; pwa.ts + pwa-plugin.ts = build the service worker
+                      as sw.js with its precache list and content version
 scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch) and og.png from build/site.ts
 public/               icons and the social card (generated, committed); favicon.svg is a legacy address
 src/main.ts           imports the fonts and styles, calls mount(document)
 src/styles.css        all styles; design tokens on :root, dark palette via prefers-color-scheme and [data-theme]
+src/sw/sw.ts          service worker (offline app shell, updates on request); own tsconfig (WebWorker types)
 src/core/             pure logic, no DOM: must stay framework-free and fully unit tested
   types.ts            Ranking, Item, Fill, Duel, Computed…
   scoring.ts          compute() for the 4 methods, pair selection, stability, undo
@@ -70,13 +72,14 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
+  pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
   header.ts, format.ts  static header texts and theme / score, record and date formatting
   storage.ts          guarded localStorage access, prefs, migration from prototype keys
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
                       registry.ts + migrations/ (D1 registry), turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + worker.test.ts (end to end in workerd via Wrangler's test harness)
-                      + seo.test.ts (head, JSON-LD, icons and generated files stay consistent)
-docs/                 decisions, roadmap, published boards model, online architecture, SEO
+                      + seo.test.ts (head, JSON-LD, icons and generated files stay consistent) + pwa.test.ts (precache list, version)
+docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA
 ```
 
 ## Conventions

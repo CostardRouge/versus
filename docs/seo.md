@@ -38,7 +38,7 @@ While the Worker has no settled domain, its build (on `workers.dev`) also declar
 
 ## Decisions worth keeping
 
-- **`minimal-ui`, not `standalone`.** Rankings live in `localStorage`, and iOS gives a standalone home-screen app its own storage: a ranking made in Safari would vanish from the installed icon. iOS has no `minimal-ui`, so it keeps opening Safari (shared storage); Android gets a window with a back button. Revisit with offline support and an export/import.
+- **`minimal-ui`, not `standalone`.** Rankings live in `localStorage`, and iOS gives a standalone home-screen app its own storage: a ranking made in Safari would vanish from the installed icon. iOS has no `minimal-ui`, so it keeps opening Safari (shared storage); Android gets a window with a back button. Offline support is in place (`docs/pwa.md`); revisit with an export/import.
 - **A redesigned icon or card gets a new file name.** Google caches favicons by URL for months, and unfurlers cache `og:image` the same way; overwriting the bytes changes nothing for them. Rename in `ICONS` / `OG_IMAGE` (`build/site.ts`) and rerun `npm run icons`. `favicon.svg`, the former address, is kept undeclared and answers with the current drawing.
 - **satori, not a renderer that resolves fonts by name** (`sharp`, canvas): satori takes the font bytes and outputs glyphs as paths, so the files are identical on any machine. It is a dev dependency used by the script only; the build doesn't run it. Its `fflate` dependency is pinned to `^0.7.5` in `overrides`: 0.7.0–0.7.4 carry an advisory, and 0.8 breaks the WOFF decoding (glyphs render as boxes).
 - **Characters in the card must exist in the latin subset of the fonts**: the arrow of the call to action is a drawn path because Figtree's latin file has no `→`. Render and look at `og.png` after any text change.
@@ -57,4 +57,4 @@ While the Worker has no settled domain, its build (on `workers.dev`) also declar
 
 - **A card per published board**: share links are `#/b/<alias>`, and a fragment never reaches a server, so every board unfurls with the generic card. A path form (`/b/<alias>`) served by the Worker could rewrite the head (`HTMLRewriter`) with the board's title and a generated card.
 - **Manifest screenshots** (`form_factor` wide and narrow) for Chrome's richer install dialog.
-- **Offline support** (service worker), then reconsider `standalone`.
+- **`standalone`**: offline support is in place (`docs/pwa.md`); switching waits for export/import, so rankings can move into an iOS home-screen app.

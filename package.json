@@ -14,7 +14,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "icons": "node scripts/icons.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p worker && tsc --noEmit -p src/sw",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run",

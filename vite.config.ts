@@ -1,11 +1,13 @@
 import { defineConfig } from 'vitest/config';
+import { pwa } from './build/pwa-plugin.ts';
 import { seo } from './build/seo-plugin.ts';
 
 export default defineConfig({
   // Relative asset paths so the build works at https://<user>.github.io/<repo>/ without hard-coding the repo name.
   base: './',
   // Head tags, <noscript>, manifest, robots.txt, sitemap and llms.txt from build/site.ts; canonical URL from VITE_SITE_URL.
-  plugins: [seo()],
+  // Service worker (offline, updates): src/sw/sw.ts built as sw.js with its precache list, see build/pwa-plugin.ts.
+  plugins: [seo(), pwa()],
   build: {
     target: 'es2022',
     sourcemap: true,

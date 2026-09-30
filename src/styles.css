@@ -2014,6 +2014,48 @@ body.dropping .drop-overlay {
   }
 }
 
+/* Installable app: install button (only when the browser offers it), update bar above the header */
+.install {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink);
+  padding: 7px 12px 7px 10px;
+  font: 600 12px / 1 var(--f-body);
+}
+.install:hover {
+  background: var(--line);
+}
+@media (max-width: 480px) {
+  .install {
+    padding: 6px 8px;
+  }
+  .install span {
+    display: none;
+  }
+}
+.update {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 6px 6px 6px 16px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  font-weight: 600;
+}
+.update:empty {
+  display: none;
+}
+.update span {
+  flex: 1;
+}
+
 /* Published boards: publish form, board page, crowd ranking, author panel */
 .set {
   border: 0;
