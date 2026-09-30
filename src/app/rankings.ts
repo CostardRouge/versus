@@ -1,6 +1,7 @@
 import { buildDemo, DEMOS, relabelDemos } from '../core/demos';
 import { mkRank } from '../core/model';
-import { boardHash, parseBoardHash } from '../core/published';
+import { parseBoardHash } from '../core/published';
+import { parseOwnerFragment, parseRoute } from '../core/route';
 import { methodOf } from '../core/scoring';
 import type { Ranking } from '../core/types';
 import { uid } from '../core/util';
@@ -14,6 +15,7 @@ import { applyStatic } from './header';
 import { renderList } from './items';
 import { refreshJoined } from './joined';
 import { online } from './remote';
+import { appRoot, currentPath, routeURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
 import { saveOwner, savePrefs } from './storage';
 import { setTab, wsHTML } from './workspace';
@@ -34,6 +36,7 @@ export function render(): void {
     const r = cur();
     if (!r) {
       S.route = { view: 'gallery', tab: 'duel' };
+      syncURL('replace');
       render();
       return;
     }
@@ -45,15 +48,17 @@ export function render(): void {
     void refreshJoined();
   }
 }
-export function open(id: string | undefined, tab: string | undefined): void {
+/** Opens a ranking; `replace` when the view it leaves shouldn't stay in the history (a withdrawn board). */
+export function open(id: string | undefined, tab: string | undefined, opts: { replace?: boolean } = {}): void {
   if (!id) return;
   clearEnding();
   const pub = S.ranks.find((r) => r.id === id)?.pub;
   if (pub) {
-    openBoard(pub.alias);
+    openBoard(pub.alias, opts);
     return;
   }
   S.route = { view: 'rank', id, tab: tab === 'results' || tab === 'items' ? tab : 'duel' };
+  syncURL(opts.replace ? 'replace' : 'push');
   render();
   window.scrollTo?.(0, 0);
 }
@@ -138,44 +143,69 @@ export async function deleteRank(id: string | undefined): Promise<void> {
   if (!ok) return;
   S.ranks = S.ranks.filter((x) => x.id !== id);
   save();
-  if (S.route.id === id) S.route = { view: 'gallery', tab: 'duel' };
+  if (S.route.id === id) {
+    S.route = { view: 'gallery', tab: 'duel' };
+    syncURL('replace');
+  }
   render();
   toast(t('deleted'));
 }
 
 export function goBack(): void {
   if (S.route.view === 'gallery') return;
-  if (S.route.view === 'board') history.replaceState(null, '', location.pathname + location.search);
   S.route = { view: 'gallery', tab: 'duel' };
+  syncURL();
   render();
   window.scrollTo?.(0, 0);
 }
 
-/** Opens a published board; its address goes in the URL fragment so the link can be shared. */
-export function openBoard(alias: string | undefined): void {
+/** Opens a published board at its own address, the link to share. */
+export function openBoard(alias: string | undefined, opts: { replace?: boolean } = {}): void {
   if (!alias) return;
   S.route = { view: 'board', alias, tab: 'duel' };
-  if (location.hash !== boardHash(alias)) history.pushState(null, '', boardHash(alias));
+  syncURL(opts.replace ? 'replace' : 'push');
   enterBoard(alias, online());
   render();
   window.scrollTo?.(0, 0);
 }
 
-/** Follows the URL fragment: opens the board it names, keeping an admin link's owner token out of the URL. */
-export function routeFromHash(): void {
-  const link = parseBoardHash(location.hash);
-  if (!link) {
-    if (S.route.view === 'board') {
-      S.route = { view: 'gallery', tab: 'duel' };
-      render();
-    }
+/**
+ * Shows what the address names: at startup, on Back and Forward, and for links written before paths (#/b/<alias>,
+ * with `?owner=` for an author). An author's token (`#owner=…`) is kept on this device and taken out of the URL.
+ * A ranking of another browser falls back to the gallery with a word of explanation.
+ */
+export function routeFromURL(): void {
+  const stashed = takeStash();
+  // Leading slashes dropped: the stashed path stays under the app's folder, on this origin.
+  if (stashed !== null) history.replaceState(null, '', new URL(stashed.replace(/^\/+/, ''), appRoot()).href);
+  let owner: string | null = null;
+  const legacy = parseBoardHash(location.hash);
+  if (legacy) {
+    owner = legacy.owner;
+    history.replaceState(null, '', routeURL({ view: 'board', alias: legacy.alias }));
+  }
+  const route = parseRoute(currentPath());
+  if (route?.view === 'board') {
+    owner ??= parseOwnerFragment(location.hash);
+    if (owner) {
+      saveOwner(route.alias, owner);
+      history.replaceState(null, '', location.pathname);
+      // Reconnect so the server knows this connection is the author's.
+      leaveBoard();
+    } else if (S.route.view === 'board' && S.route.alias === route.alias) return;
+    openBoard(route.alias, { replace: true });
     return;
   }
-  if (link.owner) {
-    saveOwner(link.alias, link.owner);
-    history.replaceState(null, '', boardHash(link.alias));
-    // Reconnect so the server knows this connection is the author's.
-    leaveBoard();
-  } else if (S.route.view === 'board' && S.route.alias === link.alias) return;
-  openBoard(link.alias);
+  if (route?.view === 'rank') {
+    const r = S.ranks.find((x) => x.id === route.id);
+    if (r) {
+      open(r.id, route.tab, { replace: true });
+      return;
+    }
+    toast(t('rankNotHere'));
+  }
+  clearEnding();
+  S.route = { view: 'gallery', tab: 'duel' };
+  syncURL('replace');
+  render();
 }

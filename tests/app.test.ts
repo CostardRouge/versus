@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { offerUpdate } from '../src/app/pwa';
+import { STASH_KEY } from '../src/app/router';
 import { mount } from '../src/app/ui';
 import { getLang } from '../src/i18n';
 
@@ -134,6 +135,63 @@ describe('app', () => {
     vi.advanceTimersByTime(4100);
     expect($('.tab[data-tab="results"]')?.getAttribute('aria-selected')).toBe('true');
     expect($('.res-enter')).not.toBeNull();
+  });
+});
+
+describe('addresses', () => {
+  const back = (path: string) => {
+    history.pushState(null, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+  const title = () => ($('#rank-title') as HTMLInputElement | null)?.value;
+
+  it('gives the gallery, the demos and their tabs an address of their own', () => {
+    click('[data-action="back"]');
+    expect(location.pathname).toBe('/');
+    click('.rcard [data-action="open"][data-id="demo-backgrounds"][data-tab="duel"]');
+    expect(location.pathname).toBe('/demo/backgrounds');
+    click('.tab[data-tab="results"]');
+    expect(location.pathname).toBe('/demo/backgrounds/ranking');
+    click('.tab[data-tab="duel"]');
+    expect(location.pathname).toBe('/demo/backgrounds');
+  });
+
+  it('follows Back and Forward', () => {
+    back('/demo/destinations/ranking');
+    expect(title()).toBe('Next destination');
+    expect($('.tab[data-tab="results"]')?.getAttribute('aria-selected')).toBe('true');
+    back('/');
+    expect($('h1')?.textContent).toBe('Your rankings');
+  });
+
+  it('opens a ranking of this browser by its address, and explains one from elsewhere', () => {
+    const mine = JSON.parse(localStorage.getItem('versus-v1') ?? '[]').find((r: { demo?: boolean }) => !r.demo);
+    back(`/r/${mine.id}/items`);
+    expect(title()).toBe(mine.title);
+    expect(location.pathname).toBe(`/r/${mine.id}/items`);
+    back('/r/elsewhere1');
+    expect($('#toast')?.textContent).toContain('This ranking isn’t in this browser');
+    expect(location.pathname).toBe('/');
+    expect($('h1')?.textContent).toBe('Your rankings');
+  });
+
+  it('shows the gallery for an address that names nothing', () => {
+    back('/nowhere/at/all');
+    expect(location.pathname).toBe('/');
+    expect($('h1')?.textContent).toBe('Your rankings');
+  });
+
+  it('takes back the path GitHub Pages’ 404 page kept, without leaving the app’s folder', () => {
+    sessionStorage.setItem(STASH_KEY, 'demo/accent/ranking');
+    back('/');
+    expect(location.pathname).toBe('/demo/accent/ranking');
+    expect(sessionStorage.getItem(STASH_KEY)).toBeNull();
+    const origin = location.origin;
+    sessionStorage.setItem(STASH_KEY, '//elsewhere.example/demo/accent');
+    back('/');
+    expect(location.origin).toBe(origin);
+    expect(location.pathname).toBe('/');
+    expect($('h1')?.textContent).toBe('Your rankings');
   });
 });
 

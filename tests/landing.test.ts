@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BODY_MARK, BOOT_MARK, fillPage, HEAD_MARK, pageOf } from '../build/seo-plugin';
+import { appViews, BASE_MARK, BODY_MARK, BOOT_MARK, fillPage, HEAD_MARK, pageOf } from '../build/seo-plugin';
 import { PAGES, type PageKey } from '../build/site';
 import { landingEn } from '../src/i18n/landing-en';
 import { landingFr } from '../src/i18n/landing-fr';
@@ -167,8 +167,37 @@ describe('pages', () => {
       if (page !== 'app') {
         expect(html).toContain(BOOT_MARK);
         expect(html).toContain(BODY_MARK);
+      } else {
+        // The <base> comes before any relative address of the head.
+        expect(html.indexOf(BASE_MARK)).toBeLessThan(html.indexOf(HEAD_MARK));
       }
     }
+  });
+
+  it("names the app's folder in its <base>, under the site's path", () => {
+    const at = (path?: string) =>
+      fillPage(read('app'), 'app', {
+        url: 'https://versus.example.com/',
+        publish: false,
+        head: [],
+        ...(path ? { path } : {}),
+      });
+    expect(at()).toContain('<base href="/app/" />');
+    expect(at('/versus/')).toContain('<base href="/versus/app/" />');
+  });
+
+  it("answers the app's views with its page in development and preview, files untouched", () => {
+    const run = (url: string) => {
+      const req = { url };
+      appViews(req, null, () => {});
+      return req.url;
+    };
+    expect(run('/app/demo/destinations/ranking')).toBe('/app/index.html');
+    expect(run('/app/b/Ab3dEf7hJk?x=1')).toBe('/app/index.html');
+    expect(run('/app/')).toBe('/app/');
+    expect(run('/app/index.html')).toBe('/app/index.html');
+    expect(run('/assets/app-1.js')).toBe('/assets/app-1.js');
+    expect(run('/fr/')).toBe('/fr/');
   });
 
   it('fills a home page completely, and refuses one without its placeholders', () => {

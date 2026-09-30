@@ -5,7 +5,7 @@ import { initDom } from './dom';
 import { bindEvents } from './events';
 import { applyStatic } from './header';
 import { initPwa } from './pwa';
-import { render, routeFromHash } from './rankings';
+import { routeFromURL } from './rankings';
 import { S, save } from './state';
 import { loadJoined, loadLegacyRanks, loadPrefs, loadRanks, loadVoter } from './storage';
 
@@ -33,7 +33,6 @@ export function mount(d: Document): void {
   bindEvents();
   initPwa();
   applyStatic();
-  render();
-  // A shared link opens its published board.
-  routeFromHash();
+  // The address names the view: the gallery, a ranking, a demo or a published board.
+  routeFromURL();
 }

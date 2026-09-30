@@ -159,6 +159,7 @@ export const en = {
   tieBetween: 'Tie between {a} and {b}',
   wins: '{x} wins',
   undone: 'Last duel undone',
+  rankNotHere: 'This ranking isn’t in this browser: rankings stay on the device they were made on.',
   nothingToRank: 'Nothing to rank yet',
   nothingBody: 'Add items, then play a few duels.',
   noDuelsNote: 'No duels played: the order follows when items were added. Play a few duels to let a ranking emerge.',

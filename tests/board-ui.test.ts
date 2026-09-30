@@ -180,7 +180,7 @@ describe('publishing', () => {
       settings: { visibility: 'after', revealAfter: 4, method: 'bt', allowChange: true },
     });
     expect((post?.body as { duels?: unknown[] } | undefined)?.duels).toHaveLength(1);
-    expect(location.hash).toBe(`#/b/${ALIAS}`);
+    expect(location.pathname).toBe(`/b/${ALIAS}`);
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
     expect(stored().find((r) => r.pub)?.pub).toEqual({ alias: ALIAS, status: 'open' });
     expect($('#view')?.textContent).toContain('Connecting…');
@@ -448,7 +448,7 @@ describe('author', () => {
     const local = stored().find((r) => r.title === 'New ranking' && r.history.length === 2);
     expect(local?.pub).toBeUndefined();
     expect(local?.method).toBe('elo');
-    expect(location.hash).toBe('');
+    expect(location.pathname).toMatch(/^\/r\/\w+\/ranking$/);
     expect($('.results')).not.toBeNull();
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
   });
@@ -456,9 +456,23 @@ describe('author', () => {
 
 describe('links', () => {
   it('opens an admin link as the author and keeps the token out of the URL', async () => {
+    localStorage.removeItem('versus-owners');
+    history.pushState(null, '', `/b/${ALIAS}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(location.pathname).toBe(`/b/${ALIAS}`);
+    expect(location.hash).toBe('');
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
+    const ws = FakeSocket.last();
+    ws.open();
+    expect(ws.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
+  });
+
+  it('reads an admin link written before paths, and moves it to the board’s address', async () => {
+    history.pushState(null, '', '/');
     location.hash = `#/b/${ALIAS}?owner=${OWNER}`;
     window.dispatchEvent(new HashChangeEvent('hashchange'));
-    expect(location.hash).toBe(`#/b/${ALIAS}`);
+    expect(location.pathname).toBe(`/b/${ALIAS}`);
+    expect(location.hash).toBe('');
     const ws = FakeSocket.last();
     ws.open();
     expect(ws.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
@@ -553,7 +567,7 @@ describe('your votes', () => {
 
   it('opens the board from its card', () => {
     click(`.rcard-main[data-action="open-board"][data-alias="${VISITED}"]`);
-    expect(location.hash).toBe(`#/b/${VISITED}`);
+    expect(location.pathname).toBe(`/b/${VISITED}`);
     click('.board [data-action="back"]');
   });
 });

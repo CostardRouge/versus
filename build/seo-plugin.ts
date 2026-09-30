@@ -3,7 +3,7 @@ import { relative } from 'node:path';
 import type { Plugin } from 'vite';
 import { LINKS } from '../src/app/about.ts';
 import { landingBody, landingBoot } from '../src/landing/markup.ts';
-import { aboutStatic, generatedFiles, headTags, noscriptHtml, rootFrom, siteUrl } from './seo.ts';
+import { aboutStatic, generatedFiles, headTags, noscriptHtml, rootFrom, sitePath, siteUrl } from './seo.ts';
 import { PAGES, type PageKey } from './site.ts';
 
 /** Placeholders in the pages, replaced at dev and build time. */
@@ -12,7 +12,19 @@ export const NOSCRIPT_MARK = '<!-- seo:noscript -->';
 export const ABOUT_MARK = '<!-- seo:about -->';
 /** Home pages only: the script run before the first paint, and the page itself (src/landing/markup.ts). */
 export const BOOT_MARK = '<!-- landing:boot -->';
+/** The app only: its folder as the page's <base>, so its deep paths (app/demo/…) resolve every relative URL. */
+export const BASE_MARK = '<!-- app:base -->';
 export const BODY_MARK = '<!-- landing:body -->';
+
+/**
+ * The app's views are paths under /app/ (D92): the dev and preview servers answer them with the app's page,
+ * as the Worker does (worker/src/index.ts). Files (a dot in the last segment) pass through.
+ */
+export function appViews(req: { url?: string }, _res: unknown, next: () => void): void {
+  const path = req.url?.split(/[?#]/)[0] ?? '';
+  if (/^\/app\/[^.]+$/.test(path) && !/\.[^/]*$/.test(path)) req.url = '/app/index.html';
+  next();
+}
 
 /** Which page an HTML file is, from its path relative to the project root. */
 export function pageOf(file: string): PageKey {
@@ -23,12 +35,21 @@ export function pageOf(file: string): PageKey {
 }
 
 /** Fills a page's placeholders; throws if one is missing, so a page can't ship without its head. */
-export function fillPage(html: string, page: PageKey, opts: { url: string; publish: boolean; head: string[] }): string {
+export function fillPage(
+  html: string,
+  page: PageKey,
+  opts: { url: string; publish: boolean; head: string[]; path?: string },
+): string {
   const { lang } = PAGES[page];
-  const marks = page === 'app' ? [HEAD_MARK, NOSCRIPT_MARK, ABOUT_MARK] : [HEAD_MARK, BOOT_MARK, BODY_MARK];
+  const marks = page === 'app' ? [BASE_MARK, HEAD_MARK, NOSCRIPT_MARK, ABOUT_MARK] : [HEAD_MARK, BOOT_MARK, BODY_MARK];
   for (const mark of marks) if (!html.includes(mark)) throw new Error(`${PAGES[page].file} needs ${mark}`);
   const out = html.replace(HEAD_MARK, [...headTags(opts.url, page), ...opts.head].join('\n    '));
-  if (page === 'app') return out.replace(NOSCRIPT_MARK, noscriptHtml()).replace(ABOUT_MARK, aboutStatic(opts.publish));
+  if (page === 'app') {
+    return out
+      .replace(BASE_MARK, `<base href="${opts.path ?? '/'}${PAGES.app.path}" />`)
+      .replace(NOSCRIPT_MARK, noscriptHtml())
+      .replace(ABOUT_MARK, aboutStatic(opts.publish));
+  }
   return out
     .replace(BOOT_MARK, landingBoot(lang))
     .replace(BODY_MARK, landingBody(lang, { publish: opts.publish, author: LINKS.author, source: LINKS.source }));
@@ -57,6 +78,7 @@ function lastmod(): string {
  */
 export function seo(): Plugin {
   let url = siteUrl();
+  let path = '/';
   let base = './';
   let root = process.cwd();
   let worker = false;
@@ -65,6 +87,7 @@ export function seo(): Plugin {
     name: 'versus-seo',
     configResolved(config) {
       url = siteUrl(config.env.VITE_SITE_URL);
+      path = sitePath(config.env.VITE_BASE_PATH);
       base = config.base;
       root = config.root;
       worker = config.mode === 'worker';
@@ -79,10 +102,11 @@ export function seo(): Plugin {
         const fonts = Object.keys(ctx.bundle ?? {})
           .filter((file) => PRELOAD_FONTS.some((re) => re.test(file)))
           .map((file) => `<link rel="preload" href="${prefix}${file}" as="font" type="font/woff2" crossorigin />`);
-        return fillPage(html, page, { url, publish, head: fonts });
+        return fillPage(html, page, { url, publish, head: fonts, path });
       },
     },
     configureServer(server) {
+      server.middlewares.use(appViews);
       const names = new Set(Object.keys(generatedFiles(url, { lastmod: '', worker })));
       server.middlewares.use((req, res, next) => {
         const name = req.url?.split('?')[0]?.replace(/^\//, '') ?? '';
@@ -91,6 +115,9 @@ export function seo(): Plugin {
         res.setHeader('Content-Type', file.type);
         res.end(file.body);
       });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(appViews);
     },
     generateBundle() {
       for (const [fileName, file] of Object.entries(generatedFiles(url, { lastmod: lastmod(), worker }))) {

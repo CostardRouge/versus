@@ -1,7 +1,8 @@
 import { revealAt } from '../core/board';
 import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
 import type { BoardView, Counts, RankingView, ServerMessage } from '../core/protocol';
-import { adminHash, agreement, boardHash, neckAndNeck, totalPairs } from '../core/published';
+import { agreement, neckAndNeck, totalPairs } from '../core/published';
+import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
 import type { BoardStatus, Duel, ErrorCode, Fill, Item, Outcome, Ranking } from '../core/types';
 import { esc, uid } from '../core/util';
@@ -34,6 +35,7 @@ import {
   setBoardStatus,
   withdrawBoard,
 } from './remote';
+import { routeURL } from './router';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
 
@@ -102,8 +104,8 @@ const ownerErrors: Partial<Record<string, MsgKey>> = {
   rate_limited: 'tooManyTries',
 };
 
-export const boardURL = (alias: string): string =>
-  `${location.origin}${location.pathname}${location.search}${boardHash(alias)}`;
+/** A board's own address (b/<alias> under the app's folder), the link to share. */
+export const boardURL = (alias: string): string => routeURL({ view: 'board', alias });
 
 const live = (): boolean => S.prefs.live !== false;
 const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
@@ -763,7 +765,8 @@ async function boardRecolor(id: string, fill: Fill): Promise<void> {
 export async function copyBoardLink(alias: string | undefined, admin = false): Promise<void> {
   if (!alias) return;
   const token = admin ? loadOwners()[alias] : null;
-  const url = token ? `${boardURL(alias).replace(boardHash(alias), adminHash(alias, token))}` : boardURL(alias);
+  // The author's token rides in the fragment, which browsers never send to a server.
+  const url = token ? `${boardURL(alias)}${ownerFragment(token)}` : boardURL(alias);
   toast((await copyText(url)) ? t(token ? 'adminCopied' : 'linkCopied') : t('copyNA'));
 }
 
@@ -814,8 +817,7 @@ export async function boardWithdraw(): Promise<void> {
   }
   save();
   leaveBoard();
-  history.replaceState(null, '', location.pathname + location.search);
-  open(target.id, 'results');
+  open(target.id, 'results', { replace: true });
   toast(t('withdrawn'));
 }
 
@@ -828,6 +830,5 @@ export function boardUnlink(): void {
   saveOwner(b.alias, null);
   save();
   leaveBoard();
-  history.replaceState(null, '', location.pathname + location.search);
-  open(local.id, 'duel');
+  open(local.id, 'duel', { replace: true });
 }

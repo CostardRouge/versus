@@ -7,7 +7,7 @@ Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable 
 - **Manifest**: generated from `build/site.ts` (name, colors, icons, `minimal-ui`; see `docs/seo.md` for why not `standalone` yet). It opens the app (`start_url: ./app/`); its `id` stays `./`, what it was before the home page, so installed copies remain the same app (D87).
 - **Service worker** (`src/sw/sw.ts`, about 90 lines, 0.9 kB gzip), built as `sw.js` at the site's root by `build/pwa-plugin.ts`; its scope is the whole site, the app registering it from `app/` with `../sw.js`:
   - **Install**: stores the three pages (the app and the two home pages), their scripts and styles, the three latin fonts of the first render, the manifest and the SVG icon (about 500 kB before compression). Each page is stored under its folder's address (`./app/`, `./`, `./fr/`), which GitHub Pages and Cloudflare both serve directly. Requests use `cache: 'reload'` so the HTTP cache can't hand back the previous deploy.
-  - **Fetch**: a navigation to the app (`app/`) gets the stored page; a navigation to a home page goes to the network first, so it is always current, and falls back to the stored copy offline; stored files and anything under `assets/` are served from the cache first, and font subsets for other scripts are stored on first use (hashed names never change). Everything else goes to the network untouched: `/api/`, WebSockets, other origins, non-GET requests, `robots.txt`, `llms.txt`, the social card and PNG icons.
+  - **Fetch**: a navigation to the app or one of its views (anything under `app/`) gets the stored page; a navigation to a home page goes to the network first, so it is always current, and falls back to the stored copy offline; stored files and anything under `assets/` are served from the cache first, and font subsets for other scripts are stored on first use (hashed names never change). Everything else goes to the network untouched: `/api/`, WebSockets, other origins, non-GET requests, `robots.txt`, `llms.txt`, the social card and PNG icons.
   - **Activate**: deletes the older `versus-*` caches and takes control of open pages.
   - **Version**: a hash of the stored files' names and bytes (`build/pwa.ts`), written into the worker at build time. A deploy that changes the app changes `sw.js`, so browsers install the new worker.
 - **In the app** (`src/app/pwa.ts`):
@@ -47,7 +47,7 @@ These steps were run in Chromium with Playwright while building this (served und
 
 ## Limits
 
-- **One app page**: only `app/` is served from the cache, since routes live in the fragment (D51). Path routes such as `/b/<alias>` would first need absolute asset URLs (today `base: './'`), then a navigation rule in the worker.
+- **App views are paths** (D92): every navigation under `app/` (`app/demo/…`, `app/b/…`) gets the stored app page, which reads its path; its `<base>` names the app's folder, so the page's relative addresses hold at any depth.
 - **Published boards need the network**: votes and the crowd ranking are live. Offline, the local rankings work; boards don't.
 - **Storage**: rankings, images included, live in `localStorage` (about 5 MB). Photos fill it quickly; see the next steps.
 - **Other tabs**: after Reload in one tab, other tabs keep the old version until they reload. The old cache is deleted, so an old tab that needs a file it never loaded fetches it from the network.

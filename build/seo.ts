@@ -50,6 +50,18 @@ export function siteUrl(raw?: string): string {
   }
 }
 
+/**
+ * The site's path on its host (`VITE_BASE_PATH`): `/` on the Worker and in development, `/versus/` for the
+ * GitHub Pages copy (CI passes the repository's name). The app's page names its folder with it in a <base>,
+ * so its views can be deep paths (D92). Normalized to leading and trailing slashes; anything odd gives `/`.
+ */
+export function sitePath(raw?: string): string {
+  const value = raw?.trim() ?? '';
+  const valid = /^\/?[\w.~-]+(\/[\w.~-]+)*\/?$/.test(value) && !value.split('/').some((seg) => /^\.+$/.test(seg));
+  if (!valid) return '/';
+  return `/${value.replace(/^\/+|\/+$/g, '')}/`;
+}
+
 /** index.html is served at the site URL itself, so its canonical form is the URL with its trailing slash. */
 const abs = (url: string, path: string): string => new URL(path, url).href;
 
@@ -281,23 +293,16 @@ export function robotsTxt(url: string): string {
 }
 
 /**
- * The home page of each language, with its hreflang alternates (x-default: English). The app is left out: it
- * is `noindex`, and its rankings and boards live in the URL fragment, which crawlers ignore.
+ * The home page of each language, in the plain sitemap format. Their hreflang pairs are in each page's head,
+ * which Google reads as well as a sitemap's: `xhtml:link` alternates here would make browsers render the file
+ * as a (nearly blank) page instead of showing the XML, for no gain. The app is left out: it is `noindex`, and
+ * its rankings and boards live in the URL fragment, which crawlers ignore.
  */
 export function sitemapXml(url: string, lastmod: string): string {
-  const alternates = [
-    ...LANGUAGES.map((l) => [l, pageUrl(url, HOMES[l])] as const),
-    ['x-default', pageUrl(url, HOMES.en)] as const,
-  ]
-    .map(([l, href]) => `    <xhtml:link rel="alternate" hreflang="${l}" href="${esc(href)}"/>`)
-    .join('\n');
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
-    ...LANGUAGES.map(
-      (l) =>
-        `  <url>\n    <loc>${esc(pageUrl(url, HOMES[l]))}</loc>\n    <lastmod>${esc(lastmod)}</lastmod>\n${alternates}\n  </url>`,
-    ),
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...LANGUAGES.map((l) => `  <url><loc>${esc(pageUrl(url, HOMES[l]))}</loc><lastmod>${esc(lastmod)}</lastmod></url>`),
     '</urlset>',
     '',
   ].join('\n');
@@ -344,15 +349,20 @@ export function headersFile(): string {
     '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
     '  X-Content-Type-Options: nosniff',
     '',
-    ...Object.values(PAGES)
-      .flatMap((p) => [`/${p.path}`, `/${p.file}`])
-      .flatMap((path) => [path, '  Content-Type: text/html; charset=utf-8', '']),
+    ...[...Object.values(PAGES).flatMap((p) => [`/${p.path}`, `/${p.file}`]), '/404', '/404.html'].flatMap((path) => [
+      path,
+      '  Content-Type: text/html; charset=utf-8',
+      '',
+    ]),
     // The meta tag says the same; the header also covers anything else under app/.
     '/app/*',
     '  X-Robots-Tag: noindex',
     '',
     '/assets/*',
     '  Cache-Control: public, max-age=31536000, immutable',
+    '',
+    '/sitemap.xml',
+    '  Content-Type: application/xml; charset=utf-8',
     '',
     '/manifest.webmanifest',
     '  Content-Type: application/manifest+json; charset=utf-8',
@@ -361,6 +371,57 @@ export function headersFile(): string {
     '  Content-Type: text/markdown; charset=utf-8',
     '',
   ].join('\n');
+}
+
+/**
+ * The 404 page. The Worker serves it for unknown addresses; GitHub Pages serves it for every address that
+ * isn't a file, app views included: for those it keeps the path in sessionStorage and opens the app's folder,
+ * which reads it back (`versus-path`, src/app/router.ts). Not indexed.
+ */
+export function notFoundHtml(url: string): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Page not found · ${esc(NAME)}</title>
+    <script>
+      (function () {
+        var p = location.pathname;
+        var i = p.indexOf('/app/');
+        if (i < 0) return;
+        try {
+          sessionStorage.setItem('versus-path', p.slice(i + 5) + location.search + location.hash);
+        } catch (e) {
+          return;
+        }
+        location.replace(p.slice(0, i + 5));
+      })();
+    </script>
+    <style>
+      :root { color-scheme: light dark; --bg: ${COLORS.bg}; --ink: ${COLORS.ink}; --muted: ${COLORS.muted}; }
+      @media (prefers-color-scheme: dark) { :root { --bg: ${COLORS.bgDark}; --ink: #eceef3; --muted: #9298a8; } }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
+        font: 17px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 24px; box-sizing: border-box; }
+      main { max-width: 34rem; }
+      .mark { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; margin: 0;
+        background: linear-gradient(90deg, ${COLORS.a} 50%, ${COLORS.b} 50%); color: #fff; font-weight: 800; }
+      h1 { font-size: 2rem; letter-spacing: -0.02em; margin: 18px 0 4px; }
+      p { margin: 0 0 12px; color: var(--muted); }
+      a { color: var(--ink); font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="mark" aria-hidden="true">vs</p>
+      <h1>Page not found</h1>
+      <p lang="fr">Page introuvable.</p>
+      <p><a href="${esc(url)}">${esc(NAME)}</a> · <a href="${esc(pageUrl(url, HOMES.fr))}" lang="fr">${esc(NAME)} en français</a> · <a href="${esc(pageUrl(url, 'app'))}">Open the app</a></p>
+    </main>
+  </body>
+</html>
+`;
 }
 
 export interface GeneratedFile {
@@ -378,6 +439,7 @@ export function generatedFiles(url: string, opts: { lastmod: string; worker: boo
     'robots.txt': { body: robotsTxt(url), type: 'text/plain; charset=utf-8' },
     'sitemap.xml': { body: sitemapXml(url, opts.lastmod), type: 'application/xml; charset=utf-8' },
     'llms.txt': { body: llmsTxt(url), type: 'text/markdown; charset=utf-8' },
+    '404.html': { body: notFoundHtml(url), type: 'text/html; charset=utf-8' },
     ...(opts.worker ? { _headers: { body: headersFile(), type: 'text/plain; charset=utf-8' } } : {}),
   };
 }

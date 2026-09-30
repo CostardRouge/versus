@@ -6,7 +6,8 @@
   "compatibility_date": "2026-09-20",
   "observability": { "enabled": true },
   // No routes on purpose: the custom domain is added in the dashboard, and deploys keep it.
-  "assets": { "directory": "../dist" },
+  // Files are served before the Worker runs; the Worker gets what matches none (the API, the app's views, 404s).
+  "assets": { "directory": "../dist", "binding": "ASSETS" },
   "durable_objects": {
     "bindings": [{ "name": "BOARDS", "class_name": "BoardObject" }]
   },

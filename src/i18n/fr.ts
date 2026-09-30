@@ -159,6 +159,7 @@ export const fr: Messages = {
   tieBetween: 'Égalité entre {a} et {b}',
   wins: '{x} l’emporte',
   undone: 'Dernier duel annulé',
+  rankNotHere: 'Ce classement n’est pas dans ce navigateur : un classement reste sur l’appareil où il a été créé.',
   nothingToRank: 'Rien à classer pour l’instant',
   nothingBody: 'Ajoute des éléments puis lance quelques duels.',
   noDuelsNote:

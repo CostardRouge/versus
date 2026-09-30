@@ -43,6 +43,8 @@ jobs:
         env:
           # Canonical address in the head, sitemap and llms.txt; unset, it is versus.steevepommier.com (build/site.ts).
           VITE_SITE_URL: ${{ vars.SITE_URL }}
+          # This build is the GitHub Pages copy, served under /<repository>/: the app's <base> needs that path.
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
 
       - name: Upload coverage report
         if: always()

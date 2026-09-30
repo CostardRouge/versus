@@ -8,6 +8,7 @@ import { clearEnding, mountEnding, stopEnding } from './ending';
 import { markPair, renderList } from './items';
 import { online } from './remote';
 import { resultsHTML } from './results';
+import { syncURL } from './router';
 import { mountSlopes } from './slope';
 import { cur, S, save, type Tab } from './state';
 
@@ -69,6 +70,8 @@ export function effTab(): Tab {
 }
 export function setTab(tab: Tab): void {
   S.route.tab = tab;
+  // The tab is part of the address, without a history entry of its own.
+  syncURL('replace');
   const body = $('.ws-body');
   if (!body) return;
   body.dataset.tab = tab;
