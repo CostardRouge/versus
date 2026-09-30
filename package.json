@@ -13,6 +13,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "icons": "node scripts/icons.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
     "lint": "biome check .",
     "format": "biome check --write .",
@@ -23,15 +24,27 @@
     "worker:dev": "vite build --mode worker && wrangler d1 migrations apply versus-registry --local -c worker/wrangler.jsonc && wrangler dev -c worker/wrangler.jsonc",
     "worker:deploy": "vite build --mode worker && wrangler deploy -c worker/wrangler.jsonc && wrangler d1 migrations apply versus-registry --remote -c worker/wrangler.jsonc"
   },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/figtree": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
     "@cloudflare/workers-types": "^5.20260929.1",
+    "@fontsource/bricolage-grotesque": "^5.3.0",
+    "@fontsource/figtree": "^5.3.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^22.20.4",
     "@vitest/coverage-v8": "^5.0.2",
     "jsdom": "^30.1.1",
+    "satori": "^0.33.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2",
     "wrangler": "^4.144.0"
+  },
+  "overrides": {
+    "fflate": "^0.7.5"
   }
 }

@@ -106,3 +106,15 @@ See `docs/published-boards.md`.
 | D59 | No client-side vote batching for now | Decided | A vote costs 1/20 of a request; batching would need a longer pair queue for little gain before a board goes viral. |
 | D60 | CI deploys the Worker from `main`, switched on by the `CLOUDFLARE_ACCOUNT_ID` repository variable (plus the `CLOUDFLARE_API_TOKEN` secret) | Decided | Same checks as the Pages deploy; skipped while unconfigured, so CI stays green. Wrangler creates the D1 database by name and applies migrations without prompts. |
 | D61 | Custom domain and Worker secrets are managed in the Cloudflare dashboard, not in the repo | Decided | The config declares no routes, so deploys keep the dashboard's domain; secrets survive deploys. Start on a subdomain of an existing zone; a dedicated domain waits for D3. |
+
+## SEO and sharing
+
+| # | Decision | Status | Notes |
+| --- | --- | --- | --- |
+| D62 | Every SEO fact in `build/site.ts`; head, manifest, robots.txt, sitemap and llms.txt generated from it by a Vite plugin | Decided | The steevepommier.com pattern: one source, nothing hand-copied, invariants tested (`tests/seo.test.ts`). |
+| D63 | Canonical address from `VITE_SITE_URL` (CI variable `SITE_URL`), GitHub Pages by default, for both builds | Decided | One canonical while the Worker's domain isn't settled; setting the variable moves both. |
+| D64 | Icons and social card drawn by a script (satori + resvg) and committed; new file names when the drawing changes | Decided | Glyphs as paths, identical on any machine; search engines and unfurlers cache images by URL. |
+| D65 | Web app manifest with `display: minimal-ui` | Decided | iOS gives standalone home-screen apps their own storage, which would hide localStorage rankings; revisit with offline support. |
+| D66 | Fonts self-hosted with Fontsource, first-render fonts preloaded | Decided | No third-party request on the critical path, no visitor IP sent to Google; screenshots pixel-identical to Google Fonts. |
+| D67 | robots.txt allows every crawler, AI included, except `/api/`; llms.txt describes the app | Decided | Same policy as steevepommier.com. |
+| D68 | JSON-LD author = `https://steevepommier.com/#person` | Decided | The same `@id` on both sites joins them into one entity; the full profile stays there. |

@@ -120,7 +120,7 @@ The `deploy-worker` job in `.github/workflows/ci.yml` runs `npm run worker:deplo
    - `ADMIN_TOKEN`: a long random string (`openssl rand -base64 32`); the admin API stays off without it;
    - `TURNSTILE_SECRET`: optional, see below.
    Deploys never delete secrets.
-5. **Custom domain**: `versus` → *Settings* → *Domains & Routes* → *Add* → *Custom domain*, for example `versus.example.com` on a zone of the account. Cloudflare creates the DNS record and the certificate. Deploys keep it, since the config declares no routes. The workers.dev address stays on.
+5. **Custom domain**: `versus` → *Settings* → *Domains & Routes* → *Add* → *Custom domain*, for example `versus.example.com` on a zone of the account. Cloudflare creates the DNS record and the certificate. Deploys keep it, since the config declares no routes. The workers.dev address stays on. Then set the GitHub variable `SITE_URL` to the new address (`https://versus.example.com/`): the canonical URL, social card, sitemap and llms.txt of both builds move to it on the next deploy (`docs/seo.md`).
 
 ### Turnstile (optional)
 

@@ -18,6 +18,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Method comparison** on the results page, to see where the ranking is still fragile.
 - **Demos** built from fixed data (same items and duels for everyone), resettable and translatable.
 - **English and French**, detected from the browser and switchable.
+- **Search and share ready:** Open Graph card, structured data, favicons for every platform, sitemap and `llms.txt`, all generated from one file (see [`docs/seo.md`](docs/seo.md)).
 - **Light and dark themes** that follow the system setting or can be pinned from the header; the choice is applied before the first paint.
 - Data stays in the browser (`localStorage`); nothing is sent anywhere.
 - **Published boards** (in development, not deployed): publish a ranking, share the link, and let a crowd vote in real time. See [`docs/published-boards.md`](docs/published-boards.md).
@@ -43,6 +44,7 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run typecheck` | TypeScript in strict mode (app and Worker) |
 | `npm run worker:dev` | The whole app and the published boards API on http://localhost:8787 (`npm run dev` proxies `/api` to it) |
 | `npm run worker:deploy` | Build, deploy to Cloudflare and apply the D1 migrations (needs a Cloudflare account) |
+| `npm run icons` | Redraw the favicons, app icons and social card into `public/` from `build/site.ts` |
 
 ## Project structure
 
@@ -63,6 +65,8 @@ src/
     events.ts    delegated event listeners
     state.ts, dom.ts, header.ts, format.ts, storage.ts   shared state, DOM helpers, header, formatting, localStorage
   styles.css
+build/         build-time SEO: site facts, head tags, JSON-LD, manifest, robots, sitemap, llms.txt (docs/seo.md)
+scripts/       icons.ts: icons and social card
 worker/        Cloudflare Worker + one Durable Object per published board (prototype)
 tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Worker tests in workerd
 ```

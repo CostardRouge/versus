@@ -1,8 +1,11 @@
 import { defineConfig } from 'vitest/config';
+import { seo } from './build/seo-plugin.ts';
 
 export default defineConfig({
   // Relative asset paths so the build works at https://<user>.github.io/<repo>/ without hard-coding the repo name.
   base: './',
+  // Head tags, <noscript>, manifest, robots.txt, sitemap and llms.txt from build/site.ts; canonical URL from VITE_SITE_URL.
+  plugins: [seo()],
   build: {
     target: 'es2022',
     sourcemap: true,
