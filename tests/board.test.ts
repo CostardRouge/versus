@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTION_INTERVAL_MS,
+  ADD_INTERVAL_MS,
   ALIAS_RE,
+  addItem,
   assignPairs,
   boardMeta,
   canSeeRanking,
@@ -9,6 +11,7 @@ import {
   createBoard,
   crowd,
   DEFAULT_SETTINGS,
+  itemId,
   LIMITS,
   lastActivity,
   lastVote,
@@ -16,12 +19,15 @@ import {
   makeAlias,
   openSession,
   type PublishInput,
+  parseNewItem,
   parsePublish,
   patchSettings,
   refill,
+  removeItem,
   restoreBoard,
   retractAll,
   retractVote,
+  sessionAdd,
   sessionReset,
   sessionSkip,
   sessionUndo,
@@ -437,6 +443,70 @@ describe('assignPairs', () => {
     const C = crowd(b);
     b.items.push({ id: 'late', label: 'Late', img: null, fill: null, h: 0 });
     expect(assignPairs(b, V1, C, new Set(), [], 3, mulberry32(2))).toHaveLength(3);
+  });
+});
+
+describe('items after publication', () => {
+  it('validates new items like published ones', () => {
+    expect(value(parseNewItem({ label: '  Hawaii  ' }))).toEqual({ label: 'Hawaii', fill: null });
+    expect(value(parseNewItem({ label: '', fill: { type: 'solid', colors: ['#ff8800'] } })).fill?.colors).toEqual([
+      '#ff8800',
+    ]);
+    expect(errorOf(parseNewItem({ label: 'x', img: 'data:' }))).toBe('images_not_allowed');
+    expect(errorOf(parseNewItem({ label: '' }))).toBe('bad_request');
+    expect(errorOf(parseNewItem({ label: 3 }))).toBe('bad_request');
+    expect(errorOf(parseNewItem({ label: 'x', fill: { type: 'solid', colors: [] } }))).toBe('bad_request');
+    expect(errorOf(parseNewItem('Hawaii'))).toBe('bad_request');
+  });
+
+  it('adds items to an open board, once per label, up to the limit', () => {
+    const b = board(3);
+    const item = value(addItem(b, { label: 'Hawaii', fill: null }, 'new1', T0 + 5));
+    expect(item).toEqual({ id: 'new1', label: 'Hawaii', img: null, fill: null, h: hueOf('Hawaii') });
+    expect(b.items).toHaveLength(4);
+    expect(lastActivity(b)).toBe(T0 + 5);
+    expect(errorOf(addItem(b, { label: 'HAWAII', fill: null }, 'new2', T0))).toBe('exists');
+    const full = board(LIMITS.items);
+    expect(errorOf(addItem(full, { label: 'One more', fill: null }, 'x', T0))).toBe('full');
+    setStatus(b, 'closed', T0);
+    expect(errorOf(addItem(b, { label: 'Late', fill: null }, 'x', T0))).toBe('closed');
+  });
+
+  it('removes an item with every vote that involves it, keeping at least 2 items', () => {
+    const b = board(4);
+    value(castVote(b, V1, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i1', 'i0', 1, T0));
+    value(castVote(b, V2, 'i2', 'i3', 1, T0));
+    const removed = value(removeItem(b, 'i0', T0 + 9));
+    expect(removed).toHaveLength(2);
+    expect(b.items.map((i) => i.id)).toEqual(['i1', 'i2', 'i3']);
+    expect(b.votes.size).toBe(1);
+    expect(b.voters.has(V1)).toBe(false);
+    expect(lastActivity(b)).toBe(T0 + 9);
+    expect(errorOf(removeItem(b, 'i0', T0))).toBe('not_found');
+    value(removeItem(b, 'i1', T0));
+    expect(errorOf(removeItem(b, 'i2', T0))).toBe('too_few');
+  });
+
+  it('lets visitors add only when allowed, a few seconds apart; the author always', () => {
+    const b = board(3);
+    const visitor = openSession(b, V2, false, crowd(b), mulberry32(1));
+    const author = openSession(b, V1, true, crowd(b), mulberry32(1));
+    const item = (label: string) => ({ label, fill: null });
+    expect(errorOf(sessionAdd(b, visitor, item('A'), 'a', T0))).toBe('forbidden');
+    value(sessionAdd(b, author, item('B'), 'b', T0));
+    updateSettings(b, { visitorsAddItems: true }, T0);
+    value(sessionAdd(b, visitor, item('C'), 'c', T0));
+    expect(visitor.lastAddAt).toBe(T0);
+    expect(errorOf(sessionAdd(b, visitor, item('D'), 'd', T0 + ADD_INTERVAL_MS - 1))).toBe('too_fast');
+    expect(errorOf(sessionAdd(b, visitor, item('C'), 'd', T0 + ADD_INTERVAL_MS))).toBe('exists');
+    expect(visitor.lastAddAt).toBe(T0);
+    value(sessionAdd(b, visitor, item('D'), 'd', T0 + ADD_INTERVAL_MS));
+  });
+
+  it('draws item ids the server accepts', () => {
+    const id = itemId(Uint8Array.from({ length: 12 }, (_, i) => i * 21));
+    expect(id).toMatch(/^[\w-]{12}$/);
   });
 });
 

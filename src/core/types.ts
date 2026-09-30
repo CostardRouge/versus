@@ -117,6 +117,8 @@ export interface Session {
   skipped: string[];
   /** Last vote or skip, for rate limiting. */
   lastActionAt: number;
+  /** Last item this connection added. */
+  lastAddAt?: number;
 }
 
 export type ErrorCode =
@@ -130,6 +132,10 @@ export type ErrorCode =
   | 'not_assigned'
   | 'final'
   | 'too_fast'
-  | 'hello_first';
+  | 'hello_first'
+  | 'full'
+  | 'too_few'
+  | 'captcha'
+  | 'rate_limited';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: ErrorCode };

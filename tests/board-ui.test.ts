@@ -251,9 +251,57 @@ describe('voting', () => {
     ws.receive({ ...state({ settings: { ...view().settings, visibility: 'blind' }, ranking: null }) } as ServerMessage);
     expect($('#b-rank')?.textContent).toContain('hidden until the author closes the vote');
   });
+
+  it('lets visitors suggest items when the author allows it', () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    const input = $('#b-add-input') as HTMLInputElement;
+    input.value = '#ff8800';
+    $('#b-add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(ws.sent.at(-1)).toEqual({
+      t: 'add',
+      item: { label: '#FF8800', fill: { type: 'solid', colors: ['#ff8800'] } },
+    });
+    ws.receive({ t: 'error', code: 'too_fast' });
+    ws.receive({ t: 'pairs', pairs: [], mine: 0 });
+    expect($('#toast')?.textContent).toBe('Wait a few seconds before adding another item.');
+    expect(($('#b-add-input') as HTMLInputElement).value).toBe('#ff8800');
+    ws.receive(state());
+    expect($('#b-add-input')).toBeNull();
+  });
 });
 
 describe('author', () => {
+  it('adds and removes items as the author', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({}, true));
+    respond = (c) =>
+      c.method === 'POST'
+        ? { status: 200, body: { id: 'n1', label: 'Hawaii', img: null, fill: null, h: 1 } }
+        : { status: 200, body: 2 };
+    ($('#b-add-input') as HTMLInputElement).value = 'Hawaii';
+    $('#b-add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(calls.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `/api/boards/${ALIAS}/items`,
+      body: { label: 'Hawaii', fill: null },
+      auth: `Bearer ${OWNER}`,
+    });
+    expect($('#toast')?.textContent).toBe('Item added');
+    click('[data-action="b-remove-item"][data-id="p1"]');
+    expect($('#m-title')?.textContent).toBe('Remove Regina?');
+    click('#m-ok');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p1` });
+    expect($('#toast')?.textContent).toBe('Item removed');
+    respond = () => ({ status: 409, body: { error: 'too_few' } });
+    click('[data-action="b-remove-item"][data-id="p0"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
+  });
+
   it('saves settings and closes the vote through the API', async () => {
     const ws = FakeSocket.last();
     ws.receive(state({}, true));

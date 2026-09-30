@@ -35,6 +35,10 @@ describe('parseClientMessage', () => {
       { t: 'undo', a: 'x', b: 'y' },
     ],
     [{ t: 'reset' }, { t: 'reset' }],
+    [
+      { t: 'add', item: { label: 'x' } },
+      { t: 'add', item: { label: 'x' } },
+    ],
   ])('parses %j', (msg, expected) => {
     expect(parseClientMessage(JSON.stringify(msg))).toEqual(expected);
   });
@@ -46,6 +50,7 @@ describe('parseClientMessage', () => {
     ['a bad voter id', JSON.stringify({ t: 'hello', voter: 'x' })],
     ['an owner token that is not a string', JSON.stringify({ t: 'hello', voter: VOTER, owner: 1 })],
     ['a bad outcome', JSON.stringify({ t: 'vote', a: 'x', b: 'y', s: 2 })],
+    ['an add without an item', JSON.stringify({ t: 'add', item: 'x' })],
     ['an empty id', JSON.stringify({ t: 'skip', a: '', b: 'y' })],
     ['a long id', JSON.stringify({ t: 'undo', a: 'x'.repeat(33), b: 'y' })],
     ['a huge message', JSON.stringify({ t: 'reset', pad: 'x'.repeat(MAX_MESSAGE) })],

@@ -1,14 +1,24 @@
+import { isHex, normHex } from '../core/colors';
 import type { BoardView, Counts, ItemScore, RankingView, ServerMessage } from '../core/protocol';
 import { adminHash, agreement, boardHash, neckAndNeck, totalPairs } from '../core/published';
 import { pairKey } from '../core/scoring';
-import type { BoardStatus, Duel, Item, MethodKey, Outcome, Ranking } from '../core/types';
+import type { BoardStatus, Duel, ErrorCode, Fill, Item, MethodKey, Outcome, Ranking } from '../core/types';
 import { esc, uid } from '../core/util';
-import { methodText as M, pct, plural, t } from '../i18n';
-import { $, announce, ask, copyText, reduced, thumbHTML, toast } from './dom';
+import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
+import { $, announce, ask, copyText, reduced, thumbHTML, toast, trashSvg } from './dom';
 import { bindStage, cardHTML } from './duel';
-import { changeHTML, readSettings, settingsHTML } from './publish';
+import { optionsHTML, readSettings, settingsHTML } from './publish';
 import { open } from './rankings';
-import { BoardSocket, type Connection, patchBoard, setBoardStatus, withdrawBoard } from './remote';
+import {
+  ApiError,
+  addBoardItem,
+  BoardSocket,
+  type Connection,
+  patchBoard,
+  removeBoardItem,
+  setBoardStatus,
+  withdrawBoard,
+} from './remote';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
 
@@ -35,14 +45,43 @@ interface Board {
   shownVotes: number;
   latest: RankingView | null;
   latestVotes: number;
-  /** One entry per message awaiting its "pairs" answer: how to undo its optimistic change if refused. */
-  pending: ((() => void) | null)[];
+  /** One entry per message awaiting its "pairs" answer, with how to undo its optimistic change if refused. */
+  pending: Pending[];
+  /** Label of the item just sent, so the field empties once it shows up. */
+  sentLabel: string | null;
   busy: boolean;
   /** Set while withdrawing, so the closing socket doesn't read as an expired board. */
   leaving: boolean;
 }
 
+interface Pending {
+  kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add';
+  revert?: () => void;
+}
+
 let B: Board | null = null;
+
+/** What to tell the user when the server refuses an action. */
+function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
+  if (code === 'closed') return 'voteClosed';
+  if (code === 'final') return 'finalVotes';
+  if (kind !== 'add') return null;
+  const add: Partial<Record<ErrorCode, MsgKey>> = {
+    full: 'boardFull',
+    exists: 'itemExists',
+    too_fast: 'addTooFast',
+    forbidden: 'addNotAllowed',
+  };
+  return add[code] ?? 'actionFailed';
+}
+
+const ownerErrors: Partial<Record<string, MsgKey>> = {
+  full: 'boardFull',
+  exists: 'itemExists',
+  too_few: 'needTwoItems',
+  closed: 'voteClosed',
+  rate_limited: 'tooManyTries',
+};
 
 export const boardURL = (alias: string): string =>
   `${location.origin}${location.pathname}${location.search}${boardHash(alias)}`;
@@ -72,6 +111,7 @@ export function enterBoard(alias: string, available: boolean): void {
     latest: null,
     latestVotes: 0,
     pending: [],
+    sentLabel: null,
     busy: false,
     leaving: false,
   };
@@ -142,14 +182,15 @@ function onMessage(board: Board, m: ServerMessage): void {
     if (counts) counts.textContent = countsText(board.counts);
     renderRanking();
   } else {
-    const revert = board.pending[0];
-    if (revert) {
-      revert();
-      board.pending[0] = null;
+    const head = board.pending[0];
+    if (head?.revert) {
+      head.revert();
+      head.revert = undefined;
       renderRanking();
     }
-    if (m.code === 'closed') toast(t('voteClosed'));
-    else if (m.code === 'final') toast(t('finalVotes'));
+    if (head?.kind === 'add') board.sentLabel = null;
+    const key = errorText(m.code, head?.kind);
+    if (key) toast(t(key));
   }
 }
 
@@ -166,10 +207,16 @@ function fmt(m: MethodKey, x: ItemScore): string {
 
 export function renderBoard(): void {
   const view = $('#view');
-  if (!view || !B) return;
+  const b = B;
+  if (!view || !b) return;
   const adminOpen = $('#b-admin')?.hasAttribute('open') ?? false;
-  view.innerHTML = boardHTML(B, adminOpen);
-  if (B.view) {
+  // Keep what someone is typing when another change re-renders the page, unless it was just added.
+  const draft = ($('#b-add-input') as HTMLInputElement | null)?.value ?? '';
+  view.innerHTML = boardHTML(b, adminOpen);
+  const input = $('#b-add-input') as HTMLInputElement | null;
+  if (input && draft && draft !== b.sentLabel) input.value = draft;
+  b.sentLabel = null;
+  if (b.view) {
     renderDuel();
     renderRanking();
   }
@@ -203,9 +250,26 @@ function boardHTML(b: Board, adminOpen: boolean): string {
       <aside class="b-side">
         ${b.isOwner ? adminHTML(v, adminOpen) : ''}
         <section class="b-rank" id="b-rank"></section>
+        ${!b.isOwner && v.settings.visitorsAddItems && !closed ? `<section class="b-suggest"><h2>${t('suggestTitle')}</h2>${addFormHTML()}</section>` : ''}
       </aside>
     </div>
   </div>`;
+}
+
+const addFormHTML = (): string =>
+  `<form class="add b-add" id="b-add-form" autocomplete="off">
+    <input id="b-add-input" placeholder="${t('addPlaceholder')}" aria-label="${t('suggestTitle')}" maxlength="200">
+    <button class="add-btn" type="submit" aria-label="${t('add')}">+</button>
+  </form>`;
+
+function itemsHTML(v: BoardView): string {
+  const rows = v.items
+    .map(
+      (it) => `<li>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span>
+        <button class="icon-btn" type="button" data-action="b-remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">${trashSvg}</button></li>`,
+    )
+    .join('');
+  return `<fieldset class="set"><legend>${t('boardItems')}</legend><ul class="b-items">${rows}</ul>${v.status === 'open' ? addFormHTML() : ''}</fieldset>`;
 }
 
 function adminHTML(v: BoardView, open: boolean): string {
@@ -214,7 +278,8 @@ function adminHTML(v: BoardView, open: boolean): string {
     <summary>${t('authorPanel')}</summary>
     <div class="b-admin-body">
       ${settingsHTML('b', v.settings)}
-      ${changeHTML('b', v.settings)}
+      ${optionsHTML('b', v.settings)}
+      ${itemsHTML(v)}
       <div class="b-admin-actions">
         <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
         <button class="btn sm ghost" type="button" data-action="b-admin-link">${t('copyAdminLink')}</button>
@@ -324,8 +389,11 @@ export function boardPick(side: string | undefined): void {
   }
   const duel: Duel = { a: A.id, b: C.id, s };
   b.mine.push(duel);
-  b.pending.push(() => {
-    b.mine = b.mine.filter((d) => d !== duel);
+  b.pending.push({
+    kind: 'vote',
+    revert: () => {
+      b.mine = b.mine.filter((d) => d !== duel);
+    },
   });
   b.pairs.shift();
   b.count++;
@@ -358,7 +426,7 @@ export function boardSkip(): void {
     toast(t('notSent'));
     return;
   }
-  b.pending.push(null);
+  b.pending.push({ kind: 'skip' });
   b.pairs.shift();
   renderDuel();
 }
@@ -375,8 +443,11 @@ export function boardUndo(): void {
   }
   const at = b.mine.length - 1;
   b.mine.pop();
-  b.pending.push(() => {
-    b.mine.splice(at, 0, last);
+  b.pending.push({
+    kind: 'undo',
+    revert: () => {
+      b.mine.splice(at, 0, last);
+    },
   });
   const k = pairKey(last.a, last.b);
   b.pairs = [[last.a, last.b], ...b.pairs.filter(([x, y]) => pairKey(x, y) !== k)];
@@ -402,8 +473,11 @@ export async function boardReset(): Promise<void> {
   const prev = b.mine;
   b.mine = [];
   b.count = 0;
-  b.pending.push(() => {
-    b.mine = prev;
+  b.pending.push({
+    kind: 'reset',
+    revert: () => {
+      b.mine = prev;
+    },
   });
   renderDuel();
   renderRanking();
@@ -457,11 +531,59 @@ export function boardChange(tg: HTMLInputElement): boolean {
     else renderRanking();
     return true;
   }
+  if (tg.id === 'b-add-input') return true;
   if (tg.closest('#b-admin')) {
     void ownerCall((alias, token) => patchBoard(alias, token, readSettings($('#b-admin') ?? tg, 'b')));
     return true;
   }
   return false;
+}
+
+// ─── Items ──────────────────────────────────────────────────────────────────
+
+/** Text, or a color for a #hex code, like the local item field. */
+function newItem(raw: string): { label: string; fill: Fill | null } | null {
+  const v = raw.trim();
+  if (!v) return null;
+  if (!isHex(v)) return { label: v, fill: null };
+  return { label: normHex(v).toUpperCase(), fill: { type: 'solid', colors: [normHex(v)] } };
+}
+
+/** Adds an item: the author through the API, a visitor over the socket. Everyone then gets the new state. */
+export async function boardAddItem(): Promise<void> {
+  const b = B;
+  const input = $('#b-add-input') as HTMLInputElement | null;
+  const item = input ? newItem(input.value) : null;
+  if (!b?.view || !input || !item) return;
+  if (b.isOwner) {
+    b.sentLabel = input.value;
+    if (await ownerCall((alias, token) => addBoardItem(alias, token, item))) toast(t('itemAdded'));
+    else b.sentLabel = null;
+    return;
+  }
+  if (!b.socket?.send({ t: 'add', item })) {
+    toast(t('notSent'));
+    return;
+  }
+  b.sentLabel = input.value;
+  b.pending.push({ kind: 'add' });
+}
+
+/** Removes an item after confirmation; its votes go with it. */
+export async function boardRemoveItem(id: string | undefined): Promise<void> {
+  const b = B;
+  const it = id ? itemOf(id) : undefined;
+  if (!b?.owner || !it || !id) return;
+  const x = b.latest?.stats[id];
+  const votes = x ? x.w + x.l + x.d : 0;
+  const ok = await ask({
+    title: t('removeItemTitle', { label: it.label }),
+    body: t('removeItemBody', { votes: plural(votes, 'vote') }),
+    ok: t('removeOk'),
+    danger: true,
+  });
+  if (!ok || B !== b) return;
+  if ((await ownerCall((alias, token) => removeBoardItem(alias, token, id))) !== null) toast(t('itemRemoved'));
 }
 
 export async function copyBoardLink(alias: string | undefined, admin = false): Promise<void> {
@@ -482,8 +604,8 @@ async function ownerCall<T>(fn: (alias: string, token: string) => Promise<T>): P
   if (!b?.owner) return null;
   try {
     return await fn(b.alias, b.owner);
-  } catch {
-    toast(t('actionFailed'));
+  } catch (e) {
+    toast(t((e instanceof ApiError && ownerErrors[e.code]) || 'actionFailed'));
     return null;
   }
 }

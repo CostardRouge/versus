@@ -70,8 +70,8 @@ See `docs/online-architecture.md`.
 | D30 | Cloudflare (static front + Workers + one Durable Object per shared board + R2 for images later), TypeScript end to end | Proposed | Free tier covers the experiment; $5/month paid plan beyond. Keeps one language and shares `src/core`. |
 | D31 | Stay local-first; only shared boards hit the server | Proposed | Main cost lever. |
 | D32 | Plan B: self-host on the home Optiplex behind Cloudflare Tunnel | Proposed | Free, fine for a private beta, not for viral traffic. |
-| D33 | Board registry in D1 for the admin view | Proposed | Durable Objects can't be listed with their data. Updated at most once a day per board. |
-| D34 | Move the front from GitHub Pages to Cloudflare when the backend lands | Proposed | Same origin as the API (no CORS), custom domain. |
+| D33 | Board registry in D1 for the admin view | Decided | Durable Objects can't be listed with their data. Updated at most once a day per board. |
+| D34 | Move the front from GitHub Pages to Cloudflare when the backend lands | Decided | Same origin as the API (no CORS), custom domain. |
 
 ## Published boards
 
@@ -98,3 +98,11 @@ See `docs/published-boards.md`.
 | D51 | Board links in the URL fragment: `#/b/<alias>` to share, `#/b/<alias>?owner=<token>` for the author | Decided | Works on any static host; the token never reaches a server log and is removed from the address bar once stored. |
 | D52 | The app calls the API at `/api` on its own origin (Vite proxy in dev) or `VITE_API_URL`; builds without either hide publishing | Decided | The GitHub Pages build keeps working while the API isn't deployed. |
 | D53 | Never drop an owner token automatically | Decided | A board that looks gone may be a transient API error; the author chooses to go back to the local version. |
+| D54 | The Worker serves the app (`assets`) and the API on one origin; the `worker` build mode sets `VITE_API_URL=/` | Decided | No CORS; one deploy. The GitHub Pages build stays without publishing until it is retired. |
+| D55 | Per-IP limits with Workers rate limiting bindings: 5 publications and 120 API requests per minute | Decided | Votes and skips are also limited per connection (150 ms), item suggestions per connection (5 s). |
+| D56 | Turnstile at publication, on when `TURNSTILE_SECRET` is set | Decided | Local development and tests need no key; the widget appears when `VITE_TURNSTILE_SITE_KEY` is set. |
+| D57 | Items after publication: the author adds and removes, visitors suggest when allowed; removing drops the item's votes; same label refused; 2 to 100 items | Decided | Keeps every remaining vote meaningful. |
+| D58 | Admin API behind a secret token (`ADMIN_TOKEN`), off when unset | Decided | Cloudflare Access for an admin page later. |
+| D59 | No client-side vote batching for now | Decided | A vote costs 1/20 of a request; batching would need a longer pair queue for little gain before a board goes viral. |
+| D60 | CI deploys the Worker from `main`, switched on by the `CLOUDFLARE_ACCOUNT_ID` repository variable (plus the `CLOUDFLARE_API_TOKEN` secret) | Decided | Same checks as the Pages deploy; skipped while unconfigured, so CI stays green. Wrangler creates the D1 database by name and applies migrations without prompts. |
+| D61 | Custom domain and Worker secrets are managed in the Cloudflare dashboard, not in the repo | Decided | The config declares no routes, so deploys keep the dashboard's domain; secrets survive deploys. Start on a subdomain of an existing zone; a dedicated domain waits for D3. |
