@@ -1,5 +1,6 @@
 import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
+import { duelQuery } from '../core/share';
 import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking } from '../core/types';
 
 /**
@@ -57,6 +58,23 @@ export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DE
 /** Boards as this voter may see them, for "Your votes"; null for a board that no longer exists. */
 export const fetchSummaries = (voter: string, aliases: string[]) =>
   call<Record<string, BoardSummary | null>>('POST', '', { voter, aliases }, undefined, '/api/summaries');
+
+/** The card a board's link (or one duel's link) unfurls with: a PNG the app drew. Resolves with its address. */
+export async function putCard(alias: string, png: Blob, pair: readonly [string, string] | null): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`${API ?? ''}/api/boards/${alias}/card${pair ? duelQuery(pair[0], pair[1]) : ''}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/png' },
+      body: png,
+    });
+  } catch {
+    throw new ApiError('network');
+  }
+  const data = (await res.json().catch(() => null)) as { url?: string; error?: ErrorCode } | null;
+  if (!res.ok || !data?.url) throw new ApiError(data?.error ?? 'network');
+  return data.url;
+}
 
 export type Connection = 'connecting' | 'open' | 'lost' | 'gone';
 

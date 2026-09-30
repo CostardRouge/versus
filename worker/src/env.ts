@@ -6,6 +6,8 @@ export interface Env {
   ASSETS?: Fetcher;
   /** Board registry for the admin view (D1). Optional: without it, boards still work. */
   REGISTRY?: D1Database;
+  /** The cards a board's links unfurl with (R2, bucket versus-images). Optional: without it, links get the site's card. */
+  IMAGES?: R2Bucket;
   /** Per-IP limits: publications, and every other API request. Optional in local tools. */
   PUBLISH_LIMIT?: RateLimit;
   API_LIMIT?: RateLimit;

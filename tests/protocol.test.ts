@@ -9,13 +9,17 @@ import {
   parseClientMessage,
   parseSummaryRequest,
   rankingView,
+  unfurlOf,
 } from '../src/core/protocol';
 
 const VOTER = 'voter-one-1';
 
 function board() {
   const items = ['A', 'B', 'C'].map((label, i) => ({ id: `i${i}`, label, img: null, fill: null, h: 0 }));
-  const b = createBoard({ title: 'T', items, settings: { ...DEFAULT_SETTINGS }, voter: VOTER, duels: [] }, 1);
+  const b = createBoard(
+    { title: 'T', items, settings: { ...DEFAULT_SETTINGS }, voter: VOTER, duels: [], lang: 'fr' },
+    1,
+  );
   castVote(b, VOTER, 'i0', 'i1', 1, 2);
   castVote(b, 'voter-two-2', 'i1', 'i2', 0.5, 3);
   return b;
@@ -30,6 +34,10 @@ describe('parseClientMessage', () => {
     [
       { t: 'hello', voter: VOTER, owner: 'abc' },
       { t: 'hello', voter: VOTER, owner: 'abc' },
+    ],
+    [
+      { t: 'hello', voter: VOTER, pair: ['x', 'y'] },
+      { t: 'hello', voter: VOTER, pair: ['x', 'y'] },
     ],
     [
       { t: 'vote', a: 'x', b: 'y', s: 0.5, extra: 1 },
@@ -58,6 +66,8 @@ describe('parseClientMessage', () => {
     ['an unknown type', JSON.stringify({ t: 'shout' })],
     ['a bad voter id', JSON.stringify({ t: 'hello', voter: 'x' })],
     ['an owner token that is not a string', JSON.stringify({ t: 'hello', voter: VOTER, owner: 1 })],
+    ['a pair of one', JSON.stringify({ t: 'hello', voter: VOTER, pair: ['x'] })],
+    ['a pair with an empty id', JSON.stringify({ t: 'hello', voter: VOTER, pair: ['x', ''] })],
     ['a bad outcome', JSON.stringify({ t: 'vote', a: 'x', b: 'y', s: 2 })],
     ['an add without an item', JSON.stringify({ t: 'add', item: 'x' })],
     ['an empty id', JSON.stringify({ t: 'skip', a: '', b: 'y' })],
@@ -98,6 +108,22 @@ describe('views', () => {
   it("lists a voter's own votes", () => {
     expect(myDuels(board(), VOTER)).toEqual([{ a: 'i0', b: 'i1', s: 1 }]);
     expect(myDuels(board(), 'nobody-here')).toEqual([]);
+  });
+
+  it('says what a link preview needs, never the ranking', () => {
+    const u = unfurlOf(board());
+    expect(u).toEqual({
+      title: 'T',
+      lang: 'fr',
+      status: 'open',
+      items: [
+        { id: 'i0', label: 'A' },
+        { id: 'i1', label: 'B' },
+        { id: 'i2', label: 'C' },
+      ],
+      counts: { votes: 2, voters: 2 },
+    });
+    expect(Object.keys(u)).not.toContain('ranking');
   });
 });
 

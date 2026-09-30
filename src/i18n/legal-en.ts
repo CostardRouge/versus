@@ -34,7 +34,7 @@ export const legalEn = {
 
   boardsTitle: 'Published rankings',
   boards1:
-    'When you publish a ranking, its title, its items (text and colors: images can’t be published) and its settings are sent to the server so that others can vote. Each vote is stored with the anonymous voter id of the browser that cast it, the pair, the choice and the time: no name, no email, no IP address.',
+    'When you publish a ranking, its title, its items (text and colors: images can’t be published) and its settings are sent to the server so that others can vote, along with a picture of it (its title and items, drawn by your browser) that shows when its link is pasted somewhere; sharing a duel draws one of that duel too. Each vote is stored with the anonymous voter id of the browser that cast it, the pair, the choice and the time: no name, no email, no IP address.',
   boards2:
     'A published ranking is deleted when its author withdraws it, or after {days} days without activity. Anyone with its link can see it and vote, so don’t publish anything personal. The author’s link carries a key after the <code>#</code>, which browsers never send to a server: keep it to yourself.',
 
@@ -42,7 +42,7 @@ export const legalEn = {
   count1:
     'Visits are counted with <a href="https://umami.is">Umami</a>, self-hosted on the publisher’s own server at <code>insight.steevepommier.com</code>: no third party receives the data, and none of it serves advertising.',
   count2:
-    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, an installation, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
+    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, an installation, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
   count3:
     '<b>Never counted:</b> the content of your rankings, their titles or items, the address of a published ranking, the author’s key, your IP address (it gives the country, then is discarded), or anything that could follow you from one site to another. No cookie is set.',
   count4:

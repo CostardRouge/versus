@@ -5,6 +5,7 @@ import {
   boardChange,
   boardEditColor,
   boardKeydown,
+  boardMakeMine,
   boardPick,
   boardRefresh,
   boardRemoveItem,
@@ -26,7 +27,7 @@ import { $, closeModal, doc, narrow, toastAct } from './dom';
 import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
 import { changeTheme } from './header';
 import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
-import { forgetJoined, keepJoinedCopy } from './joined';
+import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
 import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
@@ -43,6 +44,17 @@ import {
   toggleDemos,
 } from './rankings';
 import { copyRanking, setCompare, setRankView } from './results';
+import {
+  shareBoard,
+  shareCopyImage,
+  shareCopyText,
+  shareDownload,
+  shareDuel,
+  shareFinale,
+  shareFormat,
+  shareLocal,
+  shareNative,
+} from './share';
 import { drawSlopes } from './slope';
 import { cur, S, save } from './state';
 import { setMethod, setTab, toggleMethodMenu } from './workspace';
@@ -128,6 +140,39 @@ function onClick(e: MouseEvent): void {
       break;
     case 'copy':
       copyRanking();
+      break;
+    case 'share-rank':
+      shareLocal(cur());
+      break;
+    case 'share-board':
+      shareBoard();
+      break;
+    case 'share-duel':
+      shareDuel();
+      break;
+    case 'share-finale':
+      shareFinale();
+      break;
+    case 'share-fmt':
+      shareFormat(el.dataset.fmt);
+      break;
+    case 'share-native':
+      void shareNative();
+      break;
+    case 'share-copy-text':
+      void shareCopyText();
+      break;
+    case 'share-copy-image':
+      void shareCopyImage();
+      break;
+    case 'share-download':
+      void shareDownload();
+      break;
+    case 'make-mine':
+      makeMineFromCard(el.dataset.alias);
+      break;
+    case 'b-make-mine':
+      boardMakeMine();
       break;
     case 'end-see':
       endSee();

@@ -2,11 +2,12 @@ import { trackEvent } from '../audience';
 import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS } from '../core/board';
 import { lastDuelPerPair, type PublishBlock, publishBlock, publishMethod, publishRequest } from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
-import { methodText as M, type MsgKey, plural, t } from '../i18n';
+import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
 import { boardURL } from './board';
 import { $, ask, copyText, doc, toast } from './dom';
 import { openBoard } from './rankings';
 import { ApiError, publishBoard } from './remote';
+import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
 
@@ -132,7 +133,10 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
   const withVotes = $<HTMLInputElement>('#pub-votes', form)?.checked ?? false;
   publishing = true;
   try {
-    const request = { ...publishRequest(r, S.voter, chosen, withVotes), ...(turnstile ? { turnstile } : {}) };
+    const request = {
+      ...publishRequest(r, S.voter, chosen, withVotes, getLang()),
+      ...(turnstile ? { turnstile } : {}),
+    };
     const { alias, owner } = await publishBoard(request);
     const used = { ...settings, ...chosen };
     trackEvent('board-published', {
@@ -145,6 +149,8 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
     r.updated = Date.now();
     saveOwner(alias, owner);
     save();
+    // The link's preview image, drawn here from the same items and votes the server just received.
+    uploadPublishedCard(r, alias, withVotes);
     const copied = await copyText(boardURL(alias));
     openBoard(alias);
     toast(t(copied ? 'published' : 'publishedShare'));

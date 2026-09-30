@@ -25,11 +25,12 @@ Referrer: the other site the visitor came from (origin and path only), then, ins
 
 | Event | When | Data |
 | --- | --- | --- |
-| `ranking-created` | New ranking, or a copy | `from`: `new`, `copy`, `demo` |
+| `ranking-created` | New ranking, a copy, or "Make my own" from a board or a card under Your votes | `from`: `new`, `copy`, `demo`, `board`, `card` |
 | `ranking-finished` | The end of a local ranking is announced (D73) | `method`, `end` (`sort` or `stable`), `demo`, `items` |
 | `board-published` | A ranking is published | `method`, `visibility`, `items`, `votes` (the author's duels carried over) |
 | `board-joined` | First vote on a board from this browser (its "Your votes" card appears) | none |
 | `board-finished` | The voter has voted every pair (end-of-vote page, D64) | `items` |
+| `shared` | A result or a duel shared as an image (D98, D99) | `kind` (`ranking`, `crowd`, `duo`, `duel`), `format` (`post`, `story`, `landscape`), `how` (`share-image`, `share-text`, `copy-text`, `copy-image`, `download`) |
 | `app-installed` | The browser reports the app installed | none |
 | `chocolatine` | A side taken at the bottom of the home page | `side`: `chocolatine` or `pain-au-chocolat` |
 

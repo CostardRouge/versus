@@ -1,7 +1,7 @@
 import { trackEvent } from '../audience';
 import { revealAt } from '../core/board';
 import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
-import type { BoardView, Counts, RankingView, ServerMessage } from '../core/protocol';
+import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
@@ -24,7 +24,7 @@ import {
 import { fmtCrowd } from './format';
 import { flushJoined, markGone, noteBoard } from './joined';
 import { optionsHTML, readSettings, settingsHTML } from './publish';
-import { open } from './rankings';
+import { makeOwn, open } from './rankings';
 import {
   ApiError,
   addBoardItem,
@@ -112,8 +112,11 @@ const live = (): boolean => S.prefs.live !== false;
 const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
 const localOf = (alias: string): Ranking | undefined => S.ranks.find((r) => r.pub?.alias === alias);
 
-/** Connects to a board (or keeps the current connection when it is the same one). */
-export function enterBoard(alias: string, available: boolean): void {
+/**
+ * Connects to a board (or keeps the current connection when it is the same one). `wanted` is the duel a shared
+ * link asked for: the server serves it first when this voter can still vote on it.
+ */
+export function enterBoard(alias: string, available: boolean, wanted: [string, string] | null = null): void {
   if (B?.alias === alias) return;
   leaveBoard();
   const owner = loadOwners()[alias] ?? null;
@@ -142,7 +145,12 @@ export function enterBoard(alias: string, available: boolean): void {
   B = board;
   resetFinale();
   if (!available) return;
-  const hello = owner ? { t: 'hello' as const, voter: S.voter, owner } : { t: 'hello' as const, voter: S.voter };
+  const hello: ClientMessage = {
+    t: 'hello',
+    voter: S.voter,
+    ...(owner ? { owner } : {}),
+    ...(wanted ? { pair: wanted } : {}),
+  };
   board.socket = new BoardSocket(
     alias,
     hello,
@@ -291,12 +299,20 @@ function boardHTML(b: Board, adminOpen: boolean): string {
       <div class="empty-duel"><h2 class="q">${msg}</h2>${final ? action : ''}</div></div>`;
   }
   const closed = v.status === 'closed';
+  // Voters can start their own version from these items; the author has the ranking already.
+  const mine = b.isOwner
+    ? ''
+    : `<button class="btn sm ghost" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>`;
   return `<div class="board">
     <div class="ws-head b-head">
       ${back}
       <h1 class="b-title">${esc(v.title)}</h1>
       <span class="chip ${closed ? '' : 'chip-live'}">${closed ? t('closedChip') : t('pubChip')}</span>
-      <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
+      <span class="b-head-acts">
+        <button class="btn sm primary" type="button" data-action="share-board">${t('share')}</button>
+        <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
+        ${mine}
+      </span>
     </div>
     <p class="b-counts mono" id="b-counts">${countsText(b.counts)}</p>
     <p class="note b-conn" id="b-conn" role="status" ${b.conn === 'lost' ? '' : 'hidden'}>${t('reconnecting')}</p>
@@ -386,7 +402,7 @@ function duelHTML(b: Board, v: BoardView): string {
       <button class="ctl ctl-b" type="button" data-action="b-pick" data-side="b">${t('bWins')} <kbd>→</kbd></button>
     </div>
     <div class="duel-foot">
-      <button class="link" type="button" data-action="b-undo" ${b.mine.length ? '' : 'disabled'}>${t('undoVote')}</button>
+      <span class="duel-foot-acts"><button class="link" type="button" data-action="b-undo" ${b.mine.length ? '' : 'disabled'}>${t('undoVote')}</button><button class="link" type="button" data-action="share-duel">${t('shareDuel')}</button></span>
       <span class="muted">${t('swipeHint')}</span>
     </div>
   </div>`;
@@ -775,6 +791,40 @@ export async function copyBoardLink(alias: string | undefined, admin = false): P
 
 export const boardShare = (): Promise<void> => copyBoardLink(B?.alias);
 export const boardAdminLink = (): Promise<void> => copyBoardLink(B?.alias, true);
+
+/** What sharing the board as an image needs: the board on screen, the crowd as this viewer sees it, the duel up. */
+export interface BoardShare {
+  alias: string;
+  view: BoardView;
+  ranking: RankingView | null;
+  mine: Duel[];
+  counts: Counts;
+  pair: [Item, Item] | null;
+  isOwner: boolean;
+}
+
+export function boardShareData(): BoardShare | null {
+  const b = B;
+  if (!b?.view) return null;
+  const pair = b.pairs[0];
+  const A = pair ? itemOf(pair[0]) : undefined;
+  const C = pair ? itemOf(pair[1]) : undefined;
+  return {
+    alias: b.alias,
+    view: b.view,
+    ranking: b.shown,
+    mine: b.mine,
+    counts: b.counts,
+    pair: A && C && b.view.status === 'open' ? [A, C] : null,
+    isOwner: b.isOwner,
+  };
+}
+
+/** A ranking of this browser with the board's items, for a voter who wants their own version. */
+export function boardMakeMine(): void {
+  const v = B?.view;
+  if (v) makeOwn(v.title, v.items, 'board');
+}
 
 // ─── Author ─────────────────────────────────────────────────────────────────
 

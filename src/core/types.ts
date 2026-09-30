@@ -91,6 +91,9 @@ export interface Vote extends Duel {
   t: number;
 }
 
+/** The language a board was published in: its link previews speak it. */
+export type BoardLang = 'en' | 'fr';
+
 export interface SharedBoard {
   title: string;
   items: Item[];
@@ -99,13 +102,14 @@ export interface SharedBoard {
   created: number;
   /** Last activity other than a vote (publication, settings, status), for the inactivity TTL. */
   touched: number;
+  lang: BoardLang;
   /** Votes in arrival order, keyed by voter and pair. */
   votes: Map<string, Vote>;
   /** The same votes grouped by voter, each group in arrival order and keyed by pair. */
   voters: Map<string, Map<string, Vote>>;
 }
 
-export type BoardMeta = Pick<SharedBoard, 'title' | 'settings' | 'status' | 'created' | 'touched'>;
+export type BoardMeta = Pick<SharedBoard, 'title' | 'settings' | 'status' | 'created' | 'touched' | 'lang'>;
 
 /**
  * A published board this browser voted on without managing it: a card under "Your votes" in the

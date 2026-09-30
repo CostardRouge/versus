@@ -1,6 +1,8 @@
 import { ALIAS_RE, isRecord, makeAlias, parsePublish } from '../../src/core/board';
 import { parseSummaryRequest } from '../../src/core/protocol';
+import { CARD_MAX_BYTES, parseDuelQuery } from '../../src/core/share';
 import type { ErrorCode, Result } from '../../src/core/types';
+import { cardURL, preview, readCard, rewriteHead, storeCard } from './cards';
 import type { Env } from './env';
 import { listBoards, totals } from './registry';
 import { verifyTurnstile } from './turnstile';
@@ -10,7 +12,8 @@ export { BoardObject } from './board-object';
 /**
  * API for published boards. Every board lives in its own Durable Object, named by its alias; anything
  * outside /api is the site itself: static files first, then the app's page for every view under /app/
- * (D92), and the 404 page for the rest (`site()` below).
+ * (D92; a board's page gets its own link preview, `cards.ts`), the cards under /og/, and the 404 page for
+ * the rest (`site()` below).
  *
  *   POST   /api/boards                          publish (PublishInput + Turnstile token) → { alias, owner }
  *   GET    /api/boards/:alias                   public view, or a WebSocket for voters (Upgrade: websocket)
@@ -20,6 +23,10 @@ export { BoardObject } from './board-object';
  *   PATCH  /api/boards/:alias/items/:id         recolor a color item ({ fill }); its votes are dropped (owner)
  *   DELETE /api/boards/:alias/items/:id         remove an item and its votes     (owner)
  *   DELETE /api/boards/:alias                   withdraw; returns the local copy (owner)
+ *   PUT    /api/boards/:alias/card[?duel=a.b]   the card the board's link (or one duel's) unfurls with: a
+ *                                               1200×630 PNG drawn by the app → { url }
+ *
+ *   GET    /og/b/:alias[/:a.:b]/:version.png    a stored card, or the site's card when there is none
  *
  *   POST   /api/summaries                       { voter, aliases } → { [alias]: summary, or null when gone }:
  *                                               the boards of a voter's "Your votes", as that voter may see them
@@ -45,10 +52,11 @@ const STATUS: Record<string, number> = {
   full: 409,
   too_few: 409,
   too_large: 413,
+  unsupported: 415,
   rate_limited: 429,
 };
 
-type Code = ErrorCode | 'too_large';
+type Code = ErrorCode | 'too_large' | 'unsupported';
 
 const json = (body: unknown, status = 200): Response =>
   Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -114,12 +122,32 @@ async function summaries(req: Request, env: Env): Promise<Response> {
   return json(Object.fromEntries(aliases.map((alias, i) => [alias, found[i] ?? null])));
 }
 
+/**
+ * The card a board's link (or one of its duels' links) unfurls with, drawn by the app: stored when the board
+ * exists and the bytes are the expected PNG. Off (404) without the images bucket.
+ */
+async function putCard(req: Request, env: Env, alias: string): Promise<Response> {
+  const bucket = env.IMAGES;
+  if (!bucket) return error('not_found');
+  if (!req.headers.get('Content-Type')?.toLowerCase().startsWith('image/png')) return error('unsupported');
+  if (Number(req.headers.get('Content-Length') ?? 0) > CARD_MAX_BYTES) return error('too_large');
+  const bytes = new Uint8Array(await req.arrayBuffer());
+  if (bytes.byteLength > CARD_MAX_BYTES) return error('too_large');
+  const unfurl = await env.BOARDS.getByName(alias).unfurl();
+  if (!unfurl) return error('not_found');
+  const pair = parseDuelQuery(new URL(req.url).search);
+  const stored = await storeCard(bucket, alias, unfurl, pair, bytes);
+  if (stored !== 'ok') return error(stored);
+  return json({ url: cardURL(new URL(req.url).origin, alias, pair, new Date()) }, 201);
+}
+
 /** Routes under /api/boards/:alias. */
 async function board(req: Request, env: Env, alias: string, rest: string[]): Promise<Response> {
   const stub = env.BOARDS.getByName(alias);
   const [action, id, ...extra] = rest;
   if (extra.length) return error('not_found');
   const m = req.method;
+  if (action === 'card' && id === undefined) return m === 'PUT' ? putCard(req, env, alias) : error('not_found');
   if (action === undefined) {
     if (m === 'GET') {
       if (req.headers.get('Upgrade')?.toLowerCase() === 'websocket') return stub.fetch(req);
@@ -194,13 +222,37 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
 }
 
 /**
- * What no static file matched outside /api: a view of the app (`/app/demo/…`, `/app/b/…`) gets the app's page,
- * which reads its path; anything else gets the 404 page with a 404 status.
+ * The app's page for a board (`/app/b/<alias>`, with `?duel=a.b` for one of its duels): its head says what the
+ * link is about, in the board's language, with the card the app drew when there is one. A board that is gone
+ * gets the page as it is (the app then says so).
  */
-async function site(req: Request, env: Env): Promise<Response> {
+async function boardPage(req: Request, env: Env, assets: Fetcher, alias: string): Promise<Response> {
+  const url = new URL(req.url);
+  const page = assets.fetch(new Request(new URL('/app/', url), req));
+  if (!ALIAS_RE.test(alias)) return page;
+  const unfurl = await env.BOARDS.getByName(alias).unfurl();
+  if (!unfurl) return page;
+  const p = await preview(env.IMAGES, url.origin, alias, unfurl, url.search);
+  return rewriteHead(await page, p, `${url.origin}${url.pathname}${url.search}`);
+}
+
+/**
+ * What no static file matched outside /api: a view of the app (`/app/demo/…`, `/app/b/…`) gets the app's page,
+ * which reads its path; a card under /og/ comes from the bucket, or is the site's card; anything else gets the
+ * 404 page with a 404 status.
+ */
+async function site(req: Request, env: Env, parts: string[]): Promise<Response> {
   const url = new URL(req.url);
   if (!env.ASSETS || (req.method !== 'GET' && req.method !== 'HEAD')) return error('not_found');
-  if (url.pathname.startsWith('/app/')) return env.ASSETS.fetch(new Request(new URL('/app/', url), req));
+  if (parts[0] === 'og') {
+    const card = await readCard(env.IMAGES, parts);
+    return card ?? env.ASSETS.fetch(new Request(new URL('/og.png', url), req));
+  }
+  if (url.pathname.startsWith('/app/')) {
+    const [, kind, alias, ...more] = parts;
+    if (kind === 'b' && alias && !more.length) return boardPage(req, env, env.ASSETS, alias);
+    return env.ASSETS.fetch(new Request(new URL('/app/', url), req));
+  }
   // `/404`, not `/404.html`: the platform redirects .html addresses to their short form.
   const page = await env.ASSETS.fetch(new Request(new URL('/404', url), req));
   return new Response(page.body, { status: 404, headers: page.headers });
@@ -208,9 +260,10 @@ async function site(req: Request, env: Env): Promise<Response> {
 
 export default {
   async fetch(req, env): Promise<Response> {
-    const [api, section, ...rest] = new URL(req.url).pathname.split('/').filter(Boolean);
+    const parts = new URL(req.url).pathname.split('/').filter(Boolean);
+    const [api, section, ...rest] = parts;
     // Static files are served before the Worker runs.
-    if (api !== 'api') return site(req, env);
+    if (api !== 'api') return site(req, env, parts);
     if (!(await allowed(env.API_LIMIT, req))) return error('rate_limited');
     if (section === 'admin') return admin(req, env, rest);
     if (section === 'summaries')

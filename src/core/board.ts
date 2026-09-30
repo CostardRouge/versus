@@ -2,6 +2,7 @@ import { fillCode, sameFill } from './colors';
 import { mkRank } from './model';
 import { compute, pairKey } from './scoring';
 import type {
+  BoardLang,
   BoardMeta,
   BoardSettings,
   BoardStatus,
@@ -145,6 +146,8 @@ export interface PublishInput {
   voter: string;
   /** The author's local duels, pushed as their votes (empty to start without votes). */
   duels: Duel[];
+  /** The app's language at publication, for the link previews; English unless said otherwise. */
+  lang: BoardLang;
 }
 
 /** Validates a publish request. Duels on unknown items are dropped, like the local history does. */
@@ -153,6 +156,7 @@ export function parsePublish(x: unknown): Result<PublishInput> {
   const title = x.title.trim();
   if (!title || title.length > LIMITS.title) return fail('bad_request');
   if (typeof x.voter !== 'string' || !VOTER_RE.test(x.voter)) return fail('bad_request');
+  const lang: BoardLang = x.lang === 'fr' ? 'fr' : 'en';
   if (x.items.length < 2 || x.items.length > LIMITS.items) return fail('bad_request');
   const items: Item[] = [];
   const ids = new Set<string>();
@@ -173,7 +177,7 @@ export function parsePublish(x: unknown): Result<PublishInput> {
   }
   // The method comes from the local ranking; exact sort falls back to Balanced.
   const settings = patchSettings(DEFAULT_SETTINGS, x.settings);
-  return ok({ title, items, settings, voter: x.voter, duels });
+  return ok({ title, items, settings, voter: x.voter, duels, lang });
 }
 
 // ─── Board state ────────────────────────────────────────────────────────────
@@ -213,7 +217,14 @@ export function restoreBoard(meta: BoardMeta, items: Item[], votes: Iterable<Vot
 
 /** A new board; the author's duels become their votes, repeated pairs collapsing to the last duel. */
 export function createBoard(input: PublishInput, now: number): SharedBoard {
-  const meta: BoardMeta = { title: input.title, settings: input.settings, status: 'open', created: now, touched: now };
+  const meta: BoardMeta = {
+    title: input.title,
+    settings: input.settings,
+    status: 'open',
+    created: now,
+    touched: now,
+    lang: input.lang,
+  };
   return restoreBoard(
     meta,
     input.items,
@@ -221,12 +232,13 @@ export function createBoard(input: PublishInput, now: number): SharedBoard {
   );
 }
 
-export const boardMeta = ({ title, settings, status, created, touched }: SharedBoard): BoardMeta => ({
+export const boardMeta = ({ title, settings, status, created, touched, lang }: SharedBoard): BoardMeta => ({
   title,
   settings,
   status,
   created,
   touched,
+  lang,
 });
 
 export const voteCount = (board: SharedBoard, voter: string): number => board.voters.get(voter)?.size ?? 0;
@@ -476,7 +488,10 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
   }
 }
 
-/** A new session; `lastActionAt` carries over when a connection says hello again, so it can't dodge the limit. */
+/**
+ * A new session; `lastActionAt` carries over when a connection says hello again, so it can't dodge the limit.
+ * `wanted` is the duel a shared link asked for: it comes first when this voter can still vote on it.
+ */
 export function openSession(
   board: SharedBoard,
   voter: string,
@@ -484,10 +499,26 @@ export function openSession(
   C: Computed,
   rng: Rng,
   lastActionAt = 0,
+  wanted: readonly [string, string] | null = null,
 ): Session {
   const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt };
   refill(board, session, C, rng);
+  if (wanted) preferPair(board, session, wanted[0], wanted[1]);
   return session;
+}
+
+/**
+ * Puts a pair first in the session's queue (the duel a shared link names). Nothing happens when the pair isn't
+ * one of the board's, this voter already voted on it, or the board is closed.
+ */
+export function preferPair(board: SharedBoard, session: Session, a: string, b: string): boolean {
+  const has = (id: string) => board.items.some((i) => i.id === id);
+  if (board.status !== 'open' || a === b || !has(a) || !has(b)) return false;
+  const k = pairKey(a, b);
+  if (board.voters.get(session.voter)?.has(k)) return false;
+  const rest = session.queue.filter(([x, y]) => pairKey(x, y) !== k);
+  session.queue = [[a, b] as [string, string], ...rest].slice(0, LIMITS.queue);
+  return true;
 }
 
 const queueIndex = (session: Session, a: string, b: string): number => {

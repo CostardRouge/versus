@@ -22,6 +22,7 @@ import {
   parseNewItem,
   parsePublish,
   patchSettings,
+  preferPair,
   recolorItem,
   refill,
   removeItem,
@@ -58,6 +59,7 @@ const input = (n = 4, over: Partial<PublishInput> = {}): PublishInput => ({
   settings: { ...DEFAULT_SETTINGS },
   voter: V1,
   duels: [],
+  lang: 'en',
   ...over,
 });
 
@@ -654,6 +656,27 @@ describe('sessions', () => {
     expect(s.queue).toHaveLength(LIMITS.queue);
     updateSettings(b, { allowChange: false }, T0);
     expect(errorOf(sessionReset(b, s, crowd(b), rng))).toBe('final');
+  });
+
+  it('serves the duel a shared link asked for first, when the voter can still vote on it', () => {
+    const b = board(6);
+    const s = openSession(b, V2, false, crowd(b), rng, 0, ['i4', 'i5']);
+    expect(s.queue[0]).toEqual(['i4', 'i5']);
+    expect(s.queue).toHaveLength(LIMITS.queue);
+    expect(new Set(keys(s.queue)).size).toBe(LIMITS.queue);
+    // Already voted on, unknown, or the same item twice: the queue is left as it is.
+    value(castVote(b, V2, 'i0', 'i1', 1, T0));
+    expect(preferPair(b, s, 'i0', 'i1')).toBe(false);
+    expect(preferPair(b, s, 'i0', 'nope')).toBe(false);
+    expect(preferPair(b, s, 'i2', 'i2')).toBe(false);
+    expect(s.queue[0]).toEqual(['i4', 'i5']);
+    // Asking for a pair already queued moves it first without repeating it.
+    const second = s.queue[1] as [string, string];
+    expect(preferPair(b, s, second[1], second[0])).toBe(true);
+    expect(pairKey(...(s.queue[0] as [string, string]))).toBe(pairKey(...second));
+    expect(new Set(keys(s.queue)).size).toBe(s.queue.length);
+    setStatus(b, 'closed', T0);
+    expect(preferPair(b, s, 'i2', 'i3')).toBe(false);
   });
 
   it('refills around votes cast elsewhere, and empties when closed or done', () => {

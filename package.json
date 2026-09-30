@@ -22,7 +22,8 @@
     "coverage": "vitest run --coverage",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "worker:dev": "vite build --mode worker && wrangler d1 migrations apply versus-registry --local -c worker/wrangler.jsonc && wrangler dev -c worker/wrangler.jsonc",
-    "worker:deploy": "vite build --mode worker && wrangler deploy -c worker/wrangler.jsonc && wrangler d1 migrations apply versus-registry --remote -c worker/wrangler.jsonc"
+    "worker:bucket": "wrangler r2 bucket create versus-images -c worker/wrangler.jsonc || echo 'bucket versus-images already exists'",
+    "worker:deploy": "vite build --mode worker && npm run worker:bucket && wrangler deploy -c worker/wrangler.jsonc && wrangler d1 migrations apply versus-registry --remote -c worker/wrangler.jsonc"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

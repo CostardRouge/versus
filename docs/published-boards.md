@@ -23,6 +23,13 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - **Links** are paths of the app (D92): `…/app/b/<alias>` to share, `…/app/b/<alias>#owner=<token>` as the admin link, the token in the fragment so it never reaches a server. Opening an admin link stores the token in this browser and removes it from the address bar. Links from before (`#/b/<alias>`, `?owner=`) still open and are rewritten to the path form.
 - If a board turns out to be gone (withdrawn elsewhere or expired), nothing is deleted automatically: the author's page offers to go back to the local version, which also forgets the owner token.
 - v1: text and color items only. A ranking containing images can't be published (the modal says why). Images come later, with R2 storage and moderation.
+- **Link previews** (D100): the board's page carries its title, a description in the board's language (stored at publication) and a card drawn by the app (title, podium or items, 1200×630), so the link pasted in a chat or a feed shows the board. A duel link (`?duel=a.b`) shows its two items as the app's cards. The card is sent when the board is published and each time someone shares from the app; the server keeps one per board and up to 40 per board's duels, and deletes them with the board.
+
+## Sharing
+
+- **Share as an image** (D98, D99), from three places: the board page (the crowd's standings as this viewer may see them, or the items when the crowd is hidden), the duel on screen (its two cards, with a link that opens the board on that duel, D101), and the end-of-vote page (the viewer's ranking facing the crowd's, with the agreement; their own ranking alone while the crowd stays hidden). Local rankings have it too, from the Ranking tab, with a link to the site.
+- The panel shows the card in the format chosen (post 4:5, story 9:16, landscape), and offers the system share sheet with the image and a message that carries the link, or copying the message, copying the image, downloading it. The format chosen stays for the session.
+- **Make my own** (D102): on the board page and the end-of-vote page (not for the author), and on a card under Your votes, a button makes a ranking of this browser with the board's title and items, without votes, to change and publish.
 
 ## Voting rules
 
@@ -46,6 +53,7 @@ The board's Durable Object assigns pairs, not the browser:
 - The browser never needs the crowd ranking to get its next duel (required by blind mode).
 - It sends a short queue of upcoming pairs (e.g. 3), refilled with each vote, so the next duel appears instantly.
 - A skipped pair isn't offered again to that voter for a while; nothing is recorded.
+- A link that names a duel (`?duel=a.b`) puts that pair first in the voter's queue, when both items are on the board, the voter hasn't voted on it and the board is open; otherwise the queue is as usual.
 - On a small board a voter can reach the end (every pair voted, n(n−1)/2); on large boards they stop when they want.
 
 ## Results visibility (author setting)

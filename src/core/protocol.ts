@@ -1,5 +1,6 @@
 import { ALIAS_RE, canSeeRanking, isOutcome, isRecord, LIMITS, VOTER_RE, voteCount, votesOf } from './board';
 import type {
+  BoardLang,
   BoardSettings,
   BoardStatus,
   Computed,
@@ -49,8 +50,11 @@ export interface BoardView {
 }
 
 export type ClientMessage =
-  /** First message on a connection; `owner` is the owner token, for the author. */
-  | { t: 'hello'; voter: string; owner?: string }
+  /**
+   * First message on a connection; `owner` is the owner token, for the author; `pair` the duel a shared link
+   * asked for, served first when the voter can still vote on it.
+   */
+  | { t: 'hello'; voter: string; owner?: string; pair?: [string, string] }
   | { t: 'vote'; a: string; b: string; s: Outcome }
   | { t: 'skip'; a: string; b: string }
   /** Deletes one of my votes; its pair comes back first in my queue. */
@@ -99,6 +103,25 @@ export function boardView(board: SharedBoard, C: Computed, online: number, visib
 
 export const myDuels = (board: SharedBoard, voter: string): Duel[] =>
   votesOf(board, voter).map(({ a, b, s }) => ({ a, b, s }));
+
+// ─── Link previews ──────────────────────────────────────────────────────────
+
+/** What a board's link preview says (the Worker writes it into the app page's head): no ranking, whoever asks. */
+export interface Unfurl {
+  title: string;
+  lang: BoardLang;
+  status: BoardStatus;
+  items: { id: string; label: string }[];
+  counts: { votes: number; voters: number };
+}
+
+export const unfurlOf = (board: SharedBoard): Unfurl => ({
+  title: board.title,
+  lang: board.lang,
+  status: board.status,
+  items: board.items.map(({ id, label }) => ({ id, label })),
+  counts: { votes: board.votes.size, voters: board.voters.size },
+});
 
 // ─── "Your votes" ───────────────────────────────────────────────────────────
 
@@ -156,10 +179,18 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   }
   if (!isRecord(m)) return null;
   switch (m.t) {
-    case 'hello':
+    case 'hello': {
       if (typeof m.voter !== 'string' || !VOTER_RE.test(m.voter)) return null;
       if (m.owner !== undefined && typeof m.owner !== 'string') return null;
-      return m.owner === undefined ? { t: 'hello', voter: m.voter } : { t: 'hello', voter: m.voter, owner: m.owner };
+      const pair = m.pair;
+      if (pair !== undefined && !(Array.isArray(pair) && pair.length === 2 && pair.every(isId))) return null;
+      return {
+        t: 'hello',
+        voter: m.voter,
+        ...(m.owner === undefined ? {} : { owner: m.owner }),
+        ...(pair === undefined ? {} : { pair: [pair[0], pair[1]] as [string, string] }),
+      };
+    }
     case 'vote':
       return isId(m.a) && isId(m.b) && isOutcome(m.s) ? { t: 'vote', a: m.a, b: m.b, s: m.s } : null;
     case 'skip':

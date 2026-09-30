@@ -1,10 +1,12 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { ACTION_INTERVAL_MS, ALIAS_RE } from '../src/core/board';
 import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
+import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
 import type { BoardSettings, Ranking } from '../src/core/types';
+import { fakePng } from './helpers/png';
 
 /** End-to-end tests of the Worker and its Durable Object, running in the local workerd runtime. */
 
@@ -15,9 +17,22 @@ const ADMIN = 'admin-secret-for-tests';
 const server = createTestHarness({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN } }] });
 let base: URL;
 
+/** The app page's head, as the build writes it (the tags a board's link preview rewrites). */
+const APP_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Versus — Rank anything</title>
+<meta name="description" content="Rank anything by pairwise comparison." />
+<meta property="og:title" content="Versus — Rank anything" /><meta property="og:description" content="Rank anything." />
+<meta property="og:url" content="https://versus.example.com/app/" /><meta property="og:image" content="https://versus.example.com/og.png" />
+<meta property="og:image:alt" content="Versus" /><meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" />
+<meta name="twitter:title" content="Versus — Rank anything" /><meta name="twitter:description" content="Rank anything." />
+<meta name="twitter:image" content="https://versus.example.com/og.png" /><meta name="twitter:image:alt" content="Versus" />
+</head><body><main id="view"></main></body></html>`;
+
 beforeAll(async () => {
-  // The Worker serves the app from dist/; the tests run before any build, so an empty folder will do.
-  mkdirSync('dist', { recursive: true });
+  // The Worker serves the site from dist/; the tests run before any build, so a folder with the app's page
+  // (for link previews) and the site's card (the fallback under /og/) is enough. A real build is left as it is.
+  mkdirSync('dist/app', { recursive: true });
+  if (!existsSync('dist/app/index.html')) writeFileSync('dist/app/index.html', APP_PAGE);
+  if (!existsSync('dist/og.png')) writeFileSync('dist/og.png', fakePng(1200, 630));
   base = (await server.listen()).url;
   await server.getWorker().applyD1Migrations('REGISTRY');
 });
@@ -82,7 +97,7 @@ class Client {
     );
   }
 
-  static async open(alias: string, voter: string, owner?: string): Promise<Client> {
+  static async open(alias: string, voter: string, owner?: string, pair?: [string, string]): Promise<Client> {
     const url = new URL(`/api/boards/${alias}`, base);
     url.protocol = 'ws:';
     const ws = new WebSocket(url);
@@ -91,7 +106,7 @@ class Client {
       ws.addEventListener('error', reject);
     });
     const client = new Client(ws);
-    client.send(owner ? { t: 'hello', voter, owner } : { t: 'hello', voter });
+    client.send({ t: 'hello', voter, ...(owner ? { owner } : {}), ...(pair ? { pair } : {}) });
     return client;
   }
 
@@ -236,6 +251,26 @@ describe('voting', () => {
     first.close();
   });
 
+  it('serves the duel a shared link asked for first', async () => {
+    const { alias } = await publish();
+    const voter = await Client.open(alias, 'voter-one-1', undefined, ['p3', 'p4']);
+    const state = await voter.next('state');
+    expect(state.pairs[0]).toEqual(['p3', 'p4']);
+    expect(state.pairs).toHaveLength(3);
+    voter.send({ t: 'vote', a: 'p3', b: 'p4', s: 1 });
+    await voter.next('pairs');
+    voter.close();
+    // Already voted on: the link opens on whatever comes next.
+    const again = await Client.open(alias, 'voter-one-1', undefined, ['p4', 'p3']);
+    const back = await again.next('state');
+    expect(back.pairs.map(([a, b]) => pairKey(a, b))).not.toContain(pairKey('p3', 'p4'));
+    again.close();
+    // An unknown item: ignored.
+    const other = await Client.open(alias, 'voter-two-2', undefined, ['p0', 'nope']);
+    expect((await other.next('state')).pairs).toHaveLength(3);
+    other.close();
+  });
+
   it('keeps sessions and votes across hibernation', async () => {
     const { alias } = await publish();
     const voter = await Client.open(alias, 'voter-one-1');
@@ -287,6 +322,113 @@ describe('your votes', () => {
     expect((await ask([alias], 'x')).status).toBe(400);
     expect((await ask([alias], 'voter-one-1', '/more')).status).toBe(404);
     expect((await api('', { root: '/api/summaries' })).status).toBe(404);
+  });
+});
+
+describe('link previews', () => {
+  const card = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 4096);
+  const upload = (alias: string, bytes: Uint8Array, query = '', type = 'image/png') =>
+    server.fetch(`/api/boards/${alias}/card${query}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': type, 'CF-Connecting-IP': nextIp() },
+      body: bytes,
+    });
+  const page = async (path: string) => {
+    const res = await server.fetch(path, { headers: { 'CF-Connecting-IP': nextIp() } });
+    return { status: res.status, html: await res.text() };
+  };
+  const content = (html: string, key: string) =>
+    html.match(new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`))?.[1];
+
+  it('writes the board into the head of its page, in its language, with the site’s card until one is drawn', async () => {
+    const res = await api('', {
+      method: 'POST',
+      body: { title: 'Pizzas', items, voter: AUTHOR, lang: 'fr', duels: [{ a: 'p0', b: 'p1', s: 1 }] },
+    });
+    const { alias } = (await res.json()) as { alias: string };
+    const { status, html } = await page(`/app/b/${alias}`);
+    expect(status).toBe(200);
+    expect(html).toContain('<html lang="fr">');
+    expect(html).toContain('<title>Pizzas · Versus</title>');
+    expect(content(html, 'og:title')).toBe('Pizzas · Versus');
+    expect(content(html, 'og:description')).toContain('5 éléments · 1 vote · 1 votant');
+    expect(content(html, 'og:url')).toBe(`${base.origin}/app/b/${alias}`);
+    expect(content(html, 'og:image')).toMatch(/\/og\.png$/);
+    // A duel link names its two items.
+    const duel = await page(`/app/b/${alias}?duel=p2.p0`);
+    expect(content(duel.html, 'og:title')).toBe('Calzone vs Margherita · Pizzas');
+    expect(content(duel.html, 'og:description')).toContain('Calzone ou Margherita ?');
+    expect(content(duel.html, 'og:url')).toBe(`${base.origin}/app/b/${alias}?duel=p2.p0`);
+    // An unknown duel: the board's preview; a board that is gone: the page as the build wrote it.
+    expect(content((await page(`/app/b/${alias}?duel=p2.zz`)).html, 'og:title')).toBe('Pizzas · Versus');
+    const untouched = content((await page('/app/demo/destinations')).html, 'og:title');
+    expect(untouched).toMatch(/^Versus — /);
+    expect(content((await page('/app/b/1111111116')).html, 'og:title')).toBe(untouched);
+  });
+
+  it('stores the card the app drew, serves it under /og/ and puts it in the head', async () => {
+    const { alias } = await publish();
+    expect((await upload(alias, card, '', 'text/plain')).status).toBe(415);
+    expect((await upload(alias, fakePng(1080, 1350))).status).toBe(400);
+    expect((await upload('1111111117', card)).status).toBe(404);
+    expect((await upload(alias, card, '?duel=p0.zz')).status).toBe(400);
+    const stored = await upload(alias, card);
+    expect(stored.status).toBe(201);
+    const { url } = (await stored.json()) as { url: string };
+    expect(url).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/\\d+\\.png$`));
+    const served = await server.fetch(url);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('Content-Type')).toBe('image/png');
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(card);
+    const { html } = await page(`/app/b/${alias}`);
+    expect(content(html, 'og:image')).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/\\d+\\.png$`));
+    expect(content(html, 'twitter:image')).toBe(content(html, 'og:image'));
+    expect(content(html, 'og:image:alt')).toBe('The ranking “Pizzas” on Versus');
+
+    // A duel card of its own; the board's link keeps the board's card.
+    const duelCard = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 2048);
+    expect((await upload(alias, duelCard, '?duel=p1.p0')).status).toBe(201);
+    const duel = await page(`/app/b/${alias}?duel=p0.p1`);
+    expect(content(duel.html, 'og:image')).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/p0\\.p1/\\d+\\.png$`));
+    expect(content(duel.html, 'og:image:alt')).toBe(
+      'Margherita against Regina, a duel of the ranking “Pizzas” on Versus',
+    );
+    const bytes = await (await server.fetch(content(duel.html, 'og:image') ?? '')).arrayBuffer();
+    expect(new Uint8Array(bytes)).toEqual(duelCard);
+    // A duel without a card: the board's link preview falls back to the site's card.
+    expect(content((await page(`/app/b/${alias}?duel=p3.p4`)).html, 'og:image')).toMatch(/\/og\.png$/);
+    // An address that names no stored card gets the site's card.
+    expect((await server.fetch(`/og/b/${alias}/p3.p4/1.png`)).status).toBe(200);
+    expect((await server.fetch('/og/b/1111111118/1.png')).status).toBe(200);
+    expect((await server.fetch('/og/nothing')).status).toBe(200);
+  });
+
+  it('keeps at most a few duel cards per board, and drops every card with the board', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ ...items[0], id: `q${i}`, label: `Q${i}` }));
+    const res = await api('', { method: 'POST', body: { title: 'Many', items: many, voter: AUTHOR } });
+    const { alias, owner } = (await res.json()) as { alias: string; owner: string };
+    let stored = 0;
+    for (let i = 1; i < many.length && stored < CARD_LIMIT + 1; i++) {
+      for (let j = 0; j < i && stored < CARD_LIMIT + 1; j++) {
+        const r = await upload(alias, card, `?duel=q${j}.q${i}`);
+        if (stored < CARD_LIMIT) expect(r.status).toBe(201);
+        else expect(r.status).toBe(409);
+        stored++;
+      }
+    }
+    // Drawing a card again for a duel that has one is always fine.
+    expect((await upload(alias, card, '?duel=q0.q1')).status).toBe(201);
+    const first = content((await page(`/app/b/${alias}?duel=q0.q1`)).html, 'og:image') ?? '';
+    expect(first).toContain(`/og/b/${alias}/q0.q1/`);
+    await api(`/${alias}`, { method: 'DELETE', token: owner });
+    // The cards are gone with the board: the address falls back to the site's card.
+    await vi.waitFor(
+      async () => {
+        const res = await server.fetch(first);
+        expect(new Uint8Array(await res.arrayBuffer())).not.toEqual(card);
+      },
+      { timeout: 5000, interval: 200 },
+    );
   });
 });
 

@@ -38,6 +38,9 @@ export function routeOfState(): Route {
 /** The shareable address of a route. */
 export const routeURL = (route: Route): string => new URL(routePath(route), appRoot()).href;
 
+/** The site's home page (the folder above the app's), where a shared local ranking sends people. */
+export const siteURL = (): string => new URL('../', appRoot()).href;
+
 /**
  * Writes the current view into the address bar: a new history entry for a change of view (Back returns to the
  * previous one), a replacement for a tab or a correction. Nothing happens when the address is already right.

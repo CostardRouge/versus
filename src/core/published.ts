@@ -2,7 +2,7 @@ import { ALIAS_RE, LIMITS, totalPairs } from './board';
 import { mkRank } from './model';
 import type { RankingView } from './protocol';
 import { compute, methodOf, pairKey, validHistory } from './scoring';
-import type { BoardSettings, Computed, Duel, Item, MethodKey, Ranking } from './types';
+import type { BoardLang, BoardSettings, Computed, Duel, Item, MethodKey, Ranking } from './types';
 
 /**
  * Client-side helpers for published boards: what can be published and how, share links, and how a
@@ -42,6 +42,8 @@ export interface PublishRequest {
   settings: Partial<BoardSettings>;
   voter: string;
   duels: Duel[];
+  /** The app's language: the board's link previews speak it. */
+  lang: BoardLang;
 }
 
 export function publishRequest(
@@ -49,6 +51,7 @@ export function publishRequest(
   voter: string,
   settings: Partial<BoardSettings>,
   withVotes: boolean,
+  lang: BoardLang = 'en',
 ): PublishRequest {
   return {
     title: r.title.slice(0, LIMITS.title),
@@ -56,6 +59,7 @@ export function publishRequest(
     settings,
     voter,
     duels: withVotes ? lastDuelPerPair(r) : [],
+    lang,
   };
 }
 

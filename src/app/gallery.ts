@@ -106,7 +106,8 @@ function jcardHTML(j: Joined): string {
   const actions = j.gone
     ? `<button class="btn sm" type="button" data-action="joined-copy" data-alias="${alias}" title="${t('keepCopyTitle')}">${t('keepCopy')}</button>`
     : `<button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${done < total && j.status === 'open' ? t('continueVote') : t('openBoard')}</button>
-      <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>`;
+      <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>
+      <button class="btn sm ghost" type="button" data-action="make-mine" data-alias="${alias}" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>`;
   return `<article class="rcard${news ? ' fresh' : ''}${j.gone ? ' gone' : ''}">
     ${main}
     ${note}

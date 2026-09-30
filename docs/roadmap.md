@@ -28,6 +28,7 @@ Last updated 2026-09-30.
 - Home page (D84 to D90): a showcase at `/` in English and `/fr/` in French, pre-rendered for search engines (hreflang, bilingual sitemap, a social card per language), with a hero demo played by a virtual pointer, the use cases, how it works, a playable demo on six topics, the four methods on the same duels, the crowd (Worker build) and the chocolatine question. The app moved to `/app/` (`noindex`); installed apps and old links follow.
 - Real addresses in the app (D92): `/app/demo/destinations`, `/app/demo/destinations/ranking`, `/app/r/<id>`, `/app/b/<alias>`; Back and Forward follow the views, old `#/b/` links still open, GitHub Pages included (`404.html`).
 - Audience measurement and legal notice (D93 to D96, `docs/analytics.md`): self-hosted Umami, loaded only for visitors who don't decline (switch, Do Not Track, Global Privacy Control), views with ids stripped and a few anonymous events; `/legal/` and `/fr/mentions-legales/` with publisher, hosting, privacy and the measurement switch.
+- Sharing (D98 to D102): a result drawn as an image in the browser (post, story, landscape) from the Ranking tab, a board, a duel and the end-of-vote page (me facing the crowd), handed to the system share sheet with the message and the link, or copied or downloaded; link previews of boards and duels with their own title, description and card (drawn by the app, stored in R2, head rewritten by the Worker); duel links that open on their duel; "Make my own" from a board or a card under Your votes.
 
 ## Next (suggested order)
 
@@ -40,12 +41,12 @@ Last updated 2026-09-30.
 
 - Check the first real figures in Umami (both hosts, clean paths, events), and that the zone's `final slash` redirect rule spares the subdomains (`docs/analytics.md#left-to-check-live`).
 - More languages (ES, PT-BR, DE), driven by traffic.
-- Export / import a ranking as JSON; share a results image.
+- Export / import a ranking as JSON.
+- A short video of the end-of-vote reveal for stories, recorded from the canvas.
 - Glicko as an extra method, if ever needed.
 - Native shell (Capacitor) around the web app, only if store presence is ever wanted (D75).
 - Search Console for versus.steevepommier.com: verify, submit the sitemap, request indexing of `/` and `/fr/`.
 - Content pages (one per scoring method, a pairwise ranking guide): internal links and long-tail queries a single page can't reach.
-- Per-board social cards: board links are paths now (`/app/b/<alias>`, D92), so the Worker can rewrite the app page's head with the board's title and its own card.
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
 - Images on published boards (R2), once reporting and takedown exist.

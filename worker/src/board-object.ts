@@ -34,6 +34,8 @@ import {
   parseClientMessage,
   rankingView,
   type ServerMessage,
+  type Unfurl,
+  unfurlOf,
 } from '../../src/core/protocol';
 import { pairKey } from '../../src/core/scoring';
 import type {
@@ -49,6 +51,7 @@ import type {
   SharedBoard,
   Vote,
 } from '../../src/core/types';
+import { deleteCards } from './cards';
 import type { Env } from './env';
 import { DAY_MS, deleteBoard, upsertBoard } from './registry';
 
@@ -133,7 +136,8 @@ export class BoardObject extends DurableObject<Env> {
     this.ownerHash = ownerHash;
     // Boards stored before the registry existed have no alias: they simply stay out of it.
     this.alias = alias ?? '';
-    this.board = restoreBoard(m, JSON.parse(items.v) as Item[], votes);
+    // Boards stored before link previews have no language: English, the site's default.
+    this.board = restoreBoard({ ...m, lang: m.lang ?? 'en' }, JSON.parse(items.v) as Item[], votes);
   }
 
   private saveMeta(board: SharedBoard): void {
@@ -245,6 +249,11 @@ export class BoardObject extends DurableObject<Env> {
   summary(voter: string): BoardSummary | null {
     const board = this.board;
     return board ? boardSummary(board, this.crowd(board), voter) : null;
+  }
+
+  /** What the board's link preview says: title, items, counts and language, never the ranking. */
+  unfurl(): Unfurl | null {
+    return this.board ? unfurlOf(this.board) : null;
   }
 
   async updateSettings(token: string, patch: unknown): Promise<Result<BoardSettings>> {
@@ -377,6 +386,9 @@ export class BoardObject extends DurableObject<Env> {
     this.timer = null;
     const db = this.env.REGISTRY;
     if (db && this.alias) this.ctx.waitUntil(deleteBoard(db, this.alias).catch(() => {}));
+    // The cards its links unfurled with go too.
+    const images = this.env.IMAGES;
+    if (images && this.alias) this.ctx.waitUntil(deleteCards(images, this.alias).catch(() => {}));
     this.board = null;
     this.cache = null;
     this.ownerHash = '';
@@ -415,7 +427,15 @@ export class BoardObject extends DurableObject<Env> {
       board = this.board;
       if (!board) return ws.close(GONE, 'not_found');
       const prev = ws.deserializeAttachment() as Session | null;
-      const session = openSession(board, msg.voter, owner, this.crowd(board), Math.random, prev?.lastActionAt);
+      const session = openSession(
+        board,
+        msg.voter,
+        owner,
+        this.crowd(board),
+        Math.random,
+        prev?.lastActionAt,
+        msg.pair ?? null,
+      );
       ws.serializeAttachment(session);
       return send(ws, this.stateFor(board, session));
     }

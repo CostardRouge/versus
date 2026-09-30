@@ -28,7 +28,8 @@ Durable Object, one per published board
    ├─ assigns pairs and runs src/core scoring (same code as the browser)
    ├─ enforces results visibility (never sends the ranking to a client not entitled to it)
    └─ alarm: TTL cleanup of inactive boards
-R2: shared images (later, not in v1)
+R2 (bucket versus-images): the cards a board's links unfurl with, drawn and sent by the app (D100);
+   shared item images later
 ```
 
 Why each piece:
@@ -41,12 +42,13 @@ Why each piece:
 
 ## Implementation (`worker/`)
 
-- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`, items), `/api/summaries` (the cards of a voter's "Your votes", as that voter may see each board) and `/api/admin` (list, totals, inspect, close, remove an item, take down, with `Authorization: Bearer <ADMIN_TOKEN>`); the route list is at the top of the file.
+- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`, items, `PUT …/card` for the link preview card), `/api/summaries` (the cards of a voter's "Your votes", as that voter may see each board) and `/api/admin` (list, totals, inspect, close, remove an item, take down, with `Authorization: Bearer <ADMIN_TOKEN>`); the route list is at the top of the file.
+- `worker/src/cards.ts`: link previews (D100). Stores the 1200×630 PNG the app drew for a board or one of its duels in R2 (`og/<alias>.png`, `og/<alias>/<a>.<b>.png`; 400 KB at most, 40 duel cards per board), serves it under `/og/b/…/<version>.png` (24 h cache; the site's `og.png` when there is none), and rewrites the head of `/app/b/<alias>[?duel=a.b]` with the board's title, a description in its language (`src/i18n/unfurl.ts`) and the card. The cards go with the board (withdrawal, takedown, expiry).
 - `worker/src/registry.ts` + `worker/migrations/`: the D1 registry. Each board writes its row on publication, status and item changes, and at most once a day for votes; the row goes when the board does.
 - Limits: the `PUBLISH_LIMIT` (5 publications per minute) and `API_LIMIT` (120 requests per minute, WebSocket connections included) rate limiting bindings, keyed by client IP; votes and skips are limited per connection (150 ms), item suggestions per connection (5 s).
 - `worker/src/turnstile.ts`: with `TURNSTILE_SECRET` set, publishing requires a Turnstile token (the app shows the widget when `VITE_TURNSTILE_SITE_KEY` is set).
 - `worker/src/board-object.ts`: `BoardObject`, a thin adapter around `src/core/board.ts`. Loads the board from SQLite when it wakes (synchronous reads), keeps each voter's session (queue, skipped pairs, rate limit) in the WebSocket attachment so it survives hibernation, caches the crowd ranking for 1 s, broadcasts at most once per second.
-- Protocol (`src/core/protocol.ts`): the client sends `hello` (voter id, owner token for the author), then `vote`, `skip`, `undo`, `reset`; the server answers `state`, `pairs`, `ranking` (null when not entitled) and `error`.
+- Protocol (`src/core/protocol.ts`): the client sends `hello` (voter id, owner token for the author, the pair a duel link asked for), then `vote`, `skip`, `undo`, `reset`; the server answers `state`, `pairs`, `ranking` (null when not entitled) and `error`.
 - App side: `src/app/remote.ts` (fetch helpers and a WebSocket that says hello on every connection, reconnects with a growing delay and asks the API whether a board still exists before calling it gone), `src/app/board.ts` (board page), `src/app/publish.ts` (publish modal). The app reaches the API at `/api` on its own origin, or `VITE_API_URL`; a production build without either hides publishing.
 - The Worker serves the site too (`assets`, from `dist/`, binding `ASSETS`): files first, then for what matches none the app's page for every view under `/app/` (`/app/demo/…`, `/app/b/<alias>`, D92) and the 404 page with a 404 status for the rest. `npm run worker:dev` builds it in `worker` mode (`.env.worker`: `VITE_API_URL=/`), so publishing works on http://localhost:8787 with the real Worker; `npm run dev` keeps hot reload and proxies `/api` to it.
 - Not built: client-side vote batching. Each vote costs 1/20 of a request (WebSocket billing), so batching only pays off for a viral board, and it would need a longer pair queue; left for when a board needs it. No admin page yet: the admin API is meant for curl or a later page behind Cloudflare Access.
@@ -59,7 +61,7 @@ Free plan:
 - Durable Objects: 100,000 requests/day, 13,000 GB-s/day. Incoming WebSocket messages are billed at a 20:1 ratio (100 messages = 5 requests); outgoing messages are free.
 - Durable Object SQLite: 5 M row reads/day, 100,000 row writes/day, 5 GB stored.
 - D1: 5 M row reads/day, 100,000 row writes/day, 5 GB stored.
-- R2: 10 GB-month storage, free egress.
+- R2: 10 GB-month storage, 1 M class A (writes, lists) and 10 M class B (reads) operations a month, free egress. The quota is the account's, shared with the other sites' buckets. A link preview card is 50 to 200 KB: tens of thousands of boards fit.
 
 Paid plan: $5/month minimum, including 10 M Worker requests/month; DO includes 1 M requests + 400,000 GB-s/month; SQLite 50 M row writes/month.
 
@@ -115,7 +117,7 @@ The `deploy-worker` job in `.github/workflows/ci.yml` runs `npm run worker:deplo
 2. **GitHub**: *Settings* → *Secrets and variables* → *Actions*:
    - secret `CLOUDFLARE_API_TOKEN`: the token;
    - variable `CLOUDFLARE_ACCOUNT_ID`: the account ID (Workers & Pages overview, right column). Setting it turns the job on.
-3. **Deploy**: merge to `main`, or run the CI workflow by hand (*Actions* → *CI* → *Run workflow* on `main`). The first run creates the Worker, the Durable Object class and the D1 database, then applies the D1 migrations. The app answers at `https://versus.<account subdomain>.workers.dev`.
+3. **Deploy**: merge to `main`, or run the CI workflow by hand (*Actions* → *CI* → *Run workflow* on `main`). The first run creates the Worker, the Durable Object class, the R2 bucket `versus-images` (`npm run worker:bucket`, which needs the token to have *Workers R2 Storage* · *Edit*, and the account's R2 enabled once in the dashboard) and the D1 database, then applies the D1 migrations. The app answers at `https://versus.<account subdomain>.workers.dev`.
 4. **Secrets of the Worker** (once it exists), in *Workers & Pages* → `versus` → *Settings* → *Variables and Secrets*, type *Secret*, or with `npx wrangler secret put <NAME> -c worker/wrangler.jsonc`:
    - `ADMIN_TOKEN`: a long random string (`openssl rand -base64 32`); the admin API stays off without it;
    - `TURNSTILE_SECRET`: optional, see below.
