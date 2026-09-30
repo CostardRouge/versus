@@ -8,6 +8,7 @@ import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
 import { enterBoard, leaveBoard, renderBoard } from './board';
 import { cp } from './color';
 import { $, ask, narrow, toast } from './dom';
+import { clearEnding } from './ending';
 import { galleryHTML } from './gallery';
 import { applyStatic } from './header';
 import { renderList } from './items';
@@ -42,6 +43,7 @@ export function render(): void {
 }
 export function open(id: string | undefined, tab: string | undefined): void {
   if (!id) return;
+  clearEnding();
   const pub = S.ranks.find((r) => r.id === id)?.pub;
   if (pub) {
     openBoard(pub.alias);
