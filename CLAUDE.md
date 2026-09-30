@@ -53,6 +53,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   color.ts            color editor popover
   publish.ts          publish modal and the settings form shared with the author panel
   board.ts            published board page: server-assigned duels, crowd ranking (live or frozen), author panel
+  finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
@@ -71,7 +72,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
 

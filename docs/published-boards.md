@@ -53,7 +53,7 @@ The board's Durable Object assigns pairs, not the browser:
 | Mode | Voters see the crowd ranking | Suits |
 | --- | --- | --- |
 | **Always** (default) | Live, while voting | Casual, social boards |
-| **After N votes** | Once they have cast N votes (author picks N, default 10) | Less anchoring, still some feedback |
+| **After N votes** | Once they have cast N votes (author picks N, default 10), or voted every pair when the board has fewer | Less anchoring, still some feedback |
 | **Blind** | Only when the author closes the vote | Contests, unbiased results |
 
 - In every mode, duel cards never show the crowd's score or rank: the duel itself stays blind.
@@ -70,6 +70,18 @@ The board's Durable Object assigns pairs, not the browser:
 - Off: the ranking stays frozen and a badge shows "37 new votes · Refresh".
 - Items whose error margins overlap are shown as neck and neck rather than in a falsely precise order, so close items don't flicker.
 - Stability no longer applies (a crowd ranking never ends). Show "you voted 14 duels" to the voter and "412 votes · 38 voters" for the board.
+
+## End of the vote
+
+When a voter has voted on every pair (n(n−1)/2), their result gets a page of its own, on the same link:
+
+- It opens by itself right after the last vote, with a reveal (the count reaches its total, then the result appears; no animation under `prefers-reduced-motion`). Later, the board shows "You voted on every pair" with a "See your result" button.
+- Two views of the same data, switched by two small icons at the top right (remembered in this browser, podium first):
+  - **Podium**: the crowd's top 3 (the winner revealed last), a switch to the voter's own podium, the agreement with the crowd and the rest of the ranking.
+  - **You vs the crowd**: the voter's ranking (computed in the browser from their votes) facing the crowd's, each item linked by a line; crossing lines are where they disagree. The heading names the crowd's winner; a list shows the voter's picks the crowd contradicts.
+- Visibility still applies: on a blind board the crowd's side waits for the closing and the voter sees their own ranking.
+- The crowd's side follows live updates (a new order re-renders it), or waits for "Refresh" when they are off.
+- If the author adds items, the page says how many new pairs there are and its main button goes back to voting.
 
 ## Author settings
 

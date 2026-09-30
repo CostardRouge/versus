@@ -11,21 +11,21 @@ Last updated 2026-09-30.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (190 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (195 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
 - Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
 - Backend prototype in `worker/`: Worker router + one Durable Object per published board (SQLite, hibernatable WebSockets, TTL alarm). Publish, public view, server-assigned pairs, votes, undo and reset, visibility enforced by the server, author settings, close/reopen, withdraw with a local copy. Rules in `src/core/board.ts`; end-to-end tests in workerd. Not deployed.
 - Header: Publish restyled as the one colored control (A → B gradient), placed last; header controls aligned at 44 px.
 - Published boards: the author changes a color item's color from the author panel; its votes are dropped and it starts again from zero. Same colors flagged.
+- End-of-vote page: once a voter has voted every pair, their result on a page of its own with a reveal, as a podium or as their ranking facing the crowd's (toggle, remembered); blind boards keep the crowd for the closing. "After N votes" now also reveals at every pair.
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
 
 ## Next (suggested order)
 
-1. **End-of-vote page** for published boards: when a voter has voted every pair, a page of its own reveals the result with an animation, in two views switched by a discreet toggle (a podium, and "you vs the crowd" with lines between both rankings). Mockups validated. Fix on the way: with "after N votes", a board with fewer than N pairs never shows the crowd to a voter who voted them all (threshold = min(N, pairs)).
-2. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
-3. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
-4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point.
+1. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
+2. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
+3. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point.
 
 ## Later / ideas
 

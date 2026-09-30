@@ -222,7 +222,63 @@ describe('voting', () => {
     expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p0', b: 'p2', s: 0.5 });
     ws.receive({ t: 'pairs', pairs: [], mine: 3 });
     await vi.advanceTimersByTimeAsync(600);
+    expect($('#fin h1')?.textContent).toBe('You voted on every pair');
+  });
+
+  it('shows the result on a page of its own after the last vote, in two views', async () => {
+    const ws = FakeSocket.last();
+    // The podium: the crowd's, then the voter's own.
+    expect(document.querySelectorAll('#fin .fin-pd')).toHaveLength(3);
+    expect($('#fin .fin-pd-1 .fin-tile')?.textContent).toBe('Margherita');
+    expect($('#fin .fin-num [data-count]')?.dataset.count).toBe('3');
+    expect($('#fin .fin-num small')?.textContent).toBe('/3');
+    click('[data-action="b-finale-who"][data-who="me"]');
+    expect($('#fin-pod-h')?.textContent).toBe('Your podium');
+    expect($('#fin .fin-pd-1 .fin-pd-meta')?.textContent).toContain('1W 0L');
+
+    // Face à face, remembered in this browser.
+    click('[data-action="b-finale-view"][data-view="duo"]');
+    expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').resultView).toBe('duo');
+    expect($('#fin h1')?.textContent).toBe('The crowd chose Margherita.');
+    expect(document.querySelectorAll('#fin .fin-mine li')).toHaveLength(3);
+    expect(document.querySelectorAll('#fin .fin-lines path')).toHaveLength(3);
+
+    // Live: a new crowd order shows at once; the keyboard doesn't vote here.
+    ws.receive({ t: 'ranking', counts: { votes: 9, voters: 3, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    expect($('#fin h1')?.textContent).toBe('The crowd chose Calzone.');
+    expect($('#fin-counts')?.textContent).toContain('9 votes');
+    const sent = ws.sent.length;
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(ws.sent).toHaveLength(sent);
+    ws.receive({ t: 'ranking', counts: { votes: 9, voters: 3, online: 2 }, ranking: ranking(['p0', 'p1', 'p2']) });
+
+    // Back to the board, and to the result again.
+    click('[data-action="b-finale-close"]');
+    expect($('#fin')).toBeNull();
     expect($('#b-main')?.textContent).toContain('You voted on every pair');
+    click('[data-action="b-finale"]');
+    expect($('#fin h1')?.textContent).toBe('The crowd chose Margherita.');
+    click('[data-action="b-finale-close"]');
+  });
+
+  it('keeps the crowd for the closing on a blind board, showing the voter their own ranking', () => {
+    const ws = FakeSocket.last();
+    const blind = { settings: { ...view().settings, visibility: 'blind' as const }, ranking: null };
+    const mine = [
+      { a: 'p2', b: 'p0', s: 1 as const },
+      { a: 'p2', b: 'p1', s: 1 as const },
+      { a: 'p1', b: 'p0', s: 1 as const },
+    ];
+    ws.receive({ ...state(blind), mine, pairs: [] } as ServerMessage);
+    click('[data-action="b-finale"]');
+    expect($('#fin h1')?.textContent).toBe('Your winner: Calzone.');
+    expect(document.querySelectorAll('#fin .fin-ph')).toHaveLength(3);
+    expect($('#fin .fin-locked')).not.toBeNull();
+    click('[data-action="b-finale-view"][data-view="podium"]');
+    expect($('#fin-pod-h')?.textContent).toBe('Your podium');
+    expect($('[data-action="b-finale-who"]')).toBeNull();
+    click('[data-action="b-finale-close"]');
+    ws.receive(state());
   });
 
   it('holds the ranking while live updates are off', () => {

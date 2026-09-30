@@ -28,6 +28,7 @@ import {
   restoreBoard,
   retractAll,
   retractVote,
+  revealAt,
   sessionAdd,
   sessionReset,
   sessionSkip,
@@ -366,6 +367,19 @@ describe('visibility', () => {
     expect(canSeeRanking(b, V1, true)).toBe(true);
     setStatus(b, 'closed', T0);
     expect(canSeeRanking(b, null, false)).toBe(true);
+  });
+
+  it('reveals "after N votes" boards to whoever voted every pair, even when there are fewer than N', () => {
+    expect(revealAt(10, 4)).toBe(6);
+    expect(revealAt(3, 4)).toBe(3);
+    expect(revealAt(10, 0)).toBe(1);
+    const b = board(3);
+    updateSettings(b, { visibility: 'after', revealAfter: 10 }, T0);
+    value(castVote(b, V2, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i0', 'i2', 1, T0));
+    expect(canSeeRanking(b, V2, false)).toBe(false);
+    value(castVote(b, V2, 'i1', 'i2', 1, T0));
+    expect(canSeeRanking(b, V2, false)).toBe(true);
   });
 });
 

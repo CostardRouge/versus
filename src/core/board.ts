@@ -353,12 +353,23 @@ export function toRanking(board: SharedBoard): Ranking {
 
 export const crowd = (board: SharedBoard): Computed => compute(toRanking(board));
 
+export const totalPairs = (n: number): number => (n * (n - 1)) / 2;
+
+/**
+ * Votes a voter needs to see the crowd in "after N votes" mode: N, or every pair when the board has
+ * fewer, so that voting on everything always reveals it.
+ */
+export const revealAt = (revealAfter: number, items: number): number =>
+  Math.max(1, Math.min(revealAfter, totalPairs(items)));
+
 /** Whether this viewer may see the crowd ranking. Enforced by the server, never by hiding UI. */
 export function canSeeRanking(board: SharedBoard, voter: string | null, owner: boolean): boolean {
   if (owner || board.status === 'closed') return true;
   const { visibility, revealAfter } = board.settings;
   if (visibility === 'always') return true;
-  if (visibility === 'after') return voter !== null && voteCount(board, voter) >= revealAfter;
+  if (visibility === 'after') {
+    return voter !== null && voteCount(board, voter) >= revealAt(revealAfter, board.items.length);
+  }
   return false;
 }
 
