@@ -8,7 +8,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
 - Live: https://costardrouge.github.io/versus/ (GitHub Pages, deployed by CI from `main`).
-- Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D75). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
+- Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D75). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts`, `publish.ts` and `joined.ts` (the boards a visitor voted on, under "Your votes"). The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
 ## How this project is built
@@ -55,13 +55,15 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   board.ts            published boards: publish validation, one voice per pair, visibility, pair assignment, sessions
   protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker
   published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
+  joined.ts           "Your votes": cards of boards voted on (snapshot, what's new since the last visit, order, copy)
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
   ui.ts               mount(): loads data, adds demos, binds events, first render
   state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
   rankings.ts         render() (gallery or workspace) and ranking-level actions (new, open, reset, duplicate, delete, language)
-  gallery.ts          gallery cards
+  gallery.ts          gallery cards: your rankings, your votes (boards voted on), demos
+  joined.ts           "Your votes": records a card at the first vote, refreshes cards from the server, forget, keep a copy
   workspace.ts        workspace shell, tabs, method menu, renderMain() (duel or results)
   items.ts            side list (live-sorted, FLIP) and item edits (add text/colors/images, rename, remove)
   duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
@@ -79,7 +81,8 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   storage.ts          guarded localStorage access, prefs, migration from prototype keys
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
                       registry.ts + migrations/ (D1 registry), turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET
-tests/                one suite per core module + app.test.ts (jsdom smoke test) + worker.test.ts (end to end in workerd via Wrangler's test harness)
+tests/                one suite per core module + app.test.ts (jsdom smoke test) + board-ui.test.ts and votes-ui.test.ts (published boards and
+                      "Your votes" against a fake API) + worker.test.ts (end to end in workerd via Wrangler's test harness)
                       + seo.test.ts (head, JSON-LD, icons and generated files stay consistent) + pwa.test.ts (precache list, version)
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA
 ```
@@ -92,7 +95,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"). Changing the stored shape requires a migration in `storage.ts`.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in `index.html` or `public/`: the head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address comes from `VITE_SITE_URL` (CI variable `SITE_URL`). A redesigned icon or social card gets new file names (caches key on the URL). Details in `docs/seo.md`.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.

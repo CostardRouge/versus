@@ -1,6 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadLegacyRanks, loadPrefs, loadRanks, PREF_KEY, STORE_KEY, savePrefs, saveRanks } from '../src/app/storage';
+import {
+  JOINED_KEY,
+  loadJoined,
+  loadLegacyRanks,
+  loadPrefs,
+  loadRanks,
+  PREF_KEY,
+  STORE_KEY,
+  saveJoined,
+  savePrefs,
+  saveRanks,
+} from '../src/app/storage';
+import { DEFAULT_SETTINGS } from '../src/core/board';
 import { mkItem, mkRank } from '../src/core/model';
+import type { Joined } from '../src/core/types';
 
 class MemoryStorage {
   private data = new Map<string, string>();
@@ -61,5 +74,35 @@ describe('storage', () => {
     savePrefs({ lang: 'fr', hideDemos: true });
     expect(JSON.parse(localStorage.getItem(PREF_KEY) ?? '{}')).toEqual({ lang: 'fr', hideDemos: true });
     expect(loadPrefs()).toEqual({ lang: 'fr', hideDemos: true });
+  });
+
+  it('keeps the boards voted on, and survives garbage or a failed write', () => {
+    expect(loadJoined()).toEqual([]);
+    const card: Joined = {
+      alias: 'Ab3dEf7hJk',
+      title: 'Pizzas',
+      items: [mkItem('A'), mkItem('B')],
+      settings: { ...DEFAULT_SETTINGS },
+      status: 'open',
+      votes: 3,
+      voters: 2,
+      order: null,
+      mine: [],
+      count: 1,
+      joined: 1,
+      voted: 1,
+      seen: { at: 1, status: 'open', items: [], visible: false },
+    };
+    saveJoined([card]);
+    expect(loadJoined()).toEqual([card]);
+    localStorage.setItem(JOINED_KEY, '{not json');
+    expect(loadJoined()).toEqual([]);
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    });
+    expect(() => saveJoined([card])).not.toThrow();
   });
 });

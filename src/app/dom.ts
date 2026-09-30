@@ -12,6 +12,7 @@ export let doc: Document;
 export let narrow: MQ;
 export let reduced = false;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
+let toastRun: (() => void) | null = null;
 let modalDone: ((v: boolean) => void) | null = null;
 
 export const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = doc): T | null =>
@@ -36,13 +37,29 @@ export const imgSvg =
   '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>';
 
 /* ---------- UI helpers ---------- */
-export function toast(msg: string): void {
+/** A short message; with an action (Undo), it stays longer and carries a button. */
+export function toast(msg: string, action?: { label: string; run: () => void }): void {
   const el = $('#toast');
   if (!el) return;
-  el.textContent = msg;
+  toastRun = action?.run ?? null;
+  if (action) {
+    el.innerHTML = `<span>${esc(msg)}</span><button class="toast-act" type="button" data-action="toast-act">${esc(action.label)}</button>`;
+  } else el.textContent = msg;
+  el.classList.toggle('has-act', !!action);
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  toastTimer = setTimeout(hideToast, action ? 6000 : 2600);
+}
+function hideToast(): void {
+  toastRun = null;
+  $('#toast')?.classList.remove('show');
+}
+/** Runs the action of the toast on screen, once. */
+export function toastAct(): void {
+  const run = toastRun;
+  clearTimeout(toastTimer);
+  hideToast();
+  run?.();
 }
 export function announce(msg: string): void {
   const el = $('#live');

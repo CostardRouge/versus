@@ -1,4 +1,5 @@
 import { ALIAS_RE, isRecord, makeAlias, parsePublish } from '../../src/core/board';
+import { parseSummaryRequest } from '../../src/core/protocol';
 import type { ErrorCode, Result } from '../../src/core/types';
 import type { Env } from './env';
 import { listBoards, totals } from './registry';
@@ -18,6 +19,9 @@ export { BoardObject } from './board-object';
  *   PATCH  /api/boards/:alias/items/:id         recolor a color item ({ fill }); its votes are dropped (owner)
  *   DELETE /api/boards/:alias/items/:id         remove an item and its votes     (owner)
  *   DELETE /api/boards/:alias                   withdraw; returns the local copy (owner)
+ *
+ *   POST   /api/summaries                       { voter, aliases } → { [alias]: summary, or null when gone }:
+ *                                               the boards of a voter's "Your votes", as that voter may see them
  *
  *   GET    /api/admin/stats                     totals from the registry         (admin)
  *   GET    /api/admin/boards?limit&offset       boards, most recently active first
@@ -96,6 +100,17 @@ async function publish(req: Request, env: Env): Promise<Response> {
     if ((await board.publish(input.value, owner, alias)) === 'ok') return json({ alias, owner }, 201);
   }
   return error('exists');
+}
+
+/** The cards under "Your votes": each board as this voter may see it (the voter id stays out of URLs). */
+async function summaries(req: Request, env: Env): Promise<Response> {
+  const body = await readJson(req);
+  if (body === null) return error('too_large');
+  const input = parseSummaryRequest(body);
+  if (!input.ok) return error(input.error);
+  const { voter, aliases } = input.value;
+  const found = await Promise.all(aliases.map((alias) => env.BOARDS.getByName(alias).summary(voter)));
+  return json(Object.fromEntries(aliases.map((alias, i) => [alias, found[i] ?? null])));
 }
 
 /** Routes under /api/boards/:alias. */
@@ -184,6 +199,8 @@ export default {
     if (api !== 'api') return error('not_found');
     if (!(await allowed(env.API_LIMIT, req))) return error('rate_limited');
     if (section === 'admin') return admin(req, env, rest);
+    if (section === 'summaries')
+      return req.method === 'POST' && !rest.length ? summaries(req, env) : error('not_found');
     if (section !== 'boards') return error('not_found');
     const [alias, ...more] = rest;
     if (alias === undefined) return req.method === 'POST' ? publish(req, env) : error('not_found');

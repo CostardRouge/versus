@@ -1,4 +1,4 @@
-import { isOutcome, isRecord, VOTER_RE, votesOf } from './board';
+import { ALIAS_RE, canSeeRanking, isOutcome, isRecord, LIMITS, VOTER_RE, voteCount, votesOf } from './board';
 import type {
   BoardSettings,
   BoardStatus,
@@ -8,6 +8,7 @@ import type {
   Item,
   MethodKey,
   Outcome,
+  Result,
   SharedBoard,
 } from './types';
 
@@ -98,6 +99,49 @@ export function boardView(board: SharedBoard, C: Computed, online: number, visib
 
 export const myDuels = (board: SharedBoard, voter: string): Duel[] =>
   votesOf(board, voter).map(({ a, b, s }) => ({ a, b, s }));
+
+// ─── "Your votes" ───────────────────────────────────────────────────────────
+
+/** A board as one voter may see it, without a connection: what a card under "Your votes" needs. */
+export interface BoardSummary {
+  title: string;
+  items: Item[];
+  settings: BoardSettings;
+  status: BoardStatus;
+  counts: { votes: number; voters: number };
+  /** This voter's vote count. */
+  mine: number;
+  /** The crowd order (item ids, best first) when this voter may see it, else null. */
+  order: string[] | null;
+}
+
+export const boardSummary = (board: SharedBoard, C: Computed, voter: string): BoardSummary => ({
+  title: board.title,
+  items: board.items,
+  settings: board.settings,
+  status: board.status,
+  counts: { votes: board.votes.size, voters: board.voters.size },
+  mine: voteCount(board, voter),
+  order: canSeeRanking(board, voter, false) ? C.order.map((i) => i.id) : null,
+});
+
+export interface SummaryRequest {
+  voter: string;
+  aliases: string[];
+}
+
+/** Validates a "Your votes" refresh: a voter id and 1 to LIMITS.summaries board aliases (duplicates dropped). */
+export function parseSummaryRequest(x: unknown): Result<SummaryRequest> {
+  if (!isRecord(x) || typeof x.voter !== 'string' || !VOTER_RE.test(x.voter) || !Array.isArray(x.aliases)) {
+    return { ok: false, error: 'bad_request' };
+  }
+  const aliases = [...new Set(x.aliases)];
+  if (!aliases.length || aliases.length > LIMITS.summaries) return { ok: false, error: 'bad_request' };
+  if (!aliases.every((a): a is string => typeof a === 'string' && ALIAS_RE.test(a))) {
+    return { ok: false, error: 'bad_request' };
+  }
+  return { ok: true, value: { voter: x.voter, aliases } };
+}
 
 const isId = (x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 32;
 

@@ -7,7 +7,7 @@ import { applyStatic } from './header';
 import { initPwa } from './pwa';
 import { render, routeFromHash } from './rankings';
 import { S, save } from './state';
-import { loadLegacyRanks, loadPrefs, loadRanks, loadVoter } from './storage';
+import { loadJoined, loadLegacyRanks, loadPrefs, loadRanks, loadVoter } from './storage';
 
 /**
  * Entry point of the app UI. The views live in their own modules: gallery, workspace (shell, tabs,
@@ -24,6 +24,7 @@ export function mount(d: Document): void {
   const lang: Lang = detectLang(S.prefs.lang, navigator.language);
   setI18nLang(lang);
   S.ranks = loadRanks() ?? loadLegacyRanks();
+  S.joined = loadJoined();
   for (const demo of DEMOS) {
     if (!S.ranks.some((r) => r.id === demo.id)) S.ranks.push(buildDemo(demo, lang));
   }

@@ -107,6 +107,33 @@ export interface SharedBoard {
 
 export type BoardMeta = Pick<SharedBoard, 'title' | 'settings' | 'status' | 'created' | 'touched'>;
 
+/**
+ * A published board this browser voted on without managing it: a card under "Your votes" in the
+ * gallery, kept on this device. A snapshot, so the card reads offline and after the board is gone.
+ */
+export interface Joined {
+  alias: string;
+  title: string;
+  items: Item[];
+  settings: BoardSettings;
+  status: BoardStatus;
+  votes: number;
+  voters: number;
+  /** The crowd order (item ids, best first) as this voter may see it; null while hidden from them. */
+  order: string[] | null;
+  /** This voter's votes as last seen on the board (their own ranking, and the copy they can keep). */
+  mine: Duel[];
+  /** This voter's vote count as the server last reported it. */
+  count: number;
+  /** When the card appeared, and this voter's last vote. */
+  joined: number;
+  voted: number;
+  /** What the voter saw on their last visit to the board, to tell what changed since. */
+  seen: { at: number; status: BoardStatus; items: string[]; visible: boolean };
+  /** The board no longer exists (withdrawn or expired). */
+  gone?: boolean;
+}
+
 /** One connected voter. Kept small and serializable: it lives in the WebSocket attachment. */
 export interface Session {
   voter: string;

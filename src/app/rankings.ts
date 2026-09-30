@@ -12,6 +12,7 @@ import { clearEnding } from './ending';
 import { galleryHTML } from './gallery';
 import { applyStatic } from './header';
 import { renderList } from './items';
+import { refreshJoined } from './joined';
 import { online } from './remote';
 import { cur, S, save } from './state';
 import { saveOwner, savePrefs } from './storage';
@@ -39,7 +40,10 @@ export function render(): void {
     view.innerHTML = wsHTML(r);
     renderList(r, false);
     setTab(S.route.tab);
-  } else view.innerHTML = galleryHTML();
+  } else {
+    view.innerHTML = galleryHTML();
+    void refreshJoined();
+  }
 }
 export function open(id: string | undefined, tab: string | undefined): void {
   if (!id) return;

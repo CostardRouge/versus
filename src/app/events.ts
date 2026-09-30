@@ -22,10 +22,11 @@ import {
   setFinaleWho,
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
-import { $, closeModal, doc, narrow, toast } from './dom';
+import { $, closeModal, doc, narrow, toast, toastAct } from './dom';
 import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
 import { changeTheme } from './header';
 import { addColor, addFiles, addLabels, removeItem, renameItem } from './items';
+import { forgetJoined, keepJoinedCopy } from './joined';
 import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
@@ -154,6 +155,15 @@ function onClick(e: MouseEvent): void {
       break;
     case 'copy-link':
       void copyBoardLink(el.dataset.alias);
+      break;
+    case 'forget':
+      forgetJoined(el.dataset.alias);
+      break;
+    case 'joined-copy':
+      keepJoinedCopy(el.dataset.alias);
+      break;
+    case 'toast-act':
+      toastAct();
       break;
     case 'b-pick':
       boardPick(el.dataset.side);

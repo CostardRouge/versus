@@ -1,4 +1,4 @@
-import type { BoardView, ClientMessage, ServerMessage } from '../core/protocol';
+import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
 import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking } from '../core/types';
 
@@ -19,12 +19,12 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
+async function call<T>(method: string, path: string, body?: unknown, token?: string, root = '/api/boards'): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`${API ?? ''}/api/boards${path}`, {
+    res = await fetch(`${API ?? ''}${root}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -54,6 +54,9 @@ export const recolorBoardItem = (alias: string, token: string, id: string, fill:
   call<number>('PATCH', `/${alias}/items/${encodeURIComponent(id)}`, { fill }, token);
 /** Deletes the board; the server hands back the author's local copy. */
 export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DELETE', `/${alias}`, undefined, token);
+/** Boards as this voter may see them, for "Your votes"; null for a board that no longer exists. */
+export const fetchSummaries = (voter: string, aliases: string[]) =>
+  call<Record<string, BoardSummary | null>>('POST', '', { voter, aliases }, undefined, '/api/summaries');
 
 export type Connection = 'connecting' | 'open' | 'lost' | 'gone';
 

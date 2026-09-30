@@ -20,6 +20,7 @@ import {
   setPodiumWho,
 } from './finale';
 import { fmtCrowd } from './format';
+import { flushJoined, markGone, noteBoard } from './joined';
 import { optionsHTML, readSettings, settingsHTML } from './publish';
 import { open } from './rankings';
 import {
@@ -148,6 +149,7 @@ export function enterBoard(alias: string, available: boolean): void {
 }
 
 export function leaveBoard(): void {
+  flushJoined();
   B?.socket?.close();
   B = null;
   resetFinale();
@@ -159,7 +161,10 @@ function onConnection(board: Board, c: Connection): void {
   if (B !== board) return;
   board.conn = c;
   // Nothing is deleted here: the author decides, from the page, to take back the local version.
-  if (c === 'gone' && !board.leaving) board.view = null;
+  if (c === 'gone' && !board.leaving) {
+    board.view = null;
+    markGone(board.alias);
+  }
   if (!board.view) renderBoard();
   else {
     const banner = $('#b-conn');
@@ -184,11 +189,13 @@ function onMessage(board: Board, m: ServerMessage): void {
       local.pub.status = m.board.status;
       save();
     }
+    note(board);
     renderBoard();
   } else if (m.t === 'pairs') {
-    board.pending.shift();
+    const head = board.pending.shift();
     board.pairs = m.pairs;
     board.count = m.mine;
+    note(board, head?.kind === 'vote');
     if (!board.busy) renderDuel();
     renderRanking();
   } else if (m.t === 'ranking') {
@@ -201,6 +208,7 @@ function onMessage(board: Board, m: ServerMessage): void {
       board.shown = m.ranking;
       board.shownVotes = m.counts.votes;
     }
+    note(board, false, true);
     const counts = $('#b-counts') ?? $('#fin-counts');
     if (counts) counts.textContent = countsText(board.counts);
     if (board.finale && orderOf(before) !== orderOf(board.shown)) renderBoard();
@@ -216,6 +224,20 @@ function onMessage(board: Board, m: ServerMessage): void {
     const key = errorText(m.code, head?.kind);
     if (key) toast(t(key));
   }
+}
+
+/** Keeps this board's card under "Your votes" current; boards managed from a local ranking have none. */
+function note(b: Board, voted = false, lazy = false): void {
+  if (!b.view || localOf(b.alias)) return;
+  const snap = {
+    alias: b.alias,
+    view: b.view,
+    counts: b.counts,
+    order: b.latest?.order ?? null,
+    mine: b.mine,
+    count: b.count,
+  };
+  noteBoard(snap, voted, lazy);
 }
 
 // ─── Rendering ──────────────────────────────────────────────────────────────

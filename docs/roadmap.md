@@ -23,6 +23,7 @@ Last updated 2026-09-30.
 - SEO pass, ported from steevepommier.com (`docs/seo.md`): head generated from `build/site.ts` (canonical, robots, Open Graph, X card, JSON-LD graph), 1200×630 social card, favicons for Google, iOS and Android (ico, SVG, 96/192/512, maskable, apple-touch), web app manifest, robots.txt, sitemap, llms.txt, `<noscript>` fallback, Cloudflare headers; fonts self-hosted and preloaded.
 - Installable, offline app (PWA, `docs/pwa.md`): hand-written service worker precaching the app at build time, new versions offered with Reload / Later, install button when the browser offers one, persistent storage for the installed app.
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
+- Your votes: published boards a visitor voted on get a card in their gallery (own section, first for someone with no ranking of their own), refreshed in one request, with what changed since their last visit; forget with undo, keep a copy of a withdrawn board (`docs/published-boards.md#your-votes-the-voters-gallery`).
 
 ## Next (suggested order)
 
@@ -42,7 +43,6 @@ Last updated 2026-09-30.
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
 - Images on published boards (R2), once reporting and takedown exist.
-- Boards a visitor voted on listed in their gallery ("Joined").
 - Crowd ranking by aggregating each voter's own ranking (Borda, Kemeny) as an alternative to pooled votes.
 - Publish presets ("Open", "Blind contest") if the publish modal still feels heavy.
 - Admin page behind Cloudflare Access (the admin API exists), with usage against free-tier limits.
@@ -56,5 +56,4 @@ None of these blocks the backend spike; all must be settled before a public laun
 - **Anti-abuse**: rate limits per connection and IP, Turnstile at publication; an author option to require Turnstile per voter?
 - **Moderation**: even text-only public boards need reporting, takedown and an admin view; a legal and safety requirement, stronger once images open.
 - **Cleanup**: TTL of inactive published boards (proposal: 60 days without a vote), warning the author before deletion.
-- **Voter gallery**: do boards a visitor voted on appear in their gallery ("Joined")?
 - **Accounts**: none at first; magic link or OAuth (GitHub/Google) later?

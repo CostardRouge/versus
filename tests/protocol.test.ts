@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { castVote, createBoard, crowd, DEFAULT_SETTINGS } from '../src/core/board';
-import { boardView, countsOf, MAX_MESSAGE, myDuels, parseClientMessage, rankingView } from '../src/core/protocol';
+import { castVote, createBoard, crowd, DEFAULT_SETTINGS, LIMITS, setStatus } from '../src/core/board';
+import {
+  boardSummary,
+  boardView,
+  countsOf,
+  MAX_MESSAGE,
+  myDuels,
+  parseClientMessage,
+  parseSummaryRequest,
+  rankingView,
+} from '../src/core/protocol';
 
 const VOTER = 'voter-one-1';
 
@@ -89,5 +98,53 @@ describe('views', () => {
   it("lists a voter's own votes", () => {
     expect(myDuels(board(), VOTER)).toEqual([{ a: 'i0', b: 'i1', s: 1 }]);
     expect(myDuels(board(), 'nobody-here')).toEqual([]);
+  });
+});
+
+describe('summaries for "Your votes"', () => {
+  it('gives each voter their vote count and the crowd order only when they may see it', () => {
+    const b = board();
+    expect(boardSummary(b, crowd(b), VOTER)).toMatchObject({
+      title: 'T',
+      status: 'open',
+      counts: { votes: 2, voters: 2 },
+      mine: 1,
+    });
+    expect(boardSummary(b, crowd(b), VOTER).order).toHaveLength(3);
+    b.settings.visibility = 'blind';
+    expect(boardSummary(b, crowd(b), VOTER).order).toBeNull();
+    b.settings.visibility = 'after';
+    b.settings.revealAfter = 1;
+    expect(boardSummary(b, crowd(b), VOTER).order).toHaveLength(3);
+    expect(boardSummary(b, crowd(b), 'nobody-here')).toMatchObject({ mine: 0, order: null });
+    setStatus(b, 'closed', 9);
+    expect(boardSummary(b, crowd(b), 'nobody-here').order).toHaveLength(3);
+  });
+
+  it('parses a refresh request, dropping repeated aliases', () => {
+    expect(parseSummaryRequest({ voter: VOTER, aliases: ['Ab3dEf7hJk', 'Ab3dEf7hJk', 'Zz3dEf7hJk'] })).toEqual({
+      ok: true,
+      value: { voter: VOTER, aliases: ['Ab3dEf7hJk', 'Zz3dEf7hJk'] },
+    });
+  });
+
+  it.each([
+    ['no body', null],
+    ['a bad voter', { voter: 'x', aliases: ['Ab3dEf7hJk'] }],
+    ['no aliases', { voter: VOTER, aliases: [] }],
+    ['aliases that are not a list', { voter: VOTER, aliases: 'Ab3dEf7hJk' }],
+    ['a bad alias', { voter: VOTER, aliases: ['Ab3dEf7hJk', 'nope'] }],
+    [
+      'too many aliases',
+      {
+        voter: VOTER,
+        aliases: Array.from(
+          { length: LIMITS.summaries + 1 },
+          (_, i) => `Ab3dEf7h${'ABCDEFGHJKLMNPQRSTUVWXYZ'[i % 24]}${'abcdef'[Math.floor(i / 24)]}`,
+        ),
+      },
+    ],
+  ])('rejects %s', (_, body) => {
+    expect(parseSummaryRequest(body)).toEqual({ ok: false, error: 'bad_request' });
   });
 });
