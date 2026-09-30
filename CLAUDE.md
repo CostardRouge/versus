@@ -67,6 +67,7 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   joined.ts           "Your votes": cards of boards voted on (snapshot, what's new since the last visit, order, copy)
   list.ts             a list typed or pasted in the add field as labels (lines, `\n`, Markdown and bulleted lists, tabs,
                       JSON array); duplicates of what the ranking has
+  backup.ts           export and import (D97–D101): the file format, strict validation of a file, merge that never replaces
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
                       landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules)
@@ -92,6 +93,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   router.ts           the address bar follows the view (push, replace), app folder from the page's <base>; counts each view
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
+  backup.ts           export (share sheet on phones, download elsewhere) and import (file picked or dropped)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
   storage.ts          guarded localStorage access, prefs, migration from prototype keys
 src/landing/          the home page: markup.ts renders it at build time (pure strings, like frame.ts: the demo frames'
@@ -108,6 +110,7 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       + seo.test.ts (heads per page, hreflang, JSON-LD, icons and generated files stay consistent) + pwa.test.ts (precache
                       list, version) + landing.test.ts (home page markup and texts) + landing-ui.test.ts (jsdom smoke test)
                       + audience.test.ts (measurement settings, loading rules, clean payloads) + legal.test.ts (legal pages, switch)
+                      + backup-ui.test.ts (export, import, drop, the iOS home-screen note)
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 

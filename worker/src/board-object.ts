@@ -21,6 +21,7 @@ import {
   sessionUndo,
   sessionVote,
   setStatus,
+  TOKEN_RE,
   TTL_DAYS,
   updateSettings,
   voteCount,
@@ -56,7 +57,6 @@ import { DAY_MS, deleteBoard, upsertBoard } from './registry';
 const BROADCAST_MS = 1000;
 /** Close code sent when the board no longer exists (withdrawn or expired). */
 const GONE = 4004;
-const TOKEN_RE = /^[0-9a-f]{64}$/;
 
 // One row per voter and pair: a vote is a single upsert, so one row write (no extra index).
 const SCHEMA = `

@@ -65,7 +65,7 @@ export function loadLegacyRanks(): Ranking[] {
   return [];
 }
 
-/** Returns false when the write failed (quota exceeded or storage unavailable). */
+/** Returns false when the write failed (quota exceeded or storage unavailable); the stored rankings are then unchanged. */
 export function saveRanks(ranks: Ranking[]): boolean {
   try {
     const s = storage();
@@ -111,6 +111,24 @@ export function loadOwners(): Record<string, string> {
   const v = readJSON(OWNERS_KEY);
   if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
   return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string'));
+}
+
+/** Every owner token at once (an import). */
+export function saveOwners(owners: Record<string, string>): void {
+  try {
+    storage()?.setItem(OWNERS_KEY, JSON.stringify(owners));
+  } catch {
+    /* the admin links still work */
+  }
+}
+
+/** Replaces this browser's voter id (an import into a browser that hasn't voted yet). */
+export function saveVoter(id: string): void {
+  try {
+    storage()?.setItem(VOTER_KEY, JSON.stringify(id));
+  } catch {
+    /* it lasts for the page */
+  }
 }
 
 export function saveOwner(alias: string, token: string | null): void {

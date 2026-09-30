@@ -31,6 +31,8 @@ Referrer: the other site the visitor came from (origin and path only), then, ins
 | `board-joined` | First vote on a board from this browser (its "Your votes" card appears) | none |
 | `board-finished` | The voter has voted every pair (end-of-vote page, D64) | `items` |
 | `app-installed` | The browser reports the app installed | none |
+| `rankings-exported` | A file was saved or shared (D97) | `what` (`all` or `one`), `rankings`, `votes` (counts) |
+| `rankings-imported` | A file brought something new | `rankings` (added), `same` (already here), `votes` (cards added) |
 | `chocolatine` | A side taken at the bottom of the home page | `side`: `chocolatine` or `pain-au-chocolat` |
 
 Umami adds on its own: browser, OS, device type, screen size, language, country (from the IP, which it doesn't store).

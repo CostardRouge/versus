@@ -22,6 +22,7 @@ Last updated 2026-09-30.
 - End-of-vote page: once a voter has voted every pair, their result on a page of its own with a reveal, as a podium or as their ranking facing the crowd's (toggle, remembered); blind boards keep the crowd for the closing. "After N votes" now also reveals at every pair.
 - SEO pass, ported from steevepommier.com (`docs/seo.md`): head generated from `build/site.ts` (canonical, robots, Open Graph, X card, JSON-LD graph), 1200×630 social card, favicons for Google, iOS and Android (ico, SVG, 96/192/512, maskable, apple-touch), web app manifest, robots.txt, sitemap, llms.txt, `<noscript>` fallback, Cloudflare headers; fonts self-hosted and preloaded.
 - Installable, offline app (PWA, `docs/pwa.md`): hand-written service worker precaching the app at build time, new versions offered with Reload / Later, install button when the browser offers one, persistent storage for the installed app.
+- Export and import (`docs/pwa.md`): a backup file of every ranking and vote, or one ranking to send; import by picking or dropping a file, never replacing anything; the manifest in `standalone`, the iOS home-screen app explaining how to bring the rankings from Safari.
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
 - SEO audit fixes (SEOptimer, Seobility): canonical on versus.steevepommier.com, a 55-character title, and the page text (how it works, the four methods, privacy, links) in the static HTML with a single h1, shown under the gallery in the visitor's language.
 - Your votes: published boards a visitor voted on get a card in their gallery (own section, first for someone with no ranking of their own), refreshed in one request, with what changed since their last visit; forget with undo, keep a copy of a withdrawn board (`docs/published-boards.md#your-votes-the-voters-gallery`).
@@ -31,7 +32,7 @@ Last updated 2026-09-30.
 
 ## Next (suggested order)
 
-1. **PWA, next steps** (web first, D75): export/import then `standalone`, images in IndexedDB, share target, native share sheet; list and order in `docs/pwa.md`.
+1. **PWA, next steps** (web first, D75): images in IndexedDB, share target, native share sheet for results and links; list and order in `docs/pwa.md`.
 2. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
 3. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
 4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point, and so is the offline and update scenario in `docs/pwa.md`.
@@ -40,7 +41,7 @@ Last updated 2026-09-30.
 
 - Check the first real figures in Umami (both hosts, clean paths, events), and that the zone's `final slash` redirect rule spares the subdomains (`docs/analytics.md#left-to-check-live`).
 - More languages (ES, PT-BR, DE), driven by traffic.
-- Export / import a ranking as JSON; share a results image.
+- Share a results image.
 - Glicko as an extra method, if ever needed.
 - Native shell (Capacitor) around the web app, only if store presence is ever wanted (D75).
 - Search Console for versus.steevepommier.com: verify, submit the sitemap, request indexing of `/` and `/fr/`.

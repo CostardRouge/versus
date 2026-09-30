@@ -320,6 +320,8 @@ describe('generated files', () => {
     // The installed app opens the app; its id stays the root it had before the home page existed.
     expect(m.start_url).toBe('./app/');
     expect(m.id).toBe('./');
+    // A window of its own, on iOS too: rankings move in with an export and an import (D98).
+    expect(m.display).toBe('standalone');
   });
 
   it('points robots.txt at the sitemap and keeps the API out', () => {
