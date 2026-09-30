@@ -1,15 +1,21 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
+  addItem,
   boardMeta,
   canSeeRanking,
   createBoard,
   crowd,
+  itemId,
   lastActivity,
   localCopy,
   openSession,
   type PublishInput,
+  parseNewItem,
+  recolorItem,
   refill,
+  removeItem,
   restoreBoard,
+  sessionAdd,
   sessionReset,
   sessionSkip,
   sessionUndo,
@@ -42,6 +48,7 @@ import type {
   Vote,
 } from '../../src/core/types';
 import type { Env } from './env';
+import { DAY_MS, deleteBoard, upsertBoard } from './registry';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
 const BROADCAST_MS = 1000;
@@ -64,6 +71,7 @@ CREATE TABLE IF NOT EXISTS votes (
 ) WITHOUT ROWID;`;
 
 interface StoredMeta extends BoardMeta {
+  alias: string;
   ownerHash: string;
 }
 
@@ -88,7 +96,10 @@ function send(ws: WebSocket, msg: ServerMessage | string): void {
  */
 export class BoardObject extends DurableObject<Env> {
   private board: SharedBoard | null = null;
+  private alias = '';
   private ownerHash = '';
+  /** Day of the last registry write (in memory: after a wake, the first activity writes again). */
+  private registryDay = -1;
   private seq = 0;
   private cache: { C: Computed; at: number } | null = null;
   private dirty = false;
@@ -111,18 +122,24 @@ export class BoardObject extends DurableObject<Env> {
     const meta = this.sql.exec<{ v: string }>("SELECT v FROM meta WHERE k = 'board'").toArray()[0];
     const items = this.sql.exec<{ v: string }>("SELECT v FROM meta WHERE k = 'items'").toArray()[0];
     if (!meta || !items) return;
-    const { ownerHash, ...m } = JSON.parse(meta.v) as StoredMeta;
+    const { ownerHash, alias, ...m } = JSON.parse(meta.v) as StoredMeta;
     const votes: Vote[] = [];
     for (const row of this.sql.exec<VoteRow>('SELECT voter, a, b, s, t, seq FROM votes ORDER BY seq')) {
       votes.push({ voter: row.voter, a: row.a, b: row.b, s: row.s as Outcome, t: row.t });
       this.seq = row.seq + 1;
     }
     this.ownerHash = ownerHash;
+    // Boards stored before the registry existed have no alias: they simply stay out of it.
+    this.alias = alias ?? '';
     this.board = restoreBoard(m, JSON.parse(items.v) as Item[], votes);
   }
 
   private saveMeta(board: SharedBoard): void {
-    const v = JSON.stringify({ ...boardMeta(board), ownerHash: this.ownerHash } satisfies StoredMeta);
+    const v = JSON.stringify({
+      ...boardMeta(board),
+      alias: this.alias,
+      ownerHash: this.ownerHash,
+    } satisfies StoredMeta);
     this.sql.exec("INSERT INTO meta (k, v) VALUES ('board', ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v", v);
   }
 
@@ -142,6 +159,32 @@ export class BoardObject extends DurableObject<Env> {
 
   private deleteVotes(votes: Vote[]): void {
     for (const v of votes) this.sql.exec('DELETE FROM votes WHERE voter = ? AND pair = ?', v.voter, pairKey(v.a, v.b));
+  }
+
+  private saveItems(board: SharedBoard): void {
+    this.sql.exec("UPDATE meta SET v = ? WHERE k = 'items'", JSON.stringify(board.items));
+  }
+
+  /** Keeps the D1 registry row current: always for structural changes, at most once a day for votes. */
+  private touchRegistry(board: SharedBoard, force: boolean): void {
+    const db = this.env.REGISTRY;
+    if (!db || !this.alias) return;
+    const now = Date.now();
+    const day = Math.floor(now / DAY_MS);
+    if (!force && day === this.registryDay) return;
+    this.registryDay = day;
+    const row = {
+      alias: this.alias,
+      title: board.title,
+      status: board.status,
+      items: board.items.length,
+      votes: board.votes.size,
+      voters: board.voters.size,
+      created: board.created,
+      active: now,
+    };
+    // The registry only serves the admin view: a failed write must never fail a vote.
+    this.ctx.waitUntil(upsertBoard(db, row).catch(() => {}));
   }
 
   private ttlMs(): number {
@@ -169,12 +212,13 @@ export class BoardObject extends DurableObject<Env> {
 
   // ─── RPC from the Worker ──────────────────────────────────────────────────
 
-  async publish(input: PublishInput, ownerToken: string): Promise<'ok' | 'exists'> {
+  async publish(input: PublishInput, ownerToken: string, alias: string): Promise<'ok' | 'exists'> {
     const ownerHash = await sha256(ownerToken);
     if (this.board) return 'exists';
     const now = Date.now();
     const board = createBoard(input, now);
     this.board = board;
+    this.alias = alias;
     this.ownerHash = ownerHash;
     this.cache = null;
     this.sql.exec(SCHEMA);
@@ -184,6 +228,7 @@ export class BoardObject extends DurableObject<Env> {
       for (const v of board.votes.values()) this.saveVote(v);
     });
     await this.ctx.storage.setAlarm(now + this.ttlMs());
+    this.touchRegistry(board, true);
     return 'ok';
   }
 
@@ -207,11 +252,34 @@ export class BoardObject extends DurableObject<Env> {
 
   async setStatus(token: string, status: BoardStatus): Promise<Result<BoardStatus>> {
     const board = await this.ownedBoard(token);
+    return board.ok ? this.applyStatus(board.value, status) : board;
+  }
+
+  /** Adds an item as the author (any time the board is open, no delay). */
+  async addItem(token: string, raw: unknown): Promise<Result<Item>> {
+    const board = await this.ownedBoard(token);
     if (!board.ok) return board;
-    setStatus(board.value, status, Date.now());
-    this.saveMeta(board.value);
-    this.pushState(board.value);
-    return { ok: true, value: status };
+    const input = parseNewItem(raw);
+    if (!input.ok) return input;
+    const r = addItem(board.value, input.value, this.newItemId(board.value), Date.now());
+    if (r.ok) this.itemsChanged(board.value, []);
+    return r;
+  }
+
+  /** Removes an item and its votes; returns how many votes went with it. */
+  async removeItem(token: string, id: string): Promise<Result<number>> {
+    const board = await this.ownedBoard(token);
+    return board.ok ? this.applyRemove(board.value, id) : board;
+  }
+
+  /** Gives a color item a new fill; its votes are dropped. Returns how many votes went with them. */
+  async recolorItem(token: string, id: string, fill: unknown): Promise<Result<number>> {
+    const board = await this.ownedBoard(token);
+    if (!board.ok) return board;
+    const r = recolorItem(board.value, id, fill, Date.now());
+    if (!r.ok) return r;
+    this.itemsChanged(board.value, r.value.removed);
+    return { ok: true, value: r.value.removed.length };
   }
 
   /** Deletes the board and returns the author's local copy with the crowd's result. */
@@ -221,6 +289,64 @@ export class BoardObject extends DurableObject<Env> {
     const copy = localCopy(board.value, Date.now());
     await this.destroy('withdrawn');
     return { ok: true, value: copy };
+  }
+
+  // ─── Admin (the Worker checks the admin token before calling these) ──────
+
+  /** Everything, ranking included, whatever the visibility. */
+  adminView(): ReturnType<typeof boardView> | null {
+    const board = this.board;
+    return board ? boardView(board, this.crowd(board), this.ctx.getWebSockets().length, true) : null;
+  }
+
+  adminStatus(status: BoardStatus): Result<BoardStatus> {
+    return this.board ? this.applyStatus(this.board, status) : { ok: false, error: 'not_found' };
+  }
+
+  adminRemoveItem(id: string): Result<number> {
+    return this.board ? this.applyRemove(this.board, id) : { ok: false, error: 'not_found' };
+  }
+
+  /** Takedown: deletes the board without a copy for anyone. */
+  async adminDelete(): Promise<Result<true>> {
+    if (!this.board) return { ok: false, error: 'not_found' };
+    await this.destroy('removed');
+    return { ok: true, value: true };
+  }
+
+  private applyStatus(board: SharedBoard, status: BoardStatus): Result<BoardStatus> {
+    setStatus(board, status, Date.now());
+    this.saveMeta(board);
+    this.pushState(board);
+    this.touchRegistry(board, true);
+    return { ok: true, value: status };
+  }
+
+  private applyRemove(board: SharedBoard, id: string): Result<number> {
+    const r = removeItem(board, id, Date.now());
+    if (!r.ok) return r;
+    this.itemsChanged(board, r.value);
+    return { ok: true, value: r.value.length };
+  }
+
+  private newItemId(board: SharedBoard): string {
+    for (;;) {
+      const id = itemId(crypto.getRandomValues(new Uint8Array(12)));
+      if (!board.items.some((i) => i.id === id)) return id;
+    }
+  }
+
+  /** After items were added, changed or removed: persist, then refresh every connection (queues and state). */
+  private itemsChanged(board: SharedBoard, removed: Vote[]): void {
+    this.ctx.storage.transactionSync(() => {
+      this.saveItems(board);
+      this.saveMeta(board);
+      this.deleteVotes(removed);
+    });
+    this.dirty = true;
+    this.cache = null;
+    this.pushState(board);
+    this.touchRegistry(board, true);
   }
 
   private async ownedBoard(token: string): Promise<Result<SharedBoard>> {
@@ -241,6 +367,8 @@ export class BoardObject extends DurableObject<Env> {
     }
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    const db = this.env.REGISTRY;
+    if (db && this.alias) this.ctx.waitUntil(deleteBoard(db, this.alias).catch(() => {}));
     this.board = null;
     this.cache = null;
     this.ownerHash = '';
@@ -287,6 +415,19 @@ export class BoardObject extends DurableObject<Env> {
     const session = ws.deserializeAttachment() as Session | null;
     if (!session) return send(ws, { t: 'error', code: 'hello_first' });
     const now = Date.now();
+
+    if (msg.t === 'add') {
+      const input = parseNewItem(msg.item);
+      const res = input.ok ? sessionAdd(board, session, input.value, this.newItemId(board), now) : input;
+      if (!res.ok) {
+        send(ws, { t: 'error', code: res.error });
+        return send(ws, { t: 'pairs', pairs: session.queue, mine: voteCount(board, session.voter) });
+      }
+      // Everyone, this connection included, gets the new state (and a queue that can use the new item).
+      ws.serializeAttachment(session);
+      return this.itemsChanged(board, []);
+    }
+
     const C = this.crowd(board);
     let r: Result<unknown>;
     if (msg.t === 'vote') {
@@ -342,6 +483,7 @@ export class BoardObject extends DurableObject<Env> {
   private changed(): void {
     this.dirty = true;
     this.scheduleBroadcast();
+    if (this.board) this.touchRegistry(this.board, false);
   }
 
   private scheduleBroadcast(): void {

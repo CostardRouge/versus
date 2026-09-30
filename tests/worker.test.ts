@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { ACTION_INTERVAL_MS, ALIAS_RE } from '../src/core/board';
@@ -10,11 +11,15 @@ import type { BoardSettings, Ranking } from '../src/core/types';
 vi.setConfig({ testTimeout: 20_000, hookTimeout: 60_000 });
 
 const CONFIG = 'worker/wrangler.jsonc';
-const server = createTestHarness({ workers: [{ configPath: CONFIG }] });
+const ADMIN = 'admin-secret-for-tests';
+const server = createTestHarness({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN } }] });
 let base: URL;
 
 beforeAll(async () => {
+  // The Worker serves the app from dist/; the tests run before any build, so an empty folder will do.
+  mkdirSync('dist', { recursive: true });
   base = (await server.listen()).url;
+  await server.getWorker().applyD1Migrations('REGISTRY');
 });
 
 afterAll(() => server.close());
@@ -30,13 +35,23 @@ const items = ['Margherita', 'Regina', 'Calzone', 'Napoli', 'Diavola'].map((labe
   h: 20,
 }));
 
-function api(path: string, init: { method?: string; body?: unknown; token?: string } = {}) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+let ipCount = 0;
+/** Each request gets its own client address unless one is given, so per-IP limits stay out of the way. */
+const nextIp = () => `10.0.${Math.floor(++ipCount / 250)}.${ipCount % 250}`;
+
+function api(path: string, init: { method?: string; body?: unknown; token?: string; ip?: string; root?: string } = {}) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'CF-Connecting-IP': init.ip ?? nextIp(),
+  };
   if (init.token) headers.Authorization = `Bearer ${init.token}`;
   const body =
     typeof init.body === 'string' ? init.body : init.body === undefined ? undefined : JSON.stringify(init.body);
-  return server.fetch(`/api/boards${path}`, { method: init.method ?? 'GET', headers, body });
+  return server.fetch(`${init.root ?? '/api/boards'}${path}`, { method: init.method ?? 'GET', headers, body });
 }
+
+const adminApi = (path: string, init: { method?: string; token?: string } = {}) =>
+  api(path, { ...init, root: '/api/admin', token: init.token ?? ADMIN });
 
 async function publish(settings: Partial<BoardSettings> = {}, duels: unknown[] = []) {
   const res = await api('', { method: 'POST', body: { title: 'Pizzas', items, settings, voter: AUTHOR, duels } });
@@ -302,6 +317,136 @@ describe('author controls', () => {
     expect(await voter.closed).toEqual({ code: 4004, reason: 'withdrawn' });
     expect((await view(alias)).status).toBe(404);
     expect((await api(`/${alias}`, { method: 'DELETE', token: owner })).status).toBe(404);
+  });
+});
+
+describe('items after publication', () => {
+  it('lets the author add and remove items; removing drops their votes', async () => {
+    const { alias, owner } = await publish({}, [
+      { a: 'p0', b: 'p1', s: 1 },
+      { a: 'p2', b: 'p3', s: 1 },
+    ]);
+    const add = (item: unknown, token = owner) => api(`/${alias}/items`, { method: 'POST', body: item, token });
+    expect((await add({ label: 'Hawaii' }, 'f'.repeat(64))).status).toBe(403);
+    const res = await add({ label: '  Hawaii ' });
+    const item = (await res.json()) as { id: string; label: string };
+    expect(item.label).toBe('Hawaii');
+    expect((await add({ label: 'hawaii' })).status).toBe(409);
+    expect((await add({ label: 'x', img: 'data:image/png;base64,' })).status).toBe(400);
+    expect((await view(alias)).body.items).toHaveLength(items.length + 1);
+
+    const remove = (id: string) => api(`/${alias}/items/${id}`, { method: 'DELETE', token: owner });
+    expect(await (await remove('p0')).json()).toBe(1);
+    const after = (await view(alias)).body;
+    expect(after.items.map((i) => i.id)).not.toContain('p0');
+    expect(after.counts.votes).toBe(1);
+    expect((await remove('nope')).status).toBe(404);
+    for (const id of ['p1', 'p2', 'p3']) expect((await remove(id)).status).toBe(200);
+    // Two items left: a board can't go below that.
+    expect((await remove('p4')).status).toBe(409);
+  });
+
+  it('lets the author recolor a color item; its votes are dropped', async () => {
+    const red = { type: 'solid', colors: ['#aa0000'] };
+    const colored = items.map((it, i) => (i < 2 ? { ...it, label: i ? '#AA0000' : 'Rouge', fill: red } : it));
+    const duels = [
+      { a: 'p0', b: 'p1', s: 1 },
+      { a: 'p2', b: 'p3', s: 1 },
+    ];
+    const res = await api('', { method: 'POST', body: { title: 'Couleurs', items: colored, voter: AUTHOR, duels } });
+    const { alias, owner } = (await res.json()) as { alias: string; owner: string };
+    const voter = await Client.open(alias, 'voter-one-1');
+    await voter.next('state');
+    const blue = { type: 'solid', colors: ['#2743f5'] };
+    const recolor = (id: string, body: unknown, token = owner) =>
+      api(`/${alias}/items/${id}`, { method: 'PATCH', body, token });
+    expect((await recolor('p1', { fill: blue }, 'f'.repeat(64))).status).toBe(403);
+    expect((await recolor('p2', { fill: blue })).status).toBe(400);
+    expect((await recolor('p1', {})).status).toBe(400);
+    expect((await recolor('nope', { fill: blue })).status).toBe(404);
+    expect(await (await recolor('p1', { fill: blue })).json()).toBe(1);
+    const state = await voter.next('state');
+    expect(state.board.items.find((i) => i.id === 'p1')).toMatchObject({ label: '#2743F5', fill: blue });
+    expect(state.board.counts.votes).toBe(1);
+    voter.close();
+  });
+
+  it('lets visitors add items only when the author allows it, a few seconds apart', async () => {
+    const { alias, owner } = await publish();
+    const voter = await Client.open(alias, 'voter-one-1');
+    await voter.next('state');
+    voter.send({ t: 'add', item: { label: 'Hawaii' } });
+    expect((await voter.next('error')).code).toBe('forbidden');
+    await api(`/${alias}`, { method: 'PATCH', token: owner, body: { visitorsAddItems: true } });
+    expect((await voter.next('state')).board.settings.visitorsAddItems).toBe(true);
+    voter.send({ t: 'add', item: { label: 'Hawaii', fill: null } });
+    const added = await voter.next('state');
+    expect(added.board.items.map((i) => i.label)).toContain('Hawaii');
+    voter.send({ t: 'add', item: { label: '#FF8800', fill: { type: 'solid', colors: ['#ff8800'] } } });
+    expect((await voter.next('error')).code).toBe('too_fast');
+    voter.close();
+  });
+});
+
+describe('registry and admin', () => {
+  it('lists boards and totals for the admin only', async () => {
+    const { alias } = await publish({}, [{ a: 'p0', b: 'p1', s: 1 }]);
+    expect((await adminApi('/stats', { token: 'wrong' })).status).toBe(403);
+    await vi.waitFor(
+      async () => {
+        const res = await adminApi('/boards?limit=100');
+        const list = (await res.json()) as { boards: { alias: string; votes: number; status: string }[] };
+        expect(list.boards.find((b) => b.alias === alias)).toMatchObject({ votes: 1, status: 'open' });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    const stats = (await (await adminApi('/stats')).json()) as { boards: number; votes: number };
+    expect(stats.boards).toBeGreaterThan(0);
+    expect(stats.votes).toBeGreaterThan(0);
+  });
+
+  it('inspects, closes, moderates and takes down any board', async () => {
+    const { alias } = await publish({ visibility: 'blind' });
+    expect((await view(alias)).body.ranking).toBeNull();
+    const full = (await (await adminApi(`/boards/${alias}`)).json()) as BoardView;
+    expect(full.ranking?.order).toHaveLength(items.length);
+    expect((await adminApi(`/boards/${alias}/close`, { method: 'POST' })).status).toBe(200);
+    expect((await view(alias)).body.status).toBe('closed');
+    expect((await adminApi(`/boards/${alias}/items/p0`, { method: 'DELETE' })).status).toBe(200);
+    expect((await view(alias)).body.items).toHaveLength(items.length - 1);
+    const voter = await Client.open(alias, 'voter-one-1');
+    await voter.next('state');
+    expect((await adminApi(`/boards/${alias}`, { method: 'DELETE' })).status).toBe(200);
+    expect(await voter.closed).toEqual({ code: 4004, reason: 'removed' });
+    expect((await view(alias)).status).toBe(404);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?limit=100')).json()) as { boards: { alias: string }[] };
+        expect(list.boards.some((b) => b.alias === alias)).toBe(false);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    expect((await adminApi('/boards/1111111111')).status).toBe(404);
+    expect((await adminApi('/nothing')).status).toBe(404);
+  });
+});
+
+describe('limits', () => {
+  it('limits publications per IP', async () => {
+    const body = { title: 'Pizzas', items, voter: AUTHOR };
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) statuses.push((await api('', { method: 'POST', body, ip: '203.0.113.7' })).status);
+    expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201]);
+    expect(statuses[5]).toBe(429);
+    // Another address is not affected.
+    expect((await api('', { method: 'POST', body, ip: '203.0.113.8' })).status).toBe(201);
+  });
+
+  it('asks for a Turnstile token once a secret is set', async () => {
+    await server.update({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN, TURNSTILE_SECRET: 'x' } }] });
+    const res = await api('', { method: 'POST', body: { title: 'Pizzas', items, voter: AUTHOR } });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'captcha' });
   });
 });
 

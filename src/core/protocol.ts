@@ -55,7 +55,9 @@ export type ClientMessage =
   /** Deletes one of my votes; its pair comes back first in my queue. */
   | { t: 'undo'; a: string; b: string }
   /** Deletes all my votes. */
-  | { t: 'reset' };
+  | { t: 'reset' }
+  /** Adds an item (visitors, when the author allows it). */
+  | { t: 'add'; item: unknown };
 
 export type ServerMessage =
   | { t: 'state'; board: BoardView; owner: boolean; mine: Duel[]; pairs: [string, string][] }
@@ -121,6 +123,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isId(m.a) && isId(m.b) ? { t: m.t, a: m.a, b: m.b } : null;
     case 'reset':
       return { t: 'reset' };
+    case 'add':
+      return isRecord(m.item) ? { t: 'add', item: m.item } : null;
     default:
       return null;
   }

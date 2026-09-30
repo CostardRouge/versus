@@ -1,4 +1,4 @@
-import type { Fill } from './types';
+import type { Fill, Item } from './types';
 
 /** True for #rgb or #rrggbb. */
 export const isHex = (s: string): boolean => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s.trim());
@@ -76,6 +76,12 @@ export const fillInk = (f: Fill): string =>
   f.colors.reduce((sum, c) => sum + luminance(c), 0) / f.colors.length > 0.18 ? '#15171d' : '#ffffff';
 
 export const fillCode = (f: Fill): string => f.colors.map((c) => normHex(c).toUpperCase()).join(' → ');
+
+export const sameFill = (a: Fill, b: Fill): boolean => fillCode(a) === fillCode(b);
+
+/** Another item with exactly this fill: two identical colors can't be told apart in a duel. */
+export const colorTwin = (items: readonly Item[], id: string, fill: Fill): Item | undefined =>
+  items.find((i) => i.id !== id && i.fill !== null && sameFill(i.fill, fill));
 
 /** Lighter, darker, two analogous, complementary and triadic variants. */
 export function harmonies(hex: string): string[] {

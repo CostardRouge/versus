@@ -1,15 +1,15 @@
 import type { BoardView, ClientMessage, ServerMessage } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
-import type { BoardSettings, BoardStatus, ErrorCode, Ranking } from '../core/types';
+import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking } from '../core/types';
 
 /**
- * Network client for published boards. The API lives under /api on the same origin: the Vite dev
- * server proxies it to `npm run worker:dev`, and VITE_API_URL can point elsewhere. A production build
- * without VITE_API_URL has no backend, so publishing stays hidden.
+ * Network client for published boards. The API lives under /api: on the same origin in dev (the Vite
+ * server proxies it to `npm run worker:dev`) and in the Worker build (VITE_API_URL=/ in .env.worker),
+ * or elsewhere with an absolute VITE_API_URL. A build without it (GitHub Pages) hides publishing.
  */
 
 const configured = import.meta.env.VITE_API_URL as string | undefined;
-const API: string | null = configured ?? (import.meta.env.DEV ? '' : null);
+const API: string | null = configured !== undefined ? configured.replace(/\/+$/, '') : import.meta.env.DEV ? '' : null;
 
 export const online = (): boolean => API !== null;
 
@@ -37,12 +37,21 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
   return data as T;
 }
 
-export const publishBoard = (req: PublishRequest) => call<{ alias: string; owner: string }>('POST', '', req);
+export const publishBoard = (req: PublishRequest & { turnstile?: string }) =>
+  call<{ alias: string; owner: string }>('POST', '', req);
 export const fetchBoard = (alias: string) => call<BoardView>('GET', `/${alias}`);
 export const patchBoard = (alias: string, token: string, patch: Partial<BoardSettings>) =>
   call<BoardSettings>('PATCH', `/${alias}`, patch, token);
 export const setBoardStatus = (alias: string, token: string, status: BoardStatus) =>
   call<BoardStatus>('POST', `/${alias}/${status === 'closed' ? 'close' : 'reopen'}`, undefined, token);
+export const addBoardItem = (alias: string, token: string, item: { label: string; fill: Fill | null }) =>
+  call<Item>('POST', `/${alias}/items`, item, token);
+/** Removes an item and the votes that involve it; resolves with how many votes went. */
+export const removeBoardItem = (alias: string, token: string, id: string) =>
+  call<number>('DELETE', `/${alias}/items/${encodeURIComponent(id)}`, undefined, token);
+/** Gives a color item a new fill; its votes are dropped. Resolves with how many votes went. */
+export const recolorBoardItem = (alias: string, token: string, id: string, fill: Fill) =>
+  call<number>('PATCH', `/${alias}/items/${encodeURIComponent(id)}`, { fill }, token);
 /** Deletes the board; the server hands back the author's local copy. */
 export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DELETE', `/${alias}`, undefined, token);
 

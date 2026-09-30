@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTION_INTERVAL_MS,
+  ADD_INTERVAL_MS,
   ALIAS_RE,
+  addItem,
   assignPairs,
   boardMeta,
   canSeeRanking,
@@ -9,6 +11,7 @@ import {
   createBoard,
   crowd,
   DEFAULT_SETTINGS,
+  itemId,
   LIMITS,
   lastActivity,
   lastVote,
@@ -16,12 +19,17 @@ import {
   makeAlias,
   openSession,
   type PublishInput,
+  parseNewItem,
   parsePublish,
   patchSettings,
+  recolorItem,
   refill,
+  removeItem,
   restoreBoard,
   retractAll,
   retractVote,
+  revealAt,
+  sessionAdd,
   sessionReset,
   sessionSkip,
   sessionUndo,
@@ -360,6 +368,19 @@ describe('visibility', () => {
     setStatus(b, 'closed', T0);
     expect(canSeeRanking(b, null, false)).toBe(true);
   });
+
+  it('reveals "after N votes" boards to whoever voted every pair, even when there are fewer than N', () => {
+    expect(revealAt(10, 4)).toBe(6);
+    expect(revealAt(3, 4)).toBe(3);
+    expect(revealAt(10, 0)).toBe(1);
+    const b = board(3);
+    updateSettings(b, { visibility: 'after', revealAfter: 10 }, T0);
+    value(castVote(b, V2, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i0', 'i2', 1, T0));
+    expect(canSeeRanking(b, V2, false)).toBe(false);
+    value(castVote(b, V2, 'i1', 'i2', 1, T0));
+    expect(canSeeRanking(b, V2, false)).toBe(true);
+  });
 });
 
 describe('crowd ranking', () => {
@@ -437,6 +458,109 @@ describe('assignPairs', () => {
     const C = crowd(b);
     b.items.push({ id: 'late', label: 'Late', img: null, fill: null, h: 0 });
     expect(assignPairs(b, V1, C, new Set(), [], 3, mulberry32(2))).toHaveLength(3);
+  });
+});
+
+describe('items after publication', () => {
+  it('validates new items like published ones', () => {
+    expect(value(parseNewItem({ label: '  Hawaii  ' }))).toEqual({ label: 'Hawaii', fill: null });
+    expect(value(parseNewItem({ label: '', fill: { type: 'solid', colors: ['#ff8800'] } })).fill?.colors).toEqual([
+      '#ff8800',
+    ]);
+    expect(errorOf(parseNewItem({ label: 'x', img: 'data:' }))).toBe('images_not_allowed');
+    expect(errorOf(parseNewItem({ label: '' }))).toBe('bad_request');
+    expect(errorOf(parseNewItem({ label: 3 }))).toBe('bad_request');
+    expect(errorOf(parseNewItem({ label: 'x', fill: { type: 'solid', colors: [] } }))).toBe('bad_request');
+    expect(errorOf(parseNewItem('Hawaii'))).toBe('bad_request');
+  });
+
+  it('adds items to an open board, once per label, up to the limit', () => {
+    const b = board(3);
+    const item = value(addItem(b, { label: 'Hawaii', fill: null }, 'new1', T0 + 5));
+    expect(item).toEqual({ id: 'new1', label: 'Hawaii', img: null, fill: null, h: hueOf('Hawaii') });
+    expect(b.items).toHaveLength(4);
+    expect(lastActivity(b)).toBe(T0 + 5);
+    expect(errorOf(addItem(b, { label: 'HAWAII', fill: null }, 'new2', T0))).toBe('exists');
+    const full = board(LIMITS.items);
+    expect(errorOf(addItem(full, { label: 'One more', fill: null }, 'x', T0))).toBe('full');
+    setStatus(b, 'closed', T0);
+    expect(errorOf(addItem(b, { label: 'Late', fill: null }, 'x', T0))).toBe('closed');
+  });
+
+  it('removes an item with every vote that involves it, keeping at least 2 items', () => {
+    const b = board(4);
+    value(castVote(b, V1, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i1', 'i0', 1, T0));
+    value(castVote(b, V2, 'i2', 'i3', 1, T0));
+    const removed = value(removeItem(b, 'i0', T0 + 9));
+    expect(removed).toHaveLength(2);
+    expect(b.items.map((i) => i.id)).toEqual(['i1', 'i2', 'i3']);
+    expect(b.votes.size).toBe(1);
+    expect(b.voters.has(V1)).toBe(false);
+    expect(lastActivity(b)).toBe(T0 + 9);
+    expect(errorOf(removeItem(b, 'i0', T0))).toBe('not_found');
+    value(removeItem(b, 'i1', T0));
+    expect(errorOf(removeItem(b, 'i2', T0))).toBe('too_few');
+  });
+
+  it('recolors a color item, dropping its votes, and the label follows a color code', () => {
+    const b = board(4);
+    const solid = (c: string) => ({ type: 'solid' as const, colors: [c] });
+    b.items[0] = { ...(b.items[0] as Item), label: 'Ocre', fill: solid('#3e4c5e') };
+    b.items[1] = { ...(b.items[1] as Item), label: '#3E4C5E', fill: solid('#3e4c5e') };
+    value(castVote(b, V1, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i0', 'i2', 0, T0));
+    value(castVote(b, V2, 'i2', 'i3', 1, T0));
+    const r = value(recolorItem(b, 'i0', solid('#d9a441'), T0 + 7));
+    expect(r.removed).toHaveLength(2);
+    expect(r.item).toMatchObject({ id: 'i0', label: 'Ocre', fill: solid('#d9a441') });
+    expect(b.items[0]).toBe(r.item);
+    expect(b.votes.size).toBe(1);
+    expect(b.voters.has(V1)).toBe(false);
+    expect(lastActivity(b)).toBe(T0 + 7);
+    // Same color again: nothing to drop.
+    value(castVote(b, V2, 'i0', 'i3', 1, T0));
+    expect(value(recolorItem(b, 'i0', solid('#D9A441'), T0)).removed).toEqual([]);
+    expect(b.votes.size).toBe(2);
+    // A label that was the code follows the new one.
+    const coded = value(recolorItem(b, 'i1', { type: 'gradient', colors: ['#111111', '#222222'] }, T0)).item;
+    expect(coded.label).toBe('#111111 → #222222');
+    expect(coded.h).toBe(hueOf(coded.label));
+  });
+
+  it('refuses to recolor text items, unknown items, bad fills, taken labels and closed boards', () => {
+    const b = board(3);
+    const solid = (c: string) => ({ type: 'solid' as const, colors: [c] });
+    b.items[0] = { ...(b.items[0] as Item), label: '#AA0000', fill: solid('#aa0000') };
+    b.items[1] = { ...(b.items[1] as Item), label: '#BB0000' };
+    expect(errorOf(recolorItem(b, 'i2', solid('#123456'), T0))).toBe('bad_request');
+    expect(errorOf(recolorItem(b, 'nope', solid('#123456'), T0))).toBe('not_found');
+    expect(errorOf(recolorItem(b, 'i0', { type: 'solid', colors: ['red'] }, T0))).toBe('bad_request');
+    expect(errorOf(recolorItem(b, 'i0', null, T0))).toBe('bad_request');
+    expect(errorOf(recolorItem(b, 'i0', solid('#bb0000'), T0))).toBe('exists');
+    setStatus(b, 'closed', T0);
+    expect(errorOf(recolorItem(b, 'i0', solid('#123456'), T0))).toBe('closed');
+  });
+
+  it('lets visitors add only when allowed, a few seconds apart; the author always', () => {
+    const b = board(3);
+    const visitor = openSession(b, V2, false, crowd(b), mulberry32(1));
+    const author = openSession(b, V1, true, crowd(b), mulberry32(1));
+    const item = (label: string) => ({ label, fill: null });
+    expect(errorOf(sessionAdd(b, visitor, item('A'), 'a', T0))).toBe('forbidden');
+    value(sessionAdd(b, author, item('B'), 'b', T0));
+    updateSettings(b, { visitorsAddItems: true }, T0);
+    value(sessionAdd(b, visitor, item('C'), 'c', T0));
+    expect(visitor.lastAddAt).toBe(T0);
+    expect(errorOf(sessionAdd(b, visitor, item('D'), 'd', T0 + ADD_INTERVAL_MS - 1))).toBe('too_fast');
+    expect(errorOf(sessionAdd(b, visitor, item('C'), 'd', T0 + ADD_INTERVAL_MS))).toBe('exists');
+    expect(visitor.lastAddAt).toBe(T0);
+    value(sessionAdd(b, visitor, item('D'), 'd', T0 + ADD_INTERVAL_MS));
+  });
+
+  it('draws item ids the server accepts', () => {
+    const id = itemId(Uint8Array.from({ length: 12 }, (_, i) => i * 21));
+    expect(id).toMatch(/^[\w-]{12}$/);
   });
 });
 

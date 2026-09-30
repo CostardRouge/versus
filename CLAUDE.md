@@ -8,7 +8,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
 - Live: https://costardrouge.github.io/versus/ (GitHub Pages, deployed by CI from `main`).
-- Status: local-first; the live app is client-only and stores everything in `localStorage`. Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects), UI in `src/app/board.ts` and `publish.ts`. Not deployed yet: they work against `npm run worker:dev`, and production builds hide publishing until `VITE_API_URL` is set (see `docs/published-boards.md`, `docs/online-architecture.md`).
+- Status: local-first; the live app is client-only and stores everything in `localStorage`. Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
 ## How this project is built
@@ -16,7 +16,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 - **The owner doesn't write code.** Every line in this repo was written by Claude Code from the owner's prompts; the owner decides, reviews the result and tests it by hand. The owner has a Claude Max plan (×20), so there is plenty of capacity.
 - **Estimate effort in agent time, not developer time.** A full UI rewrite or a port to another stack fits in a day of sessions. Don't argue against an option because of code volume, rewrite size or "double maintenance".
 - **What really costs is what Claude can't do:** the owner's time (testing on real devices, accounts, store listings and reviews, decisions), fees, and regression risk. Weigh options on those, and on product quality.
-- **No stack choice is sacred.** Past choices made to go fast in the POC (e.g. no UI framework, D24) can be reopened.
+- **No stack choice is sacred.** Past choices made to go fast in the POC can be reopened; the owner decides. D24 (no UI framework) was reopened and kept: the web app comes first and stays light (D73).
 
 ## Commands
 
@@ -26,16 +26,24 @@ npm run dev          # Vite dev server
 npm run check        # lint + typecheck + tests + build (what CI runs); run before every commit
 npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/functions/statements, ≥ 75% branches)
 npm run format       # Biome auto-fix
-npm run worker:dev   # published boards API on :8787 (Vite proxies /api to it)
+npm run icons        # redraw the icons and the social card into public/ (commit the files)
+npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1 migrated); npm run dev proxies /api to it
+npm run worker:deploy  # build, deploy the Worker, apply D1 migrations (needs a Cloudflare login)
 ```
 
-Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker. No UI framework so far: a POC speed choice, not a principle; a framework (e.g. Expo + React Native Web for web and native apps) is open (D24, D54).
+Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script. No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D73).
 
 ## Code map
 
 ```
-index.html            static shell (header, overlays, modal) + inline script applying the saved theme before first paint
-src/main.ts           imports styles, calls mount(document)
+index.html            static shell (header, overlays, modal) + inline script applying the saved theme before first paint;
+                      <!-- seo:head --> and <!-- seo:noscript --> are filled at build time
+build/                build-time only (never shipped): site.ts = every sitewide SEO fact (name, title, description, colors,
+                      icons, social card, author); seo.ts = head tags, JSON-LD, manifest, robots, sitemap, llms.txt, _headers;
+                      seo-plugin.ts = the Vite plugin wiring them in
+scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch) and og.png from build/site.ts
+public/               icons and the social card (generated, committed); favicon.svg is a legacy address
+src/main.ts           imports the fonts and styles, calls mount(document)
 src/styles.css        all styles; design tokens on :root, dark palette via prefers-color-scheme and [data-theme]
 src/core/             pure logic, no DOM: must stay framework-free and fully unit tested
   types.ts            Ranking, Item, Fill, Duel, Computed…
@@ -59,13 +67,16 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   color.ts            color editor popover
   publish.ts          publish modal and the settings form shared with the author panel
   board.ts            published board page: server-assigned duels, crowd ranking (live or frozen), author panel
+  finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
   storage.ts          guarded localStorage access, prefs, migration from prototype keys
-worker/               Cloudflare Worker (router) + BoardObject (one Durable Object per published board: SQLite, WebSockets, TTL alarm); own tsconfig
+worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
+                      registry.ts + migrations/ (D1 registry), turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + worker.test.ts (end to end in workerd via Wrangler's test harness)
-docs/                 decisions, roadmap, published boards model, online architecture
+                      + seo.test.ts (head, JSON-LD, icons and generated files stay consistent)
+docs/                 decisions, roadmap, published boards model, online architecture, SEO
 ```
 
 ## Conventions
@@ -76,9 +87,10 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
-- Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages.
+- **SEO lives in `build/site.ts`**, never hand-written in `index.html` or `public/`: the head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address comes from `VITE_SITE_URL` (CI variable `SITE_URL`). A redesigned icon or social card gets new file names (caches key on the URL). Details in `docs/seo.md`.
+- Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
 
 ## Key domain rules
 
@@ -96,4 +108,5 @@ docs/                 decisions, roadmap, published boards model, online archite
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
 - `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (built, not deployed).
-- `docs/online-architecture.md`: backend for published boards on Cloudflare; prototype in `worker/`, not deployed.
+- `docs/online-architecture.md`: backend for published boards on Cloudflare (`worker/`), how to deploy it.
+- `docs/seo.md`: head tags, JSON-LD, icons, social card, manifest, robots, sitemap, llms.txt; decisions and what the owner has to do (Search Console, `SITE_URL`).

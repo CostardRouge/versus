@@ -3,9 +3,9 @@ import { lastDuelPerPair, type PublishBlock, publishBlock, publishMethod, publis
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
 import { methodText as M, type MsgKey, plural, t } from '../i18n';
 import { boardURL } from './board';
-import { $, ask, copyText, toast } from './dom';
+import { $, ask, copyText, doc, toast } from './dom';
 import { openBoard } from './rankings';
-import { publishBoard } from './remote';
+import { ApiError, publishBoard } from './remote';
 import { S, save } from './state';
 import { saveOwner } from './storage';
 
@@ -32,8 +32,10 @@ export function settingsHTML(prefix: string, s: BoardSettings): string {
     </fieldset>`;
 }
 
-export const changeHTML = (prefix: string, s: BoardSettings): string =>
-  `<label class="opt"><input type="checkbox" id="${prefix}-change" ${s.allowChange ? 'checked' : ''}> ${t('allowChange')}</label>`;
+/** Whether voters can change their votes, and whether visitors can add items. */
+export const optionsHTML = (prefix: string, s: BoardSettings): string =>
+  `<label class="opt"><input type="checkbox" id="${prefix}-change" ${s.allowChange ? 'checked' : ''}> ${t('allowChange')}</label>
+  <label class="opt"><input type="checkbox" id="${prefix}-visitors" ${s.visitorsAddItems ? 'checked' : ''}> ${t('visitorsAdd')}</label>`;
 
 /** The settings a form holds; the server validates them again. */
 export function readSettings(root: ParentNode, prefix: string): Partial<BoardSettings> {
@@ -47,6 +49,8 @@ export function readSettings(root: ParentNode, prefix: string): Partial<BoardSet
   if (CROWD_METHODS.includes(m as MethodKey)) out.method = m as MethodKey;
   const change = input(`#${prefix}-change`);
   if (change) out.allowChange = change.checked;
+  const visitors = input(`#${prefix}-visitors`);
+  if (visitors) out.visitorsAddItems = visitors.checked;
   return out;
 }
 
@@ -57,6 +61,38 @@ const BLOCKS: Record<PublishBlock, MsgKey> = {
 };
 
 let publishing = false;
+
+// ─── Turnstile (only when a site key is configured; the server checks the token) ──
+
+interface TurnstileApi {
+  render(el: HTMLElement, opts: { sitekey: string }): string;
+  getResponse(id: string): string | undefined;
+  remove(id: string): void;
+}
+
+const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+let turnstileScript: Promise<TurnstileApi | undefined> | null = null;
+
+function loadTurnstile(): Promise<TurnstileApi | undefined> {
+  turnstileScript ??= new Promise((resolve) => {
+    const script = doc.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => resolve((window as { turnstile?: TurnstileApi }).turnstile);
+    script.onerror = () => {
+      turnstileScript = null;
+      resolve(undefined);
+    };
+    doc.head.append(script);
+  });
+  return turnstileScript;
+}
+
+const PUBLISH_ERRORS: Partial<Record<string, MsgKey>> = {
+  captcha: 'captchaFailed',
+  rate_limited: 'tooManyTries',
+  images_not_allowed: 'blockImages',
+};
 
 export async function publishRanking(r: Ranking | undefined): Promise<void> {
   if (!r || r.pub || publishing) return;
@@ -70,15 +106,33 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
   const html = `<p>${t('publishBody')}</p>
     ${duels ? `<label class="opt pub-votes"><input type="checkbox" id="pub-votes" checked> ${t('publishVotes', { duels: plural(duels, 'duel') })}</label>` : ''}
     ${settingsHTML('pub', settings)}
-    <details class="more"><summary>${t('moreOptions')}</summary>${changeHTML('pub', settings)}</details>`;
-  if (!(await ask({ title: t('publishTitle'), html, ok: t('publish') }))) return;
+    <details class="more"><summary>${t('moreOptions')}</summary>${optionsHTML('pub', settings)}</details>
+    ${SITE_KEY ? '<div class="pub-captcha" id="pub-captcha"></div>' : ''}`;
+  const asked = ask({ title: t('publishTitle'), html, ok: t('publish') });
+  let widget: { api: TurnstileApi; id: string } | null = null;
+  if (SITE_KEY) {
+    void loadTurnstile().then((api) => {
+      const el = $('#pub-captcha');
+      if (api && el) widget = { api, id: api.render(el, { sitekey: SITE_KEY }) };
+    });
+  }
+  const confirmed = await asked;
+  const current = widget as { api: TurnstileApi; id: string } | null;
+  const turnstile = current ? current.api.getResponse(current.id) : undefined;
+  current?.api.remove(current.id);
+  if (!confirmed) return;
+  if (SITE_KEY && !turnstile) {
+    toast(t('captchaMissing'));
+    return;
+  }
   const form = $('#m-body');
   if (!form) return;
   const chosen = readSettings(form, 'pub');
   const withVotes = $<HTMLInputElement>('#pub-votes', form)?.checked ?? false;
   publishing = true;
   try {
-    const { alias, owner } = await publishBoard(publishRequest(r, S.voter, chosen, withVotes));
+    const request = { ...publishRequest(r, S.voter, chosen, withVotes), ...(turnstile ? { turnstile } : {}) };
+    const { alias, owner } = await publishBoard(request);
     r.pub = { alias, status: 'open' };
     r.updated = Date.now();
     saveOwner(alias, owner);
@@ -86,8 +140,8 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
     const copied = await copyText(boardURL(alias));
     openBoard(alias);
     toast(t(copied ? 'published' : 'publishedShare'));
-  } catch {
-    toast(t('publishFailed'));
+  } catch (e) {
+    toast(t((e instanceof ApiError && PUBLISH_ERRORS[e.code]) || 'publishFailed'));
   } finally {
     publishing = false;
   }

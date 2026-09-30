@@ -40,6 +40,9 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Canonical address in the head, sitemap and llms.txt; unset, it is the GitHub Pages address.
+          VITE_SITE_URL: ${{ vars.SITE_URL }}
 
       - name: Upload coverage report
         if: always()
@@ -76,3 +79,30 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v5
+
+  deploy-worker:
+    name: Deploy to Cloudflare
+    needs: verify
+    # Off until the repository has the CLOUDFLARE_ACCOUNT_ID variable (and the CLOUDFLARE_API_TOKEN secret).
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Builds the app in worker mode, deploys the Worker (creates the D1 database the first time),
+      # then applies the D1 migrations. The custom domain is managed in the dashboard; deploys keep it.
+      - name: Build and deploy
+        run: npm run worker:deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+          VITE_SITE_URL: ${{ vars.SITE_URL }}

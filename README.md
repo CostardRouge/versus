@@ -18,6 +18,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Method comparison** on the results page, to see where the ranking is still fragile.
 - **Demos** built from fixed data (same items and duels for everyone), resettable and translatable.
 - **English and French**, detected from the browser and switchable.
+- **Search and share ready:** Open Graph card, structured data, favicons for every platform, sitemap and `llms.txt`, all generated from one file (see [`docs/seo.md`](docs/seo.md)).
 - **Light and dark themes** that follow the system setting or can be pinned from the header; the choice is applied before the first paint.
 - Data stays in the browser (`localStorage`); nothing is sent anywhere.
 - **Published boards** (in development, not deployed): publish a ranking, share the link, and let a crowd vote in real time. See [`docs/published-boards.md`](docs/published-boards.md).
@@ -41,8 +42,9 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run coverage` | Tests with coverage; the scoring engine must stay above 90% |
 | `npm run lint` / `npm run format` | Biome lint and format check / auto-fix |
 | `npm run typecheck` | TypeScript in strict mode (app and Worker) |
-| `npm run worker:dev` | Published boards API on http://localhost:8787 (Vite proxies `/api` to it; run it next to `npm run dev` to publish) |
-| `npm run worker:deploy` | Deploy the API to Cloudflare (needs a Cloudflare account) |
+| `npm run worker:dev` | The whole app and the published boards API on http://localhost:8787 (`npm run dev` proxies `/api` to it) |
+| `npm run worker:deploy` | Build, deploy to Cloudflare and apply the D1 migrations (needs a Cloudflare account) |
+| `npm run icons` | Redraw the favicons, app icons and social card into `public/` from `build/site.ts` |
 
 ## Project structure
 
@@ -63,17 +65,19 @@ src/
     events.ts    delegated event listeners
     state.ts, dom.ts, header.ts, format.ts, storage.ts   shared state, DOM helpers, header, formatting, localStorage
   styles.css
+build/         build-time SEO: site facts, head tags, JSON-LD, manifest, robots, sitemap, llms.txt (docs/seo.md)
+scripts/       icons.ts: icons and social card
 worker/        Cloudflare Worker + one Durable Object per published board (prototype)
 tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Worker tests in workerd
 ```
 
-## Published boards (prototype)
+## Published boards
 
-`worker/` holds the API for shared boards: a Worker routes requests, and each published board is a Durable Object with its own SQLite storage and WebSockets. The rules live in `src/core/board.ts`, shared with the app. It runs locally (`npm run worker:dev`) and in the tests; it isn't deployed or wired to the UI yet. See [`docs/online-architecture.md`](docs/online-architecture.md).
+`worker/` serves the app and the API for shared boards: each published board is a Durable Object with its own SQLite storage and WebSockets, a D1 registry backs the admin API, and per-IP limits and Turnstile guard publishing. The rules live in `src/core/board.ts`, shared with the app. It runs locally (`npm run worker:dev`) and in the tests; deploying needs a Cloudflare account, see [`docs/online-architecture.md`](docs/online-architecture.md#deploying).
 
 ## CI and deployment
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages. Dependabot keeps npm packages and actions up to date.
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
 
 The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 

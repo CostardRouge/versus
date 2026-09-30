@@ -1,14 +1,38 @@
-import type { BoardView, Counts, ItemScore, RankingView, ServerMessage } from '../core/protocol';
+import { revealAt } from '../core/board';
+import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
+import type { BoardView, Counts, RankingView, ServerMessage } from '../core/protocol';
 import { adminHash, agreement, boardHash, neckAndNeck, totalPairs } from '../core/published';
 import { pairKey } from '../core/scoring';
-import type { BoardStatus, Duel, Item, MethodKey, Outcome, Ranking } from '../core/types';
+import type { BoardStatus, Duel, ErrorCode, Fill, Item, Outcome, Ranking } from '../core/types';
 import { esc, uid } from '../core/util';
-import { methodText as M, pct, plural, t } from '../i18n';
-import { $, announce, ask, copyText, reduced, thumbHTML, toast } from './dom';
+import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
+import { closeColor, cp, openBoardColor } from './color';
+import { $, announce, ask, copyText, reduced, thumbHTML, toast, trashSvg } from './dom';
 import { bindStage, cardHTML } from './duel';
-import { changeHTML, readSettings, settingsHTML } from './publish';
+import {
+  type FinaleData,
+  type FinaleMode,
+  finaleHTML,
+  finalePlaying,
+  mountFinale,
+  type ResultView,
+  resetFinale,
+  setPodiumWho,
+} from './finale';
+import { fmtCrowd } from './format';
+import { optionsHTML, readSettings, settingsHTML } from './publish';
 import { open } from './rankings';
-import { BoardSocket, type Connection, patchBoard, setBoardStatus, withdrawBoard } from './remote';
+import {
+  ApiError,
+  addBoardItem,
+  BoardSocket,
+  type Connection,
+  patchBoard,
+  recolorBoardItem,
+  removeBoardItem,
+  setBoardStatus,
+  withdrawBoard,
+} from './remote';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
 
@@ -35,14 +59,47 @@ interface Board {
   shownVotes: number;
   latest: RankingView | null;
   latestVotes: number;
-  /** One entry per message awaiting its "pairs" answer: how to undo its optimistic change if refused. */
-  pending: ((() => void) | null)[];
+  /** One entry per message awaiting its "pairs" answer, with how to undo its optimistic change if refused. */
+  pending: Pending[];
+  /** Label of the item just sent, so the field empties once it shows up. */
+  sentLabel: string | null;
   busy: boolean;
   /** Set while withdrawing, so the closing socket doesn't read as an expired board. */
   leaving: boolean;
+  /** The end-of-vote page is showing instead of the board. */
+  finale: boolean;
+  /** Something changed during the reveal: render again once it ends. */
+  finaleDirty: boolean;
+}
+
+interface Pending {
+  kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add';
+  revert?: () => void;
 }
 
 let B: Board | null = null;
+
+/** What to tell the user when the server refuses an action. */
+function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
+  if (code === 'closed') return 'voteClosed';
+  if (code === 'final') return 'finalVotes';
+  if (kind !== 'add') return null;
+  const add: Partial<Record<ErrorCode, MsgKey>> = {
+    full: 'boardFull',
+    exists: 'itemExists',
+    too_fast: 'addTooFast',
+    forbidden: 'addNotAllowed',
+  };
+  return add[code] ?? 'actionFailed';
+}
+
+const ownerErrors: Partial<Record<string, MsgKey>> = {
+  full: 'boardFull',
+  exists: 'itemExists',
+  too_few: 'needTwoItems',
+  closed: 'voteClosed',
+  rate_limited: 'tooManyTries',
+};
 
 export const boardURL = (alias: string): string =>
   `${location.origin}${location.pathname}${location.search}${boardHash(alias)}`;
@@ -72,10 +129,14 @@ export function enterBoard(alias: string, available: boolean): void {
     latest: null,
     latestVotes: 0,
     pending: [],
+    sentLabel: null,
     busy: false,
     leaving: false,
+    finale: false,
+    finaleDirty: false,
   };
   B = board;
+  resetFinale();
   if (!available) return;
   const hello = owner ? { t: 'hello' as const, voter: S.voter, owner } : { t: 'hello' as const, voter: S.voter };
   board.socket = new BoardSocket(
@@ -89,6 +150,7 @@ export function enterBoard(alias: string, available: boolean): void {
 export function leaveBoard(): void {
   B?.socket?.close();
   B = null;
+  resetFinale();
 }
 
 // ─── Server messages ────────────────────────────────────────────────────────
@@ -133,43 +195,58 @@ function onMessage(board: Board, m: ServerMessage): void {
     board.counts = m.counts;
     board.latest = m.ranking;
     board.latestVotes = m.counts.votes;
+    const before = board.shown;
     // Frozen only while something is on screen and more is visible: newly visible or hidden rankings apply now.
     if (live() || !board.shown || !m.ranking) {
       board.shown = m.ranking;
       board.shownVotes = m.counts.votes;
     }
-    const counts = $('#b-counts');
+    const counts = $('#b-counts') ?? $('#fin-counts');
     if (counts) counts.textContent = countsText(board.counts);
+    if (board.finale && orderOf(before) !== orderOf(board.shown)) renderBoard();
     renderRanking();
   } else {
-    const revert = board.pending[0];
-    if (revert) {
-      revert();
-      board.pending[0] = null;
+    const head = board.pending[0];
+    if (head?.revert) {
+      head.revert();
+      head.revert = undefined;
       renderRanking();
     }
-    if (m.code === 'closed') toast(t('voteClosed'));
-    else if (m.code === 'final') toast(t('finalVotes'));
+    if (head?.kind === 'add') board.sentLabel = null;
+    const key = errorText(m.code, head?.kind);
+    if (key) toast(t(key));
   }
 }
 
 // ─── Rendering ──────────────────────────────────────────────────────────────
 
+const orderOf = (r: RankingView | null): string => r?.order.join(' ') ?? '';
+
 const countsText = (c: Counts): string =>
   t('boardCounts', { votes: plural(c.votes, 'vote'), voters: plural(c.voters, 'voter'), online: c.online });
 
-function fmt(m: MethodKey, x: ItemScore): string {
-  if (m === 'win') return pct(Math.round(x.score * 100));
-  const se = m === 'bt' && x.se !== null ? `<small>±${Math.round(x.se)}</small>` : '';
-  return `${Math.round(x.score)}${se}`;
-}
-
-export function renderBoard(): void {
+export function renderBoard(mode: FinaleMode = 'none'): void {
   const view = $('#view');
-  if (!view || !B) return;
+  const b = B;
+  if (!view || !b) return;
+  if (b.finale && b.view) {
+    renderFinale(b, b.view, mode);
+    return;
+  }
   const adminOpen = $('#b-admin')?.hasAttribute('open') ?? false;
-  view.innerHTML = boardHTML(B, adminOpen);
-  if (B.view) {
+  // Keep what someone is typing when another change re-renders the page, unless it was just added.
+  const draft = ($('#b-add-input') as HTMLInputElement | null)?.value ?? '';
+  view.innerHTML = boardHTML(b, adminOpen);
+  const input = $('#b-add-input') as HTMLInputElement | null;
+  if (input && draft && draft !== b.sentLabel) input.value = draft;
+  b.sentLabel = null;
+  // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
+  if (cp.id) {
+    const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
+    if (swatch) cp.anchor = swatch;
+    else closeColor();
+  }
+  if (b.view) {
     renderDuel();
     renderRanking();
   }
@@ -203,9 +280,35 @@ function boardHTML(b: Board, adminOpen: boolean): string {
       <aside class="b-side">
         ${b.isOwner ? adminHTML(v, adminOpen) : ''}
         <section class="b-rank" id="b-rank"></section>
+        ${!b.isOwner && v.settings.visitorsAddItems && !closed ? `<section class="b-suggest"><h2>${t('suggestTitle')}</h2>${addFormHTML()}</section>` : ''}
       </aside>
     </div>
   </div>`;
+}
+
+const addFormHTML = (): string =>
+  `<form class="add b-add" id="b-add-form" autocomplete="off">
+    <input id="b-add-input" placeholder="${t('addPlaceholder')}" aria-label="${t('suggestTitle')}" maxlength="200">
+    <button class="add-btn" type="submit" aria-label="${t('add')}">+</button>
+  </form>`;
+
+/** An item's swatch: while the board is open, a color item's swatch opens the color editor. */
+function itemThumbHTML(it: Item, open: boolean): string {
+  if (!it.fill || !open) return thumbHTML(it);
+  return `<button class="thumb thumb-btn" type="button" data-action="b-edit-color" data-id="${esc(it.id)}" style="background:${fillCSS(it.fill)}" aria-label="${esc(t('editColorAria', { label: it.label }))}" title="${t('editColor')}"></button>`;
+}
+
+function itemsHTML(v: BoardView): string {
+  const open = v.status === 'open';
+  const rows = v.items
+    .map((it) => {
+      const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
+      const warn = twin ? `<small class="b-twin">${esc(t('sameColor', { label: twin.label }))}</small>` : '';
+      return `<li>${itemThumbHTML(it, open)}<span class="b-item"><span class="rlabel">${esc(it.label)}</span>${warn}</span>
+        <button class="icon-btn" type="button" data-action="b-remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">${trashSvg}</button></li>`;
+    })
+    .join('');
+  return `<fieldset class="set"><legend>${t('boardItems')}</legend><ul class="b-items">${rows}</ul>${v.status === 'open' ? addFormHTML() : ''}</fieldset>`;
 }
 
 function adminHTML(v: BoardView, open: boolean): string {
@@ -214,7 +317,8 @@ function adminHTML(v: BoardView, open: boolean): string {
     <summary>${t('authorPanel')}</summary>
     <div class="b-admin-body">
       ${settingsHTML('b', v.settings)}
-      ${changeHTML('b', v.settings)}
+      ${optionsHTML('b', v.settings)}
+      ${itemsHTML(v)}
       <div class="b-admin-actions">
         <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
         <button class="btn sm ghost" type="button" data-action="b-admin-link">${t('copyAdminLink')}</button>
@@ -224,16 +328,22 @@ function adminHTML(v: BoardView, open: boolean): string {
   </details>`;
 }
 
-const emptyHTML = (title: string, body: string): string =>
-  `<div class="empty-duel"><h2 class="q">${title}</h2>${body ? `<p class="muted">${body}</p>` : ''}</div>`;
+const emptyHTML = (title: string, body: string, action = ''): string =>
+  `<div class="empty-duel"><h2 class="q">${title}</h2>${body ? `<p class="muted">${body}</p>` : ''}${action}</div>`;
+
+/** Once every pair is voted, the way (back) to the end-of-vote page. */
+const resultHTML = (b: Board, v: BoardView): string =>
+  b.count && b.count >= totalPairs(v.items.length)
+    ? `<button class="btn primary" type="button" data-action="b-finale">${t('seeResult')}</button>`
+    : '';
 
 function duelHTML(b: Board, v: BoardView): string {
-  if (v.status === 'closed') return emptyHTML(t('voteClosed'), t('voteClosedBody'));
+  if (v.status === 'closed') return emptyHTML(t('voteClosed'), t('voteClosedBody'), resultHTML(b, v));
   const pair = b.pairs[0];
   const A = pair ? itemOf(pair[0]) : undefined;
   const C = pair ? itemOf(pair[1]) : undefined;
   if (!A || !C) {
-    if (b.count >= totalPairs(v.items.length)) return emptyHTML(t('votedAll'), t('votedAllBody'));
+    if (b.count >= totalPairs(v.items.length)) return emptyHTML(t('votedAll'), t('votedAllBody'), resultHTML(b, v));
     return `<div class="empty-duel"><p class="muted">…</p></div>`;
   }
   // No forecast and no crowd score here: the duel itself stays blind.
@@ -276,9 +386,10 @@ function rankingHTML(b: Board, v: BoardView): string {
   const shown = b.shown;
   if (!shown) {
     if (s.visibility !== 'after') return `${head}<p class="note">${t('hiddenBlind')}</p>${reset}`;
-    const k = Math.min(b.count, s.revealAfter);
-    return `${head}<p class="note">${t('hiddenAfter', { n: s.revealAfter, k })}</p>
-      <span class="bar b-progress"><i style="width:${Math.round((100 * k) / s.revealAfter)}%"></i></span>${reset}`;
+    const need = revealAt(s.revealAfter, v.items.length);
+    const k = Math.min(b.count, need);
+    return `${head}<p class="note">${t('hiddenAfter', { n: need, k })}</p>
+      <span class="bar b-progress"><i style="width:${Math.round((100 * k) / need)}%"></i></span>${reset}`;
   }
   const newer = b.latestVotes - b.shownVotes;
   const refresh =
@@ -292,7 +403,7 @@ function rankingHTML(b: Board, v: BoardView): string {
       const x = shown.stats[id];
       if (!it || !x) return '';
       const neck = close.has(id) ? `<span class="neck" title="${t('neck')}" aria-label="${t('neck')}">≈</span>` : '';
-      return `<li><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span>${neck}<span class="num mono">${fmt(shown.method, x)}</span></li>`;
+      return `<li><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span>${neck}<span class="num mono">${fmtCrowd(shown.method, x)}</span></li>`;
     })
     .join('');
   const ag = agreement(b.mine, shown);
@@ -324,8 +435,11 @@ export function boardPick(side: string | undefined): void {
   }
   const duel: Duel = { a: A.id, b: C.id, s };
   b.mine.push(duel);
-  b.pending.push(() => {
-    b.mine = b.mine.filter((d) => d !== duel);
+  b.pending.push({
+    kind: 'vote',
+    revert: () => {
+      b.mine = b.mine.filter((d) => d !== duel);
+    },
   });
   b.pairs.shift();
   b.count++;
@@ -343,7 +457,10 @@ export function boardPick(side: string | undefined): void {
   setTimeout(
     () => {
       b.busy = false;
-      if (B === b) renderDuel();
+      if (B !== b) return;
+      // The last pair: the result gets a page of its own.
+      if (b.view?.status === 'open' && b.count >= totalPairs(b.view.items.length)) openFinale();
+      else renderDuel();
     },
     reduced ? 200 : 540,
   );
@@ -358,7 +475,7 @@ export function boardSkip(): void {
     toast(t('notSent'));
     return;
   }
-  b.pending.push(null);
+  b.pending.push({ kind: 'skip' });
   b.pairs.shift();
   renderDuel();
 }
@@ -375,8 +492,11 @@ export function boardUndo(): void {
   }
   const at = b.mine.length - 1;
   b.mine.pop();
-  b.pending.push(() => {
-    b.mine.splice(at, 0, last);
+  b.pending.push({
+    kind: 'undo',
+    revert: () => {
+      b.mine.splice(at, 0, last);
+    },
   });
   const k = pairKey(last.a, last.b);
   b.pairs = [[last.a, last.b], ...b.pairs.filter(([x, y]) => pairKey(x, y) !== k)];
@@ -402,8 +522,11 @@ export async function boardReset(): Promise<void> {
   const prev = b.mine;
   b.mine = [];
   b.count = 0;
-  b.pending.push(() => {
-    b.mine = prev;
+  b.pending.push({
+    kind: 'reset',
+    revert: () => {
+      b.mine = prev;
+    },
   });
   renderDuel();
   renderRanking();
@@ -411,7 +534,7 @@ export async function boardReset(): Promise<void> {
 }
 
 export function boardKeydown(e: KeyboardEvent, tg: HTMLElement): void {
-  if (!B?.view) return;
+  if (!B?.view || B.finale) return;
   if (tg.classList.contains('card') && (e.key === 'Enter' || e.key === ' ')) {
     e.preventDefault();
     boardPick(tg.dataset.side);
@@ -439,6 +562,74 @@ export function boardKeydown(e: KeyboardEvent, tg: HTMLElement): void {
   }
 }
 
+// ─── End of the vote ────────────────────────────────────────────────────────
+
+const resultView = (): ResultView => (S.prefs.resultView === 'duo' ? 'duo' : 'podium');
+
+const finaleData = (b: Board, v: BoardView): FinaleData => ({
+  title: v.title,
+  status: v.status,
+  countsLine: countsText(b.counts),
+  items: v.items,
+  method: v.settings.method,
+  mine: b.mine,
+  count: b.count,
+  crowd: b.shown,
+  owner: b.isOwner,
+  view: resultView(),
+});
+
+/** In place updates wait for the end of the reveal; a view switch or an opening doesn't. */
+function renderFinale(b: Board, v: BoardView, mode: FinaleMode): void {
+  const view = $('#view');
+  if (!view) return;
+  if (mode === 'none' && finalePlaying()) {
+    b.finaleDirty = true;
+    return;
+  }
+  b.finaleDirty = false;
+  if (cp.id) closeColor();
+  view.innerHTML = finaleHTML(finaleData(b, v));
+  mountFinale(mode, () => {
+    if (B === b && b.finale && b.finaleDirty) renderBoard();
+  });
+}
+
+/** Shows the end-of-vote page, with its reveal. */
+export function openFinale(): void {
+  const b = B;
+  if (!b?.view) return;
+  b.finale = true;
+  renderBoard('play');
+  window.scrollTo?.(0, 0);
+}
+
+export function closeFinale(): void {
+  const b = B;
+  if (!b?.finale) return;
+  b.finale = false;
+  resetFinale();
+  renderBoard();
+  window.scrollTo?.(0, 0);
+}
+
+/** Podium or face-à-face; remembered in this browser. */
+export function setFinaleView(v: string | undefined): void {
+  if (!B?.finale || (v !== 'podium' && v !== 'duo') || v === resultView()) return;
+  S.prefs.resultView = v;
+  savePrefs(S.prefs);
+  renderBoard('swap');
+  $(`[data-action="b-finale-view"][data-view="${v}"]`)?.focus();
+}
+
+/** Which ranking the podium shows: the crowd's or the voter's own. */
+export function setFinaleWho(w: string | undefined): void {
+  if (!B?.finale) return;
+  setPodiumWho(w);
+  renderBoard('swap');
+  $(`[data-action="b-finale-who"][data-who="${w === 'me' ? 'me' : 'crowd'}"]`)?.focus();
+}
+
 // ─── Live updates and sharing ───────────────────────────────────────────────
 
 export function boardRefresh(): void {
@@ -457,11 +648,94 @@ export function boardChange(tg: HTMLInputElement): boolean {
     else renderRanking();
     return true;
   }
+  if (tg.id === 'b-add-input') return true;
   if (tg.closest('#b-admin')) {
     void ownerCall((alias, token) => patchBoard(alias, token, readSettings($('#b-admin') ?? tg, 'b')));
     return true;
   }
   return false;
+}
+
+// ─── Items ──────────────────────────────────────────────────────────────────
+
+/** Text, or a color for a #hex code, like the local item field. */
+function newItem(raw: string): { label: string; fill: Fill | null } | null {
+  const v = raw.trim();
+  if (!v) return null;
+  if (!isHex(v)) return { label: v, fill: null };
+  return { label: normHex(v).toUpperCase(), fill: { type: 'solid', colors: [normHex(v)] } };
+}
+
+/** Adds an item: the author through the API, a visitor over the socket. Everyone then gets the new state. */
+export async function boardAddItem(): Promise<void> {
+  const b = B;
+  const input = $('#b-add-input') as HTMLInputElement | null;
+  const item = input ? newItem(input.value) : null;
+  if (!b?.view || !input || !item) return;
+  if (b.isOwner) {
+    b.sentLabel = input.value;
+    if (await ownerCall((alias, token) => addBoardItem(alias, token, item))) toast(t('itemAdded'));
+    else b.sentLabel = null;
+    return;
+  }
+  if (!b.socket?.send({ t: 'add', item })) {
+    toast(t('notSent'));
+    return;
+  }
+  b.sentLabel = input.value;
+  b.pending.push({ kind: 'add' });
+}
+
+/** Removes an item after confirmation; its votes go with it. */
+export async function boardRemoveItem(id: string | undefined): Promise<void> {
+  const b = B;
+  const it = id ? itemOf(id) : undefined;
+  if (!b?.owner || !it || !id) return;
+  const x = b.latest?.stats[id];
+  const votes = x ? x.w + x.l + x.d : 0;
+  const ok = await ask({
+    title: t('removeItemTitle', { label: it.label }),
+    body: t('removeItemBody', { votes: plural(votes, 'vote') }),
+    ok: t('removeOk'),
+    danger: true,
+  });
+  if (!ok || B !== b) return;
+  if ((await ownerCall((alias, token) => removeBoardItem(alias, token, id))) !== null) toast(t('itemRemoved'));
+}
+
+/** Opens the color editor on a color item of the board (a second click on its swatch closes it). */
+export function boardEditColor(id: string | undefined, anchor: HTMLElement): void {
+  const b = B;
+  const it = id ? itemOf(id) : undefined;
+  if (!b?.owner || !b.view || !it?.fill) return;
+  if (cp.id === it.id) {
+    closeColor();
+    return;
+  }
+  openBoardColor(it, b.view.items, anchor, (fill) => void boardRecolor(it.id, fill));
+}
+
+/**
+ * Gives an item a new color for everyone. Its votes were cast on the old color, so they go (after a
+ * confirmation when there are some) and the item starts again from zero.
+ */
+async function boardRecolor(id: string, fill: Fill): Promise<void> {
+  const b = B;
+  const it = itemOf(id);
+  if (!b?.owner || !it?.fill || sameFill(it.fill, fill)) return;
+  const x = b.latest?.stats[id];
+  const votes = x ? x.w + x.l + x.d : 0;
+  if (votes) {
+    const ok = await ask({
+      title: t('recolorTitle', { label: it.label }),
+      body: t('recolorBody', { votes: plural(votes, 'vote'), label: it.label }),
+      ok: t('recolorOk'),
+      danger: true,
+    });
+    if (!ok || B !== b) return;
+  }
+  const n = await ownerCall((alias, token) => recolorBoardItem(alias, token, id, fill));
+  if (n !== null) toast(n ? t('recoloredReset', { label: it.label }) : t('recolored'));
 }
 
 export async function copyBoardLink(alias: string | undefined, admin = false): Promise<void> {
@@ -482,8 +756,8 @@ async function ownerCall<T>(fn: (alias: string, token: string) => Promise<T>): P
   if (!b?.owner) return null;
   try {
     return await fn(b.alias, b.owner);
-  } catch {
-    toast(t('actionFailed'));
+  } catch (e) {
+    toast(t((e instanceof ApiError && ownerErrors[e.code]) || 'actionFailed'));
     return null;
   }
 }

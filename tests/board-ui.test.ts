@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { BoardView, ClientMessage, RankingView, ServerMessage } from '../src/core/protocol';
+import type { BoardView, ClientMessage, ItemScore, RankingView, ServerMessage } from '../src/core/protocol';
 import type { Ranking } from '../src/core/types';
 
 /** The publish modal and the board page, against a fake API and fake WebSockets. */
@@ -222,7 +222,63 @@ describe('voting', () => {
     expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p0', b: 'p2', s: 0.5 });
     ws.receive({ t: 'pairs', pairs: [], mine: 3 });
     await vi.advanceTimersByTimeAsync(600);
+    expect($('#fin h1')?.textContent).toBe('You voted on every pair');
+  });
+
+  it('shows the result on a page of its own after the last vote, in two views', async () => {
+    const ws = FakeSocket.last();
+    // The podium: the crowd's, then the voter's own.
+    expect(document.querySelectorAll('#fin .fin-pd')).toHaveLength(3);
+    expect($('#fin .fin-pd-1 .fin-tile')?.textContent).toBe('Margherita');
+    expect($('#fin .fin-num [data-count]')?.dataset.count).toBe('3');
+    expect($('#fin .fin-num small')?.textContent).toBe('/3');
+    click('[data-action="b-finale-who"][data-who="me"]');
+    expect($('#fin-pod-h')?.textContent).toBe('Your podium');
+    expect($('#fin .fin-pd-1 .fin-pd-meta')?.textContent).toContain('1W 0L');
+
+    // Face à face, remembered in this browser.
+    click('[data-action="b-finale-view"][data-view="duo"]');
+    expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').resultView).toBe('duo');
+    expect($('#fin h1')?.textContent).toBe('The crowd chose Margherita.');
+    expect(document.querySelectorAll('#fin .fin-mine li')).toHaveLength(3);
+    expect(document.querySelectorAll('#fin .fin-lines path')).toHaveLength(3);
+
+    // Live: a new crowd order shows at once; the keyboard doesn't vote here.
+    ws.receive({ t: 'ranking', counts: { votes: 9, voters: 3, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    expect($('#fin h1')?.textContent).toBe('The crowd chose Calzone.');
+    expect($('#fin-counts')?.textContent).toContain('9 votes');
+    const sent = ws.sent.length;
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(ws.sent).toHaveLength(sent);
+    ws.receive({ t: 'ranking', counts: { votes: 9, voters: 3, online: 2 }, ranking: ranking(['p0', 'p1', 'p2']) });
+
+    // Back to the board, and to the result again.
+    click('[data-action="b-finale-close"]');
+    expect($('#fin')).toBeNull();
     expect($('#b-main')?.textContent).toContain('You voted on every pair');
+    click('[data-action="b-finale"]');
+    expect($('#fin h1')?.textContent).toBe('The crowd chose Margherita.');
+    click('[data-action="b-finale-close"]');
+  });
+
+  it('keeps the crowd for the closing on a blind board, showing the voter their own ranking', () => {
+    const ws = FakeSocket.last();
+    const blind = { settings: { ...view().settings, visibility: 'blind' as const }, ranking: null };
+    const mine = [
+      { a: 'p2', b: 'p0', s: 1 as const },
+      { a: 'p2', b: 'p1', s: 1 as const },
+      { a: 'p1', b: 'p0', s: 1 as const },
+    ];
+    ws.receive({ ...state(blind), mine, pairs: [] } as ServerMessage);
+    click('[data-action="b-finale"]');
+    expect($('#fin h1')?.textContent).toBe('Your winner: Calzone.');
+    expect(document.querySelectorAll('#fin .fin-ph')).toHaveLength(3);
+    expect($('#fin .fin-locked')).not.toBeNull();
+    click('[data-action="b-finale-view"][data-view="podium"]');
+    expect($('#fin-pod-h')?.textContent).toBe('Your podium');
+    expect($('[data-action="b-finale-who"]')).toBeNull();
+    click('[data-action="b-finale-close"]');
+    ws.receive(state());
   });
 
   it('holds the ranking while live updates are off', () => {
@@ -251,9 +307,106 @@ describe('voting', () => {
     ws.receive({ ...state({ settings: { ...view().settings, visibility: 'blind' }, ranking: null }) } as ServerMessage);
     expect($('#b-rank')?.textContent).toContain('hidden until the author closes the vote');
   });
+
+  it('lets visitors suggest items when the author allows it', () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    const input = $('#b-add-input') as HTMLInputElement;
+    input.value = '#ff8800';
+    $('#b-add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(ws.sent.at(-1)).toEqual({
+      t: 'add',
+      item: { label: '#FF8800', fill: { type: 'solid', colors: ['#ff8800'] } },
+    });
+    ws.receive({ t: 'error', code: 'too_fast' });
+    ws.receive({ t: 'pairs', pairs: [], mine: 0 });
+    expect($('#toast')?.textContent).toBe('Wait a few seconds before adding another item.');
+    expect(($('#b-add-input') as HTMLInputElement).value).toBe('#ff8800');
+    ws.receive(state());
+    expect($('#b-add-input')).toBeNull();
+  });
 });
 
 describe('author', () => {
+  it('adds and removes items as the author', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({}, true));
+    respond = (c) =>
+      c.method === 'POST'
+        ? { status: 200, body: { id: 'n1', label: 'Hawaii', img: null, fill: null, h: 1 } }
+        : { status: 200, body: 2 };
+    ($('#b-add-input') as HTMLInputElement).value = 'Hawaii';
+    $('#b-add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    expect(calls.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `/api/boards/${ALIAS}/items`,
+      body: { label: 'Hawaii', fill: null },
+      auth: `Bearer ${OWNER}`,
+    });
+    expect($('#toast')?.textContent).toBe('Item added');
+    click('[data-action="b-remove-item"][data-id="p1"]');
+    expect($('#m-title')?.textContent).toBe('Remove Regina?');
+    click('#m-ok');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p1` });
+    expect($('#toast')?.textContent).toBe('Item removed');
+    respond = () => ({ status: 409, body: { error: 'too_few' } });
+    click('[data-action="b-remove-item"][data-id="p0"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
+  });
+
+  it('recolors a color item: a draft until validated, then its votes go after a confirmation', async () => {
+    const ws = FakeSocket.last();
+    const red = { type: 'solid' as const, colors: ['#aa0000'] };
+    const colored = [{ ...items[0], label: 'Rouge', fill: red }, { ...items[1], label: 'Carmin', fill: red }, items[2]];
+    const rv = ranking(['p0', 'p1', 'p2']);
+    (rv.stats.p1 as ItemScore).w = 2;
+    ws.receive(state({ items: colored, ranking: rv } as Partial<BoardView>, true));
+    expect($('#b-admin .b-twin')?.textContent).toBe('Same color as Carmin');
+    expect(document.querySelectorAll('#b-admin [data-action="b-edit-color"]')).toHaveLength(2);
+
+    const edit = (hexValue: string) => {
+      click('[data-action="b-edit-color"][data-id="p1"]');
+      expect($('#cp-twin')?.textContent).toBe('Same color as Rouge');
+      const hex = $('#cpop .cp-hex') as HTMLInputElement;
+      hex.value = hexValue;
+      hex.dispatchEvent(new Event('input', { bubbles: true }));
+      change(hex);
+      expect($('#cp-twin')?.hidden).toBe(true);
+    };
+    edit('#2743F5');
+    click('[data-action="cp-cancel"]');
+    expect($('#cpop')?.hidden).toBe(true);
+    expect(calls).toHaveLength(0);
+
+    edit('2743f5');
+    respond = () => ({ status: 200, body: 2 });
+    click('[data-action="cp-ok"]');
+    expect($('#m-title')?.textContent).toBe('Change the color of Carmin?');
+    expect($('#m-body')?.textContent).toContain('Its 2 votes were cast on the old color');
+    click('#m-ok');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}/items/p1`,
+      body: { fill: { type: 'solid', colors: ['#2743f5'] } },
+      auth: `Bearer ${OWNER}`,
+    });
+    expect($('#toast')?.textContent).toBe('Color changed. Carmin starts again from zero.');
+
+    // An item without votes changes without a confirmation; a closed board has no editor.
+    click('[data-action="b-edit-color"][data-id="p0"]');
+    ($('#cpop .cp-sw') as HTMLElement).click();
+    click('[data-action="cp-ok"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', url: `/api/boards/${ALIAS}/items/p0` });
+    ws.receive(state({ items: colored, status: 'closed' } as Partial<BoardView>, true));
+    expect($('#b-admin [data-action="b-edit-color"]')).toBeNull();
+  });
+
   it('saves settings and closes the vote through the API', async () => {
     const ws = FakeSocket.last();
     ws.receive(state({}, true));

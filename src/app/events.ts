@@ -1,10 +1,13 @@
 import { locale, plural, t } from '../i18n';
 import {
+  boardAddItem,
   boardAdminLink,
   boardChange,
+  boardEditColor,
   boardKeydown,
   boardPick,
   boardRefresh,
+  boardRemoveItem,
   boardReset,
   boardShare,
   boardSkip,
@@ -12,11 +15,16 @@ import {
   boardUndo,
   boardUnlink,
   boardWithdraw,
+  closeFinale,
   copyBoardLink,
+  openFinale,
+  setFinaleView,
+  setFinaleWho,
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
 import { $, closeModal, doc, narrow, toast } from './dom';
 import { choose, duelKeydown, skip, undoLast } from './duel';
+import { drawLines } from './finale';
 import { changeTheme } from './header';
 import { addColor, addFiles, addLabels, removeItem, renameItem } from './items';
 import { publishRanking } from './publish';
@@ -164,6 +172,24 @@ function onClick(e: MouseEvent): void {
     case 'b-unlink':
       boardUnlink();
       break;
+    case 'b-remove-item':
+      void boardRemoveItem(id);
+      break;
+    case 'b-edit-color':
+      boardEditColor(id, el);
+      break;
+    case 'b-finale':
+      openFinale();
+      break;
+    case 'b-finale-close':
+      closeFinale();
+      break;
+    case 'b-finale-view':
+      setFinaleView(el.dataset.view);
+      break;
+    case 'b-finale-who':
+      setFinaleWho(el.dataset.who);
+      break;
   }
 }
 
@@ -183,9 +209,10 @@ function onInput(e: Event): void {
 
 function onChange(e: Event): void {
   const tg = e.target as HTMLInputElement;
-  if (S.route.view === 'board' && boardChange(tg)) return;
+  // The color editor also serves published boards, where there is no local ranking.
+  if (colorChange(tg) || (S.route.view === 'board' && boardChange(tg))) return;
   const r = cur();
-  if (!r || colorChange(tg)) return;
+  if (!r) return;
   if (tg.id === 'c-grad') {
     const c2 = $('#c2');
     if (c2) c2.hidden = !tg.checked;
@@ -269,6 +296,11 @@ export function bindEvents(): void {
   doc.addEventListener('keydown', onKeydown);
   doc.addEventListener('paste', onPaste);
   doc.addEventListener('submit', (e) => {
+    if ((e.target as HTMLElement).id === 'b-add-form') {
+      e.preventDefault();
+      void boardAddItem();
+      return;
+    }
     if ((e.target as HTMLElement).id !== 'add-form') return;
     e.preventDefault();
     const r = cur();
@@ -317,7 +349,10 @@ export function bindEvents(): void {
     },
     true,
   );
-  window.addEventListener('resize', placeColor);
+  window.addEventListener('resize', () => {
+    placeColor();
+    drawLines();
+  });
   window.addEventListener('hashchange', routeFromHash);
   narrow.addEventListener('change', () => {
     if (cur()) setTab(S.route.tab);
