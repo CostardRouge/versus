@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { castVote, createBoard, crowd, DEFAULT_SETTINGS, LIMITS, setStatus } from '../src/core/board';
+import { addReport, castVote, createBoard, crowd, DEFAULT_SETTINGS, LIMITS, setStatus } from '../src/core/board';
 import {
+  adminBoardView,
   boardSummary,
   boardView,
   countsOf,
+  isAdminFilter,
   MAX_MESSAGE,
   myDuels,
   parseClientMessage,
@@ -124,6 +126,26 @@ describe('views', () => {
       counts: { votes: 2, voters: 2 },
     });
     expect(Object.keys(u)).not.toContain('ranking');
+  });
+
+  it('gives the admin everything: the ranking, the flags and the reports without their voters', () => {
+    const b = board();
+    b.mod.featured = true;
+    addReport(b, { voter: VOTER, reason: 'spam', note: 'Ads' }, 9);
+    const v = adminBoardView(b, crowd(b), 1, 'Ab3dEf7hJk');
+    expect(v).toMatchObject({
+      alias: 'Ab3dEf7hJk',
+      lang: 'fr',
+      touched: 1,
+      mod: { hidden: false, featured: true },
+      reports: [{ reason: 'spam', note: 'Ads', t: 9 }],
+    });
+    expect(v.ranking?.order).toHaveLength(3);
+    expect(JSON.stringify(v.reports)).not.toContain(VOTER);
+    // Voters' views carry none of it.
+    expect(Object.keys(boardView(b, crowd(b), 1, true))).not.toContain('mod');
+    expect(isAdminFilter('reported')).toBe(true);
+    expect(isAdminFilter('nope')).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   boardPick,
   boardRefresh,
   boardRemoveItem,
+  boardReport,
   boardReset,
   boardShare,
   boardSkip,
@@ -173,6 +174,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-make-mine':
       boardMakeMine();
+      break;
+    case 'b-report':
+      void boardReport();
       break;
     case 'end-see':
       endSee();

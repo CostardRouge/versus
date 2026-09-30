@@ -11,6 +11,8 @@ const BUILD = [
   'assets/index-CWzlMAkk.js',
   'assets/index-CWzlMAkk.js.map',
   'assets/index-Dw_WARWv.css',
+  'assets/admin-D3xAmPl3.js',
+  'assets/admin-D3xAmPl3.css',
   'assets/figtree-latin-wght-normal-D_ZTVpCC.woff2',
   'assets/figtree-latin-ext-wght-normal-DCwSJGxG.woff2',
   'assets/jetbrains-mono-latin-500-normal-BWZEU5yA.woff2',
@@ -55,6 +57,10 @@ describe('precacheList', () => {
     for (const f of ['.map', '.png', '.ico', 'robots.txt', 'sitemap.xml', 'llms.txt', '_headers', 'sw.js']) {
       expect(list.some((x) => x.endsWith(f))).toBe(false);
     }
+  });
+
+  it('leaves out the admin page and its bundle: nothing to moderate offline', () => {
+    expect(list.some((f) => f.includes('admin'))).toBe(false);
   });
 
   it('is sorted, whatever the bundle order', () => {

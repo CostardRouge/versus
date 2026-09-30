@@ -689,3 +689,34 @@ describe('sharing', () => {
     click('[data-action="back"]');
   });
 });
+
+describe('reporting', () => {
+  const REPORTED = 'Rep7rTbxAr';
+
+  it('lets a voter report the board with a reason and a note', async () => {
+    respond = (c) =>
+      c.method === 'POST' && c.url.endsWith('/report') ? { status: 200, body: true } : { status: 404, body: {} };
+    history.pushState(null, '', `/b/${REPORTED}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state());
+    click('[data-action="b-report"]');
+    expect($('#m-title')?.textContent).toBe('Report this ranking');
+    ($('input[name="report-reason"][value="personal"]') as HTMLInputElement).checked = true;
+    ($('#report-note') as HTMLTextAreaElement).value = ' It names my neighbour ';
+    click('#m-ok');
+    await flush();
+    expect(calls.find((c) => c.method === 'POST')).toMatchObject({
+      url: `/api/boards/${REPORTED}/report`,
+      body: { voter: expect.any(String), reason: 'personal', note: 'It names my neighbour' },
+    });
+    expect($('#toast')?.textContent).toBe('Thanks, your report was sent.');
+  });
+
+  it('shows no report link to the author', () => {
+    FakeSocket.last().receive(state({}, true));
+    expect($('[data-action="b-report"]')).toBeNull();
+    click('[data-action="back"]');
+  });
+});

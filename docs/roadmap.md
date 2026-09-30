@@ -29,6 +29,7 @@ Last updated 2026-09-30.
 - Real addresses in the app (D92): `/app/demo/destinations`, `/app/demo/destinations/ranking`, `/app/r/<id>`, `/app/b/<alias>`; Back and Forward follow the views, old `#/b/` links still open, GitHub Pages included (`404.html`).
 - Audience measurement and legal notice (D93 to D96, `docs/analytics.md`): self-hosted Umami, loaded only for visitors who don't decline (switch, Do Not Track, Global Privacy Control), views with ids stripped and a few anonymous events; `/legal/` and `/fr/mentions-legales/` with publisher, hosting, privacy and the measurement switch.
 - Sharing (D98 to D102): a result drawn as an image in the browser (post, story, landscape) from the Ranking tab, a board, a duel and the end-of-vote page (me facing the crowd), handed to the system share sheet with the message and the link, or copied or downloaded; link previews of boards and duels with their own title, description and card (drawn by the app, stored in R2, head rewritten by the Worker); duel links that open on their duel; "Make my own" from a board or a card under Your votes.
+- Moderation (D103 to D105, `docs/published-boards.md#moderation`): a Report link on every board (reason, note, anonymous, one per voter), hidden and featured flags per board, and the moderation page at `/admin/` (registry list with filters and search, totals, per-board view with reports, close, feature, hide, remove an item, clear reports, take down), behind the admin token, out of the index and the offline cache.
 
 ## Next (suggested order)
 
@@ -49,18 +50,17 @@ Last updated 2026-09-30.
 - Content pages (one per scoring method, a pairwise ranking guide): internal links and long-tail queries a single page can't reach.
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
-- Images on published boards (R2), once reporting and takedown exist.
+- Images on published boards (R2), with a validation queue on the moderation page.
 - Crowd ranking by aggregating each voter's own ranking (Borda, Kemeny) as an alternative to pooled votes.
 - Publish presets ("Open", "Blind contest") if the publish modal still feels heavy.
-- Admin page behind Cloudflare Access (the admin API exists), with usage against free-tier limits.
+- Cloudflare Access in front of `/admin/` and `/api/admin/` (the owner's step, `docs/online-architecture.md#moderation`); usage against free-tier limits on the moderation page.
 - Client-side vote batching, if a board ever goes viral.
-- A report button on published boards, feeding the admin view.
 
 ## Open questions for online mode
 
 None of these blocks the backend spike; all must be settled before a public launch.
 
 - **Anti-abuse**: rate limits per connection and IP, Turnstile at publication; an author option to require Turnstile per voter?
-- **Moderation**: even text-only public boards need reporting, takedown and an admin view; a legal and safety requirement, stronger once images open.
+- **Moderation of images**: reporting, takedown, hiding and the admin page exist for text and color boards; images will need a validation queue before they show.
 - **Cleanup**: TTL of inactive published boards (proposal: 60 days without a vote), warning the author before deletion.
 - **Accounts**: none at first; magic link or OAuth (GitHub/Google) later?

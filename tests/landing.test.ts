@@ -166,7 +166,11 @@ describe('pages', () => {
       const html = read(page);
       expect(html).toContain(`<html lang="${PAGES[page].lang}">`);
       expect(html).toContain(HEAD_MARK);
-      if (page !== 'app') {
+      if (page === 'admin') {
+        // The moderation page renders itself; only the head and the theme script are filled.
+        expect(html).toContain(BOOT_MARK);
+        expect(html).not.toContain(BODY_MARK);
+      } else if (page !== 'app') {
         expect(html).toContain(BOOT_MARK);
         expect(html).toContain(BODY_MARK);
       } else {

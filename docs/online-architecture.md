@@ -19,7 +19,8 @@ Browser (Vite app, local-first)
 Cloudflare static assets: the app (dist/), served by the same Worker, same origin as the API
    ▼
 Worker (router: publish/join board, owner and admin auth, per-IP rate limits, Turnstile at publication)
-   ├─ D1: board registry (alias, title, status, counts, last activity), for the admin API
+   ├─ D1: board registry (alias, title, status, language, counts, reports, hidden, featured, last activity),
+   │      for the admin page and the public lists
    ▼
 Durable Object, one per published board
    ├─ embedded SQLite: items, votes (one row per voter and pair), settings, owner token hash
@@ -38,20 +39,21 @@ Why each piece:
 - **One Durable Object per board** gives a natural unit of state, concurrency and cleanup, and a collision-free ID.
 - **Same TypeScript core** on both sides: one language, no scoring drift between client and server.
 - **Server-assigned pairs**: required by blind mode (the browser never needs the crowd ranking) and blocks targeted vote stuffing (votes are accepted only on assigned pairs).
-- **D1 registry**: Durable Objects can't be listed with their data, so the admin view needs its own index. Updated at most once a day per board to spare writes.
+- **D1 registry**: Durable Objects can't be listed with their data, so the admin page needs its own index. Updated at most once a day per board to spare writes (at once for structural changes: status, items, flags, reports).
 
 ## Implementation (`worker/`)
 
-- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`, items, `PUT …/card` for the link preview card), `/api/summaries` (the cards of a voter's "Your votes", as that voter may see each board) and `/api/admin` (list, totals, inspect, close, remove an item, take down, with `Authorization: Bearer <ADMIN_TOKEN>`); the route list is at the top of the file.
+- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`, items, `PUT …/card` for the link preview card, `POST …/report` for visitors' reports), `/api/summaries` (the cards of a voter's "Your votes", as that voter may see each board) and `/api/admin` (totals; the list with filters and a title search; per board the full view with flags and reports, close or reopen, moderation flags, remove an item, clear the reports, take down; `Authorization: Bearer <ADMIN_TOKEN>`); the route list is at the top of the file.
 - `worker/src/cards.ts`: link previews (D100). Stores the 1200×630 PNG the app drew for a board or one of its duels in R2 (`og/<alias>.png`, `og/<alias>/<a>.<b>.png`; 400 KB at most, 40 duel cards per board), serves it under `/og/b/…/<version>.png` (24 h cache; the site's `og.png` when there is none), and rewrites the head of `/app/b/<alias>[?duel=a.b]` with the board's title, a description in its language (`src/i18n/unfurl.ts`) and the card. The cards go with the board (withdrawal, takedown, expiry).
-- `worker/src/registry.ts` + `worker/migrations/`: the D1 registry. Each board writes its row on publication, status and item changes, and at most once a day for votes; the row goes when the board does.
+- `worker/src/registry.ts` + `worker/migrations/`: the D1 registry, whose row is the admin list's (`AdminRow` in `src/core/protocol.ts`): alias, title, status, language, counts, report count, hidden and featured flags, creation and activity. Each board writes its row on publication, status, item, flag and report changes, and at most once a day for votes; the row goes when the board does. `0002_moderation.sql` added the language, the flags and the report count.
 - Limits: the `PUBLISH_LIMIT` (5 publications per minute) and `API_LIMIT` (120 requests per minute, WebSocket connections included) rate limiting bindings, keyed by client IP; votes and skips are limited per connection (150 ms), item suggestions per connection (5 s).
 - `worker/src/turnstile.ts`: with `TURNSTILE_SECRET` set, publishing requires a Turnstile token (the app shows the widget when `VITE_TURNSTILE_SITE_KEY` is set).
-- `worker/src/board-object.ts`: `BoardObject`, a thin adapter around `src/core/board.ts`. Loads the board from SQLite when it wakes (synchronous reads), keeps each voter's session (queue, skipped pairs, rate limit) in the WebSocket attachment so it survives hibernation, caches the crowd ranking for 1 s, broadcasts at most once per second.
+- `worker/src/board-object.ts`: `BoardObject`, a thin adapter around `src/core/board.ts`. Loads the board from SQLite when it wakes (synchronous reads; a `reports` table besides `meta` and `votes`, created on wake for older boards), keeps each voter's session (queue, skipped pairs, rate limit) in the WebSocket attachment so it survives hibernation, caches the crowd ranking for 1 s, broadcasts at most once per second. Moderation flags live in the board's meta, reports one row per voter.
 - Protocol (`src/core/protocol.ts`): the client sends `hello` (voter id, owner token for the author, the pair a duel link asked for), then `vote`, `skip`, `undo`, `reset`; the server answers `state`, `pairs`, `ranking` (null when not entitled) and `error`.
 - App side: `src/app/remote.ts` (fetch helpers and a WebSocket that says hello on every connection, reconnects with a growing delay and asks the API whether a board still exists before calling it gone), `src/app/board.ts` (board page), `src/app/publish.ts` (publish modal). The app reaches the API at `/api` on its own origin, or `VITE_API_URL`; a production build without either hides publishing.
 - The Worker serves the site too (`assets`, from `dist/`, binding `ASSETS`): files first, then for what matches none the app's page for every view under `/app/` (`/app/demo/…`, `/app/b/<alias>`, D92) and the 404 page with a 404 status for the rest. `npm run worker:dev` builds it in `worker` mode (`.env.worker`: `VITE_API_URL=/`), so publishing works on http://localhost:8787 with the real Worker; `npm run dev` keeps hot reload and proxies `/api` to it.
-- Not built: client-side vote batching. Each vote costs 1/20 of a request (WebSocket billing), so batching only pays off for a viral board, and it would need a longer pair queue; left for when a board needs it. No admin page yet: the admin API is meant for curl or a later page behind Cloudflare Access.
+- The admin page (`src/admin/`, served at `/admin/` like any page of the build) is the client of the admin routes: see Moderation below.
+- Not built: client-side vote batching. Each vote costs 1/20 of a request (WebSocket billing), so batching only pays off for a viral board, and it would need a longer pair queue; left for when a board needs it.
 - Known cost: waking a board reads all its votes (one row read each). Fine at this stage; per-pair totals can be cached if large boards wake often.
 
 ## Costs (Cloudflare pricing as of September 2026, check before relying on it)
@@ -101,9 +103,17 @@ Sources: [Durable Objects pricing](https://developers.cloudflare.com/durable-obj
 - **Owner rights:** an owner token generated at publication, stored hashed in the object. The author keeps it in `localStorage` and in an admin link (`…/app/b/<alias>#owner=…`: the fragment never reaches server logs or referrers). No accounts at first.
 - **Settings:** stored in the board's SQLite and enforced in the object (visibility, scoring method, vote changes, visitors adding items).
 - **Cleanup:** the alarm is set to last vote + TTL. When it fires, it checks the last vote time and either reschedules or deletes the board: no extra write per vote.
-- **Admin:** protected Worker routes (a secret, then Cloudflare Access) reading the D1 registry to list, inspect, lock and delete boards, and to watch usage against free-tier limits.
+- **Admin:** protected Worker routes (a secret, then Cloudflare Access) reading the D1 registry to list, inspect, lock and delete boards, and to watch usage against free-tier limits; the moderation page below is their client.
 
 Remaining questions are listed in `docs/published-boards.md` (still open) and `docs/roadmap.md`.
+
+## Moderation
+
+The page at `/admin/` (D103; behavior in `docs/published-boards.md#moderation`) asks for the Worker's `ADMIN_TOKEN` and keeps it in the tab's session storage, so a phone or a shared computer forgets it when the tab closes; a refused token brings the form back. It is out of the index (`noindex, nofollow`, `Disallow: /admin/`, `X-Robots-Tag`), out of the service worker's precache and never measured. The GitHub Pages copy builds it too, where it only says it has no server.
+
+The token alone protects the routes. Once deployed, add a second lock with **Cloudflare Access** (free for up to 50 users): *Zero Trust* → *Access* → *Applications* → *Add an application* → *Self-hosted*, with two paths on the Worker's domain, `/admin` (and `/admin/*`) and `/api/admin/*`, and a policy allowing the owner's email (one-time PIN or a Google login). Cloudflare then asks for that login before the Worker sees the request; the page keeps asking for the token behind it. The tests run without Access, against the token.
+
+Each admin action is one Durable Object call plus a registry write; the list and the totals are two D1 reads. Reports write one row in the board and refresh its registry row, so a report flood costs at most 200 rows per board (`LIMITS.reports`) and one registry write each, within the per-IP API limit.
 
 ## Deploying
 
@@ -119,7 +129,7 @@ The `deploy-worker` job in `.github/workflows/ci.yml` runs `npm run worker:deplo
    - variable `CLOUDFLARE_ACCOUNT_ID`: the account ID (Workers & Pages overview, right column). Setting it turns the job on.
 3. **Deploy**: merge to `main`, or run the CI workflow by hand (*Actions* → *CI* → *Run workflow* on `main`). The first run creates the Worker, the Durable Object class, the R2 bucket `versus-images` (`npm run worker:bucket`, which needs the token to have *Workers R2 Storage* · *Edit*, and the account's R2 enabled once in the dashboard) and the D1 database, then applies the D1 migrations. The app answers at `https://versus.<account subdomain>.workers.dev`.
 4. **Secrets of the Worker** (once it exists), in *Workers & Pages* → `versus` → *Settings* → *Variables and Secrets*, type *Secret*, or with `npx wrangler secret put <NAME> -c worker/wrangler.jsonc`:
-   - `ADMIN_TOKEN`: a long random string (`openssl rand -base64 32`); the admin API stays off without it;
+   - `ADMIN_TOKEN`: a long random string (`openssl rand -base64 32`); the admin API and the moderation page (`/admin/`) stay off without it. Then consider Cloudflare Access in front of both (Moderation above);
    - `TURNSTILE_SECRET`: optional, see below.
    Deploys never delete secrets.
 5. **Custom domain**: `versus` → *Settings* → *Domains & Routes* → *Add* → *Custom domain*, for example `versus.example.com` on a zone of the account. Cloudflare creates the DNS record and the certificate. Deploys keep it, since the config declares no routes. The workers.dev address stays on. Then set the GitHub variable `SITE_URL` to the new address (`https://versus.example.com/`): the canonical URL, social card, sitemap and llms.txt of both builds move to it on the next deploy (`docs/seo.md`).

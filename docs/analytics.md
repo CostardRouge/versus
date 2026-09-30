@@ -19,6 +19,8 @@ Last updated 2026-09-30. Ported from steevepommier.com and vanessagedeon.com (th
 | `/app/r/:id`, `/app/r/:id/ranking`, `/app/r/:id/items` | A ranking of this browser: its id replaced |
 | `/app/b/:alias` | A published board: its alias replaced (whoever has it can vote) |
 
+The moderation page (`/admin/`, the publisher's) carries no measurement settings and never reports.
+
 Referrer: the other site the visitor came from (origin and path only), then, inside the app, the previous view, as a page load would report it. Title: the page's title, which never holds user content.
 
 **Events**, anonymous facts only, never a title, a label or an address:

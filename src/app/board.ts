@@ -1,11 +1,11 @@
 import { trackEvent } from '../audience';
-import { revealAt } from '../core/board';
+import { LIMITS, REPORT_REASONS, revealAt } from '../core/board';
 import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
 import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
-import type { BoardStatus, Duel, ErrorCode, Fill, Item, Outcome, Ranking } from '../core/types';
+import type { BoardStatus, Duel, ErrorCode, Fill, Item, Outcome, Ranking, ReportReason } from '../core/types';
 import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { closeColor, cp, openBoardColor } from './color';
@@ -33,6 +33,7 @@ import {
   patchBoard,
   recolorBoardItem,
   removeBoardItem,
+  reportBoard,
   setBoardStatus,
   withdrawBoard,
 } from './remote';
@@ -322,6 +323,7 @@ function boardHTML(b: Board, adminOpen: boolean): string {
         ${b.isOwner ? adminHTML(v, adminOpen) : ''}
         <section class="b-rank" id="b-rank"></section>
         ${!b.isOwner && v.settings.visitorsAddItems && !closed ? `<section class="b-suggest"><h2>${t('suggestTitle')}</h2>${addFormHTML()}</section>` : ''}
+        ${b.isOwner ? '' : `<p class="b-report"><button class="link" type="button" data-action="b-report">${t('report')}</button></p>`}
       </aside>
     </div>
   </div>`;
@@ -824,6 +826,38 @@ export function boardShareData(): BoardShare | null {
 export function boardMakeMine(): void {
   const v = B?.view;
   if (v) makeOwn(v.title, v.items, 'board');
+}
+
+const REASON_KEYS: Record<ReportReason, MsgKey> = {
+  spam: 'reportSpam',
+  offensive: 'reportOffensive',
+  personal: 'reportPersonal',
+  other: 'reportOther',
+};
+
+/** Reports the board to the moderator: a reason from the list and a few words, sent with the anonymous voter id. */
+export async function boardReport(): Promise<void> {
+  const b = B;
+  if (!b?.view) return;
+  const options = REPORT_REASONS.map(
+    (r, i) =>
+      `<label class="opt"><input type="radio" name="report-reason" value="${r}" ${i === 0 ? 'checked' : ''}> ${t(REASON_KEYS[r])}</label>`,
+  ).join('');
+  const html = `<p class="muted">${t('reportBody')}</p>
+    <fieldset class="set">${options}</fieldset>
+    <label class="report-note"><span class="muted">${t('reportNote')}</span>
+      <textarea id="report-note" rows="3" maxlength="${LIMITS.note}"></textarea></label>`;
+  const ok = await ask({ title: t('reportTitle'), html, ok: t('reportSend'), danger: true });
+  if (!ok || B !== b) return;
+  const picked = ($('input[name="report-reason"]:checked') as HTMLInputElement | null)?.value;
+  const reason = REPORT_REASONS.includes(picked as ReportReason) ? (picked as ReportReason) : 'other';
+  const note = ($('#report-note') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+  try {
+    await reportBoard(b.alias, { voter: S.voter, reason, note });
+    toast(t('reported'));
+  } catch (e) {
+    toast(t(e instanceof ApiError && e.code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
+  }
 }
 
 // ─── Author ─────────────────────────────────────────────────────────────────

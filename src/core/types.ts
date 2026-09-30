@@ -94,6 +94,27 @@ export interface Vote extends Duel {
 /** The language a board was published in: its link previews speak it. */
 export type BoardLang = 'en' | 'fr';
 
+/** Why a visitor reports a board (docs/published-boards.md#moderation). */
+export type ReportReason = 'spam' | 'offensive' | 'personal' | 'other';
+
+/** A visitor's report of a board: one per voter, the newest replacing the older one. */
+export interface Report {
+  voter: string;
+  reason: ReportReason;
+  /** A few words from the reporter, possibly empty. */
+  note: string;
+  t: number;
+}
+
+/**
+ * What the admin decided about a board: hidden, it keeps working for whoever has its link but stays out of
+ * every public list; featured, it is put forward in them.
+ */
+export interface Moderation {
+  hidden: boolean;
+  featured: boolean;
+}
+
 export interface SharedBoard {
   title: string;
   items: Item[];
@@ -103,13 +124,16 @@ export interface SharedBoard {
   /** Last activity other than a vote (publication, settings, status), for the inactivity TTL. */
   touched: number;
   lang: BoardLang;
+  mod: Moderation;
   /** Votes in arrival order, keyed by voter and pair. */
   votes: Map<string, Vote>;
   /** The same votes grouped by voter, each group in arrival order and keyed by pair. */
   voters: Map<string, Map<string, Vote>>;
+  /** Visitors' reports, keyed by voter, in arrival order. */
+  reports: Map<string, Report>;
 }
 
-export type BoardMeta = Pick<SharedBoard, 'title' | 'settings' | 'status' | 'created' | 'touched' | 'lang'>;
+export type BoardMeta = Pick<SharedBoard, 'title' | 'settings' | 'status' | 'created' | 'touched' | 'lang' | 'mod'>;
 
 /**
  * A published board this browser voted on without managing it: a card under "Your votes" in the

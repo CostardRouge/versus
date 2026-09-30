@@ -13,12 +13,14 @@ import {
   noscriptHtml,
   notFoundHtml,
   pageUrl,
+  ROBOTS_ADMIN,
   ROBOTS_APP,
   rootFrom,
   sitePath,
   siteUrl,
 } from '../build/seo';
 import {
+  ADMIN_TITLE,
   DEFAULT_SITE_URL,
   DESCRIPTION,
   DESCRIPTIONS,
@@ -203,6 +205,16 @@ describe('pages', () => {
     expect(html).not.toContain('application/ld+json');
   });
 
+  it('keeps the admin page out of the index entirely', () => {
+    const html = tags('admin');
+    expect(html).toContain(`<meta name="robots" content="${ROBOTS_ADMIN}" />`);
+    expect(html).toContain(`<title>${ADMIN_TITLE}</title>`);
+    expect(html).toContain(`<link rel="canonical" href="${URL_}admin/" />`);
+    expect(html).not.toContain('hreflang');
+    expect(html).not.toContain('application/ld+json');
+    expect(rootFrom('admin')).toBe('../');
+  });
+
   it('links the two legal pages to each other, each titled and described in its language', () => {
     for (const lang of LANGUAGES) {
       expect(LEGAL_TITLES[lang].length, lang).toBeLessThanOrEqual(60);
@@ -322,10 +334,11 @@ describe('generated files', () => {
     expect(m.id).toBe('./');
   });
 
-  it('points robots.txt at the sitemap and keeps the API out', () => {
+  it('points robots.txt at the sitemap and keeps the API and the admin page out', () => {
     const robots = files['robots.txt']?.body ?? '';
     expect(robots).toContain(`Sitemap: ${URL_}sitemap.xml`);
     expect(robots).toContain('Disallow: /api/');
+    expect(robots).toContain('Disallow: /admin/');
   });
 
   it('lists the home and legal pages in a plain sitemap, with their last change, not the app', () => {
@@ -334,6 +347,7 @@ describe('generated files', () => {
       expect(sitemap).toContain(`<url><loc>${URL_}${path}</loc><lastmod>2026-09-30</lastmod></url>`);
     }
     expect(sitemap).not.toContain(`${URL_}app/`);
+    expect(sitemap).not.toContain(`${URL_}admin/`);
     // Only the sitemap namespace: an XHTML one makes browsers render the file as a blank page.
     expect([...sitemap.matchAll(/xmlns(:\w+)?=/g)]).toHaveLength(1);
     expect(sitemap).not.toContain('xhtml');
@@ -369,6 +383,7 @@ describe('generated files', () => {
       expect(worker._headers?.body).toContain(path);
     }
     expect(worker._headers?.body).toContain('/app/*\n  X-Robots-Tag: noindex');
+    expect(worker._headers?.body).toContain('/admin/*\n  X-Robots-Tag: noindex');
     expect(worker._headers?.body).toContain('/sitemap.xml\n  Content-Type: application/xml; charset=utf-8');
     expect(worker._headers?.body).toContain('/404\n  Content-Type: text/html; charset=utf-8');
   });

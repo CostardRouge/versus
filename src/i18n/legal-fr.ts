@@ -35,6 +35,8 @@ export const legalFr: LegalMessages = {
     'Quand tu publies un classement, son titre, ses éléments (texte et couleurs : les images ne peuvent pas être publiées) et ses réglages sont envoyés au serveur pour que d’autres votent, avec une image de celui-ci (son titre et ses éléments, dessinée par ton navigateur) qui s’affiche quand son lien est collé quelque part ; partager un duel en dessine une de ce duel aussi. Chaque vote est enregistré avec l’identifiant anonyme du navigateur qui l’a donné, la paire, le choix et l’heure : ni nom, ni e-mail, ni adresse IP.',
   boards2:
     'Un classement publié est supprimé quand son auteur le retire, ou après {days} jours sans activité. Toute personne qui a son lien peut le voir et voter : n’y publie rien de personnel. Le lien de l’auteur porte une clé après le <code>#</code>, que les navigateurs n’envoient jamais à un serveur : garde-le pour toi.',
+  boards3:
+    'Signaler un classement envoie le motif que tu choisis, ta précision s’il y en a une, et le même identifiant anonyme de votant, pour qu’un navigateur ne compte qu’une fois ; l’éditeur lit les signalements pour décider de retirer un classement, de le masquer des listes du site ou de le laisser. Rien d’autre n’est gardé sur toi.',
 
   countTitle: 'Mesure d’audience',
   count1:
@@ -68,7 +70,7 @@ export const legalFr: LegalMessages = {
   licence1:
     'Versus est un logiciel libre : son <a href="{source}">code source</a> est publié sous <a href="{license}">licence MIT</a>.',
   licence2:
-    'Ce que tu mets dans Versus reste à toi. Quand tu publies un classement, tu en es responsable et tu dois avoir le droit de partager ce qu’il contient. Quelque chose d’illégal ou de choquant dans un classement publié ? Envoie son lien à {email} et il sera retiré.',
+    'Ce que tu mets dans Versus reste à toi. Quand tu publies un classement, tu en es responsable et tu dois avoir le droit de partager ce qu’il contient. Quelque chose d’illégal ou de choquant dans un classement publié ? Utilise son bouton <b>Signaler</b>, ou envoie son lien à {email}, et il sera retiré.',
 
   liabTitle: 'Responsabilité',
   liab1:

@@ -30,13 +30,17 @@ export const DESCRIPTIONS: Record<SiteLang, string> = {
 };
 export const DESCRIPTION = DESCRIPTIONS.en;
 
-/** Home pages and legal pages are static and indexed, one per language; the app is one page for both. */
-export type PageKind = 'home' | 'legal' | 'app';
+/**
+ * Home pages and legal pages are static and indexed, one per language; the app is one page for both; the admin
+ * page is the publisher's moderation page, out of the index and behind the Worker's admin token.
+ */
+export type PageKind = 'home' | 'legal' | 'app' | 'admin';
 
 /**
  * The pages the build writes (vite.config.ts), relative to the site's root. Each language has its home page and
  * its legal notice, static pages search engines index (hreflang between the two versions); the app, which
- * renders everything with JavaScript and switches language by itself, lives under app/ and stays out of the index.
+ * renders everything with JavaScript and switches language by itself, lives under app/ and stays out of the index,
+ * and so does the admin page (docs/published-boards.md#moderation).
  */
 export const PAGES = {
   home: { file: 'index.html', path: '', lang: 'en', kind: 'home' },
@@ -44,14 +48,21 @@ export const PAGES = {
   legal: { file: 'legal/index.html', path: 'legal/', lang: 'en', kind: 'legal' },
   legalFr: { file: 'fr/mentions-legales/index.html', path: 'fr/mentions-legales/', lang: 'fr', kind: 'legal' },
   app: { file: 'app/index.html', path: 'app/', lang: 'en', kind: 'app' },
+  admin: { file: 'admin/index.html', path: 'admin/', lang: 'en', kind: 'admin' },
 } as const satisfies Record<string, { file: string; path: string; lang: SiteLang; kind: PageKind }>;
 export type PageKey = keyof typeof PAGES;
 /** The home page of each language. */
 export const HOMES: Record<SiteLang, PageKey> = { en: 'home', fr: 'homeFr' };
 /** The legal notice (publisher, hosting, privacy, audience measurement) of each language. */
 export const LEGALS: Record<SiteLang, PageKey> = { en: 'legal', fr: 'legalFr' };
+/** The kinds of pages search engines index, in both languages. */
+export type IndexedKind = Exclude<PageKind, 'app' | 'admin'>;
 /** The language versions of each indexed kind of page, linked to each other by hreflang. */
-export const VERSIONS: Record<Exclude<PageKind, 'app'>, Record<SiteLang, PageKey>> = { home: HOMES, legal: LEGALS };
+export const VERSIONS: Record<IndexedKind, Record<SiteLang, PageKey>> = { home: HOMES, legal: LEGALS };
+
+/** The admin page's title and description (its texts: src/i18n/admin.ts). English only: it is the publisher's. */
+export const ADMIN_TITLE = 'Moderation · Versus';
+export const ADMIN_DESCRIPTION = 'The publisher’s moderation page for published rankings. Not for visitors.';
 
 /** The legal pages' titles and descriptions (their text: src/i18n/legal-*.ts). */
 export const LEGAL_TITLES: Record<SiteLang, string> = {

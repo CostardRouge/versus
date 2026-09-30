@@ -4,12 +4,15 @@ import {
   ADD_INTERVAL_MS,
   ALIAS_RE,
   addItem,
+  addReport,
   assignPairs,
   boardMeta,
   canSeeRanking,
   castVote,
+  clearReports,
   createBoard,
   crowd,
+  DEFAULT_MODERATION,
   DEFAULT_SETTINGS,
   itemId,
   LIMITS,
@@ -17,10 +20,13 @@ import {
   lastVote,
   localCopy,
   makeAlias,
+  moderate,
   openSession,
   type PublishInput,
+  parseModeration,
   parseNewItem,
   parsePublish,
+  parseReport,
   patchSettings,
   preferPair,
   recolorItem,
@@ -694,5 +700,59 @@ describe('sessions', () => {
     setStatus(b, 'closed', T0);
     refill(b, t, crowd(b), rng);
     expect(t.queue).toEqual([]);
+  });
+});
+
+describe('moderation', () => {
+  it('starts neither hidden nor featured, and keeps the flags in its meta', () => {
+    const b = board();
+    expect(b.mod).toEqual(DEFAULT_MODERATION);
+    expect(boardMeta(b).mod).toEqual({ hidden: false, featured: false });
+    expect(parseModeration({ hidden: true, featured: 'yes', other: 1 })).toEqual({ hidden: true });
+    expect(parseModeration(null)).toEqual({});
+    expect(moderate(b, { hidden: true })).toEqual({ hidden: true, featured: false });
+    moderate(b, { featured: true });
+    expect(b.mod).toEqual({ hidden: true, featured: true });
+    // Not an activity: moderation never keeps a dead board alive.
+    expect(lastActivity(b)).toBe(T0);
+  });
+
+  it('validates a report and trims its note', () => {
+    expect(value(parseReport({ voter: V1, reason: 'spam', note: '  Ads  ' }))).toEqual({
+      voter: V1,
+      reason: 'spam',
+      note: 'Ads',
+    });
+    expect(value(parseReport({ voter: V1, reason: 'other' })).note).toBe('');
+    expect(value(parseReport({ voter: V1, reason: 'other', note: 'x'.repeat(500) })).note).toHaveLength(LIMITS.note);
+    const bad = [
+      { voter: V1, reason: 'rude' },
+      { voter: 'x', reason: 'spam' },
+      { voter: V1, reason: 'spam', note: 3 },
+      'spam',
+      null,
+    ];
+    for (const x of bad) expect(errorOf(parseReport(x))).toBe('bad_request');
+  });
+
+  it('keeps one report per voter, up to the limit, and restores them', () => {
+    const b = board();
+    value(addReport(b, { voter: V1, reason: 'spam', note: '' }, T0 + 1));
+    value(addReport(b, { voter: V2, reason: 'other', note: 'hm' }, T0 + 2));
+    const again = value(addReport(b, { voter: V1, reason: 'offensive', note: 'really' }, T0 + 3));
+    expect(again).toEqual({ voter: V1, reason: 'offensive', note: 'really', t: T0 + 3 });
+    expect([...b.reports.values()].map((r) => r.voter)).toEqual([V2, V1]);
+    expect(lastActivity(b)).toBe(T0);
+    const copy = restoreBoard(boardMeta(b), b.items, b.votes.values(), b.reports.values());
+    expect([...copy.reports.entries()]).toEqual([...b.reports.entries()]);
+    for (let i = 0; i < LIMITS.reports; i++) {
+      addReport(b, { voter: `voter-${String(i).padStart(4, '0')}`, reason: 'spam', note: '' }, T0);
+    }
+    expect(b.reports.size).toBe(LIMITS.reports);
+    expect(errorOf(addReport(b, { voter: 'voter-new-one', reason: 'spam', note: '' }, T0))).toBe('full');
+    // A voter already there can still change theirs.
+    expect(errorOf(addReport(b, { voter: V1, reason: 'spam', note: '' }, T0))).toBeNull();
+    expect(clearReports(b)).toHaveLength(LIMITS.reports);
+    expect(b.reports.size).toBe(0);
   });
 });

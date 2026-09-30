@@ -2,7 +2,15 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { ACTION_INTERVAL_MS, ALIAS_RE } from '../src/core/board';
-import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../src/core/protocol';
+import type {
+  AdminBoardView,
+  AdminList,
+  AdminTotals,
+  BoardSummary,
+  BoardView,
+  ClientMessage,
+  ServerMessage,
+} from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
 import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
 import type { BoardSettings, Ranking } from '../src/core/types';
@@ -65,7 +73,7 @@ function api(path: string, init: { method?: string; body?: unknown; token?: stri
   return server.fetch(`${init.root ?? '/api/boards'}${path}`, { method: init.method ?? 'GET', headers, body });
 }
 
-const adminApi = (path: string, init: { method?: string; token?: string } = {}) =>
+const adminApi = (path: string, init: { method?: string; token?: string; body?: unknown } = {}) =>
   api(path, { ...init, root: '/api/admin', token: init.token ?? ADMIN });
 
 async function publish(settings: Partial<BoardSettings> = {}, duels: unknown[] = []) {
@@ -614,6 +622,77 @@ describe('registry and admin', () => {
     );
     expect((await adminApi('/boards/1111111111')).status).toBe(404);
     expect((await adminApi('/nothing')).status).toBe(404);
+  });
+
+  it('takes visitors’ reports, one per voter, and lists reported boards first', async () => {
+    const { alias } = await publish();
+    const report = (body: unknown) => api(`/${alias}/report`, { method: 'POST', body });
+    expect((await report({ voter: 'voter-one-1', reason: 'spam', note: '  Ads everywhere  ' })).status).toBe(200);
+    expect((await report({ voter: 'voter-one-1', reason: 'offensive' })).status).toBe(200);
+    expect((await report({ voter: 'voter-two-2', reason: 'other', note: 'x'.repeat(400) })).status).toBe(200);
+    expect((await report({ voter: 'voter-two-2', reason: 'nope' })).status).toBe(400);
+    expect((await report({ voter: 'bad', reason: 'spam' })).status).toBe(400);
+    expect((await report({ voter: 'voter-two-2' })).status).toBe(400);
+    const gone = { voter: 'voter-one-1', reason: 'spam' };
+    expect((await api('/1111111111/report', { method: 'POST', body: gone })).status).toBe(404);
+    expect((await api(`/${alias}/report`)).status).toBe(404);
+    const full = (await (await adminApi(`/boards/${alias}`)).json()) as AdminBoardView;
+    expect(full.alias).toBe(alias);
+    expect(full.mod).toEqual({ hidden: false, featured: false });
+    expect(full.reports).toEqual([
+      { reason: 'offensive', note: '', t: expect.any(Number) },
+      { reason: 'other', note: 'x'.repeat(300), t: expect.any(Number) },
+    ]);
+    expect(JSON.stringify(full.reports)).not.toContain('voter-one-1');
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=reported')).json()) as AdminList;
+        expect(list.filter).toBe('reported');
+        expect(list.boards[0]).toMatchObject({ alias, reports: 2, lang: 'en' });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    const stats = (await (await adminApi('/stats')).json()) as AdminTotals;
+    expect(stats.reported).toBeGreaterThan(0);
+    // Reviewed: the reports go and the board leaves the list.
+    expect(await (await adminApi(`/boards/${alias}/reports`, { method: 'DELETE' })).json()).toBe(2);
+    expect(((await (await adminApi(`/boards/${alias}`)).json()) as AdminBoardView).reports).toEqual([]);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=reported')).json()) as AdminList;
+        expect(list.boards.some((b) => b.alias === alias)).toBe(false);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+  });
+
+  it('hides and features boards, and filters and searches the list', async () => {
+    const { alias } = await publish();
+    const patch = (body: unknown) => adminApi(`/boards/${alias}`, { method: 'PATCH', body });
+    expect(await (await patch({ hidden: true, featured: 'yes' })).json()).toEqual({ hidden: true, featured: false });
+    expect(await (await patch({ featured: true })).json()).toEqual({ hidden: true, featured: true });
+    expect((await adminApi('/boards/1111111111', { method: 'PATCH', body: { hidden: true } })).status).toBe(404);
+    await vi.waitFor(
+      async () => {
+        const hidden = (await (await adminApi('/boards?filter=hidden')).json()) as AdminList;
+        expect(hidden.boards.find((b) => b.alias === alias)).toMatchObject({ hidden: true, featured: true });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    const featured = (await (await adminApi('/boards?filter=featured&q=PIZZ')).json()) as AdminList;
+    expect(featured).toMatchObject({ filter: 'featured', q: 'PIZZ' });
+    expect(featured.boards.some((b) => b.alias === alias)).toBe(true);
+    const none = (await (await adminApi('/boards?filter=featured&q=nothing-like-this')).json()) as AdminList;
+    expect(none.boards).toEqual([]);
+    expect(((await (await adminApi('/boards?filter=bogus&limit=1')).json()) as AdminList).filter).toBe('all');
+    const stats = (await (await adminApi('/stats')).json()) as AdminTotals;
+    expect(stats.hidden).toBeGreaterThan(0);
+    expect(stats.featured).toBeGreaterThan(0);
+    // Voters see none of it: the board keeps working for whoever has the link.
+    const { status, body } = await view(alias);
+    expect(status).toBe(200);
+    expect(Object.keys(body)).not.toContain('mod');
+    expect((await patch({ hidden: false })).status).toBe(200);
   });
 });
 

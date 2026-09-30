@@ -37,6 +37,8 @@ export const legalEn = {
     'When you publish a ranking, its title, its items (text and colors: images can’t be published) and its settings are sent to the server so that others can vote, along with a picture of it (its title and items, drawn by your browser) that shows when its link is pasted somewhere; sharing a duel draws one of that duel too. Each vote is stored with the anonymous voter id of the browser that cast it, the pair, the choice and the time: no name, no email, no IP address.',
   boards2:
     'A published ranking is deleted when its author withdraws it, or after {days} days without activity. Anyone with its link can see it and vote, so don’t publish anything personal. The author’s link carries a key after the <code>#</code>, which browsers never send to a server: keep it to yourself.',
+  boards3:
+    'Reporting a ranking sends the reason you pick, your note if any, and the same anonymous voter id, so that one browser counts once; the publisher reads reports to decide whether to take a ranking down, hide it from the site’s lists or leave it. Nothing else is stored about you.',
 
   countTitle: 'Audience measurement',
   count1:
@@ -70,7 +72,7 @@ export const legalEn = {
   licence1:
     'Versus is free software: its <a href="{source}">source code</a> is published under the <a href="{license}">MIT licence</a>.',
   licence2:
-    'What you put in Versus remains yours. When you publish a ranking, you are responsible for it and must have the right to share what it contains. Something illegal or offensive on a published ranking? Send its link to {email} and it will be taken down.',
+    'What you put in Versus remains yours. When you publish a ranking, you are responsible for it and must have the right to share what it contains. Something illegal or offensive on a published ranking? Use its <b>Report</b> button, or send its link to {email}, and it will be taken down.',
 
   liabTitle: 'Liability',
   liab1:

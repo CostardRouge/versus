@@ -25,6 +25,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - Rankings stay in the browser (`localStorage`); only what you publish is sent. Visits are counted with a self-hosted, cookie-free Umami, never loaded for visitors who decline (a switch on the [legal notice](https://versus.steevepommier.com/legal/), Do Not Track, Global Privacy Control), and never with a ranking's content or id (see [`docs/analytics.md`](docs/analytics.md)).
 - **Published boards**: publish a ranking, share the link, and let a crowd vote in real time (on versus.steevepommier.com; the GitHub Pages copy has no backend). See [`docs/published-boards.md`](docs/published-boards.md).
 - **Share as an image**: your ranking, the crowd's, you against the crowd, or a single duel, drawn in the browser in post, story or landscape format and handed to the system share sheet, the clipboard or a download. A board's link unfurls with its own card, a duel link with its two items.
+- **Moderation**: visitors report a board (anonymously, with a reason); the publisher's page at `/admin/` lists boards with their reports, hides or features them, removes items and takes boards down (see [`docs/published-boards.md#moderation`](docs/published-boards.md#moderation)).
 
 ## Development
 
@@ -61,6 +62,7 @@ src/
     protocol.ts  messages and views shared by the app and the Worker
   i18n/        en.ts (source of keys), fr.ts (type-checked against en), helpers; landing-*.ts for the home page
   landing/     the home page, rendered at build time in each language, then animated
+  admin/       the publisher's moderation page (/admin/), client of the Worker's admin routes
   app/
     ui.ts        mount(): the entry point
     gallery.ts, workspace.ts, items.ts, duel.ts, results.ts, color.ts   one module per view

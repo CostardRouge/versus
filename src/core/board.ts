@@ -12,8 +12,11 @@ import type {
   Fill,
   Item,
   MethodKey,
+  Moderation,
   Outcome,
   Ranking,
+  Report,
+  ReportReason,
   Result,
   Rng,
   Session,
@@ -42,6 +45,9 @@ export const LIMITS = {
   skipped: 12,
   /** Boards refreshed in one "Your votes" request (one Durable Object call each). */
   summaries: 24,
+  /** A report's note, and how many voters' reports a board keeps. */
+  note: 300,
+  reports: 200,
 };
 /** Undoing the very last vote stays possible this long when votes are final (mis-taps). */
 export const UNDO_GRACE_MS = 10_000;
@@ -59,6 +65,11 @@ export const DEFAULT_SETTINGS: BoardSettings = {
   allowChange: true,
   visitorsAddItems: false,
 };
+
+/** A board starts neither hidden nor featured. */
+export const DEFAULT_MODERATION: Moderation = { hidden: false, featured: false };
+
+export const REPORT_REASONS: readonly ReportReason[] = ['spam', 'offensive', 'personal', 'other'];
 
 export const VOTER_RE = /^[\w-]{8,64}$/;
 const ITEM_ID_RE = /^[\w-]{1,32}$/;
@@ -208,10 +219,16 @@ function putVote(board: SharedBoard, v: Vote): Vote | null {
   return prev;
 }
 
-/** Rebuilds a board from stored parts; `votes` must be in arrival order. */
-export function restoreBoard(meta: BoardMeta, items: Item[], votes: Iterable<Vote>): SharedBoard {
-  const board: SharedBoard = { ...meta, items, votes: new Map(), voters: new Map() };
+/** Rebuilds a board from stored parts; `votes` and `reports` must be in arrival order. */
+export function restoreBoard(
+  meta: BoardMeta,
+  items: Item[],
+  votes: Iterable<Vote>,
+  reports: Iterable<Report> = [],
+): SharedBoard {
+  const board: SharedBoard = { ...meta, items, votes: new Map(), voters: new Map(), reports: new Map() };
   for (const v of votes) putVote(board, v);
+  for (const r of reports) board.reports.set(r.voter, r);
   return board;
 }
 
@@ -224,6 +241,7 @@ export function createBoard(input: PublishInput, now: number): SharedBoard {
     created: now,
     touched: now,
     lang: input.lang,
+    mod: { ...DEFAULT_MODERATION },
   };
   return restoreBoard(
     meta,
@@ -232,14 +250,66 @@ export function createBoard(input: PublishInput, now: number): SharedBoard {
   );
 }
 
-export const boardMeta = ({ title, settings, status, created, touched, lang }: SharedBoard): BoardMeta => ({
+export const boardMeta = ({ title, settings, status, created, touched, lang, mod }: SharedBoard): BoardMeta => ({
   title,
   settings,
   status,
   created,
   touched,
   lang,
+  mod,
 });
+
+// ─── Moderation ─────────────────────────────────────────────────────────────
+
+export interface ReportInput {
+  voter: string;
+  reason: ReportReason;
+  note: string;
+}
+
+/** A visitor's report: their voter id, a reason from the list, and a note cut to LIMITS.note. */
+export function parseReport(x: unknown): Result<ReportInput> {
+  if (!isRecord(x) || typeof x.voter !== 'string' || !VOTER_RE.test(x.voter)) return fail('bad_request');
+  if (!REPORT_REASONS.includes(x.reason as ReportReason)) return fail('bad_request');
+  if (x.note !== undefined && typeof x.note !== 'string') return fail('bad_request');
+  const note = (x.note ?? '').trim().slice(0, LIMITS.note);
+  return ok({ voter: x.voter, reason: x.reason as ReportReason, note });
+}
+
+/**
+ * Records a report. One per voter (a new one replaces theirs), LIMITS.reports voters at most: enough to
+ * make a board stand out on the admin page, not enough to fill the store. Not an activity for the TTL.
+ */
+export function addReport(board: SharedBoard, input: ReportInput, now: number): Result<Report> {
+  if (!board.reports.has(input.voter) && board.reports.size >= LIMITS.reports) return fail('full');
+  const report: Report = { ...input, t: now };
+  board.reports.delete(input.voter);
+  board.reports.set(input.voter, report);
+  return ok(report);
+}
+
+/** The admin has seen the reports: they go, and the board can be reported again. */
+export function clearReports(board: SharedBoard): Report[] {
+  const gone = [...board.reports.values()];
+  board.reports.clear();
+  return gone;
+}
+
+/** The flags of a moderation patch; anything else is ignored. */
+export function parseModeration(x: unknown): Partial<Moderation> {
+  const out: Partial<Moderation> = {};
+  if (!isRecord(x)) return out;
+  if (typeof x.hidden === 'boolean') out.hidden = x.hidden;
+  if (typeof x.featured === 'boolean') out.featured = x.featured;
+  return out;
+}
+
+/** Applies the admin's flags. Not an activity for the TTL: moderation must not keep a dead board alive. */
+export function moderate(board: SharedBoard, patch: Partial<Moderation>): Moderation {
+  board.mod = { ...board.mod, ...patch };
+  return board.mod;
+}
 
 export const voteCount = (board: SharedBoard, voter: string): number => board.voters.get(voter)?.size ?? 0;
 

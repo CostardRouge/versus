@@ -2429,6 +2429,27 @@ body.dropping .drop-overlay {
   flex-wrap: wrap;
   gap: 8px 16px;
 }
+/* Reporting: a quiet link at the end of the side column, a small form in the modal. */
+.b-report {
+  margin: 18px 0 0;
+  text-align: right;
+}
+.report-note {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.report-note textarea {
+  font: inherit;
+  color: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  resize: vertical;
+  min-height: 64px;
+}
 
 /* End-of-vote page: a page of its own once every pair is voted. Podium or "you vs the crowd", one reveal. */
 .fin {

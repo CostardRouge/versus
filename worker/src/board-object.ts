@@ -1,16 +1,22 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   addItem,
+  addReport,
   boardMeta,
   canSeeRanking,
+  clearReports,
   createBoard,
   crowd,
+  DEFAULT_MODERATION,
   itemId,
   lastActivity,
   localCopy,
+  moderate,
   openSession,
   type PublishInput,
+  parseModeration,
   parseNewItem,
+  parseReport,
   recolorItem,
   refill,
   removeItem,
@@ -26,6 +32,8 @@ import {
   voteCount,
 } from '../../src/core/board';
 import {
+  type AdminBoardView,
+  adminBoardView,
   type BoardSummary,
   boardSummary,
   boardView,
@@ -44,8 +52,11 @@ import type {
   BoardStatus,
   Computed,
   Item,
+  Moderation,
   Outcome,
   Ranking,
+  Report,
+  ReportReason,
   Result,
   Session,
   SharedBoard,
@@ -75,12 +86,23 @@ CREATE TABLE IF NOT EXISTS votes (
   PRIMARY KEY (voter, pair)
 ) WITHOUT ROWID;`;
 
+// Visitors' reports, one per voter (docs/published-boards.md#moderation). Its own statement: boards stored
+// before it exists get the table when they wake.
+const REPORTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS reports (
+  voter TEXT PRIMARY KEY,
+  reason TEXT NOT NULL,
+  note TEXT NOT NULL,
+  t INTEGER NOT NULL
+) WITHOUT ROWID;`;
+
 interface StoredMeta extends BoardMeta {
   alias: string;
   ownerHash: string;
 }
 
 type VoteRow = { voter: string; a: string; b: string; s: number; t: number; seq: number };
+type ReportRow = { voter: string; reason: ReportReason; note: string; t: number };
 
 async function sha256(s: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -133,11 +155,20 @@ export class BoardObject extends DurableObject<Env> {
       votes.push({ voter: row.voter, a: row.a, b: row.b, s: row.s as Outcome, t: row.t });
       this.seq = row.seq + 1;
     }
+    this.sql.exec(REPORTS_SCHEMA);
+    const reports: Report[] = this.sql
+      .exec<ReportRow>('SELECT voter, reason, note, t FROM reports ORDER BY t')
+      .toArray();
     this.ownerHash = ownerHash;
     // Boards stored before the registry existed have no alias: they simply stay out of it.
     this.alias = alias ?? '';
-    // Boards stored before link previews have no language: English, the site's default.
-    this.board = restoreBoard({ ...m, lang: m.lang ?? 'en' }, JSON.parse(items.v) as Item[], votes);
+    // Boards stored before link previews have no language, before moderation no flags: the defaults.
+    this.board = restoreBoard(
+      { ...m, lang: m.lang ?? 'en', mod: m.mod ?? { ...DEFAULT_MODERATION } },
+      JSON.parse(items.v) as Item[],
+      votes,
+      reports,
+    );
   }
 
   private saveMeta(board: SharedBoard): void {
@@ -183,9 +214,13 @@ export class BoardObject extends DurableObject<Env> {
       alias: this.alias,
       title: board.title,
       status: board.status,
+      lang: board.lang,
       items: board.items.length,
       votes: board.votes.size,
       voters: board.voters.size,
+      reports: board.reports.size,
+      hidden: board.mod.hidden,
+      featured: board.mod.featured,
       created: board.created,
       active: now,
     };
@@ -228,6 +263,7 @@ export class BoardObject extends DurableObject<Env> {
     this.ownerHash = ownerHash;
     this.cache = null;
     this.sql.exec(SCHEMA);
+    this.sql.exec(REPORTS_SCHEMA);
     this.ctx.storage.transactionSync(() => {
       this.saveMeta(board);
       this.sql.exec("INSERT INTO meta (k, v) VALUES ('items', ?)", JSON.stringify(board.items));
@@ -308,12 +344,33 @@ export class BoardObject extends DurableObject<Env> {
     return { ok: true, value: copy };
   }
 
+  /** A visitor reports the board (one report per voter, the newest kept); the admin page sees the count. */
+  report(raw: unknown): Result<true> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const input = parseReport(raw);
+    if (!input.ok) return input;
+    const r = addReport(board, input.value, Date.now());
+    if (!r.ok) return r;
+    const { voter, reason, note, t } = r.value;
+    this.sql.exec(
+      `INSERT INTO reports (voter, reason, note, t) VALUES (?, ?, ?, ?)
+       ON CONFLICT (voter) DO UPDATE SET reason = excluded.reason, note = excluded.note, t = excluded.t`,
+      voter,
+      reason,
+      note,
+      t,
+    );
+    this.touchRegistry(board, true);
+    return { ok: true, value: true };
+  }
+
   // ─── Admin (the Worker checks the admin token before calling these) ──────
 
-  /** Everything, ranking included, whatever the visibility. */
-  adminView(): ReturnType<typeof boardView> | null {
+  /** Everything, ranking included, whatever the visibility, with the flags and the reports. */
+  adminView(): AdminBoardView | null {
     const board = this.board;
-    return board ? boardView(board, this.crowd(board), this.ctx.getWebSockets().length, true) : null;
+    return board ? adminBoardView(board, this.crowd(board), this.ctx.getWebSockets().length, this.alias) : null;
   }
 
   adminStatus(status: BoardStatus): Result<BoardStatus> {
@@ -322,6 +379,26 @@ export class BoardObject extends DurableObject<Env> {
 
   adminRemoveItem(id: string): Result<number> {
     return this.board ? this.applyRemove(this.board, id) : { ok: false, error: 'not_found' };
+  }
+
+  /** Hides or features the board (docs/published-boards.md#moderation); voters see no difference. */
+  adminModerate(patch: unknown): Result<Moderation> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const mod = moderate(board, parseModeration(patch));
+    this.saveMeta(board);
+    this.touchRegistry(board, true);
+    return { ok: true, value: mod };
+  }
+
+  /** The reports were reviewed: they go, and the board leaves the "reported" list. */
+  adminClearReports(): Result<number> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const n = clearReports(board).length;
+    this.sql.exec('DELETE FROM reports');
+    this.touchRegistry(board, true);
+    return { ok: true, value: n };
   }
 
   /** Takedown: deletes the board without a copy for anyone. */

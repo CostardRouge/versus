@@ -4,7 +4,7 @@ import { CARD_MAX_BYTES, parseDuelQuery } from '../../src/core/share';
 import type { ErrorCode, Result } from '../../src/core/types';
 import { cardURL, preview, readCard, rewriteHead, storeCard } from './cards';
 import type { Env } from './env';
-import { listBoards, totals } from './registry';
+import { isFilter, listBoards, totals } from './registry';
 import { verifyTurnstile } from './turnstile';
 
 export { BoardObject } from './board-object';
@@ -25,6 +25,7 @@ export { BoardObject } from './board-object';
  *   DELETE /api/boards/:alias                   withdraw; returns the local copy (owner)
  *   PUT    /api/boards/:alias/card[?duel=a.b]   the card the board's link (or one duel's) unfurls with: a
  *                                               1200×630 PNG drawn by the app → { url }
+ *   POST   /api/boards/:alias/report            { voter, reason, note? }: a visitor reports the board
  *
  *   GET    /og/b/:alias[/:a.:b]/:version.png    a stored card, or the site's card when there is none
  *
@@ -32,13 +33,18 @@ export { BoardObject } from './board-object';
  *                                               the boards of a voter's "Your votes", as that voter may see them
  *
  *   GET    /api/admin/stats                     totals from the registry         (admin)
- *   GET    /api/admin/boards?limit&offset       boards, most recently active first
- *   GET    /api/admin/boards/:alias             full view, ranking included
+ *   GET    /api/admin/boards?limit&offset&filter&q   boards, most recently active first; `filter` is one of
+ *                                               all, reported, featured, hidden, open, closed; `q` words of the title
+ *   GET    /api/admin/boards/:alias             full view, ranking, flags and reports included
+ *   PATCH  /api/admin/boards/:alias             { hidden?, featured? }: moderation flags
  *   POST   /api/admin/boards/:alias/close | reopen
  *   DELETE /api/admin/boards/:alias/items/:id   remove an item (moderation)
+ *   DELETE /api/admin/boards/:alias/reports     the reports were reviewed
  *   DELETE /api/admin/boards/:alias             take the board down
  *
- * Owners send `Authorization: Bearer <owner token>`, admins `Authorization: Bearer <ADMIN_TOKEN>`.
+ * Owners send `Authorization: Bearer <owner token>`, admins `Authorization: Bearer <ADMIN_TOKEN>`. The admin
+ * page (`/admin/`, built with the app) calls the admin routes with the token typed on it; put Cloudflare Access
+ * in front of `/admin/*` and `/api/admin/*` once deployed (docs/online-architecture.md#moderation).
  */
 
 const MAX_BODY = 512 * 1024;
@@ -148,6 +154,11 @@ async function board(req: Request, env: Env, alias: string, rest: string[]): Pro
   if (extra.length) return error('not_found');
   const m = req.method;
   if (action === 'card' && id === undefined) return m === 'PUT' ? putCard(req, env, alias) : error('not_found');
+  if (action === 'report' && id === undefined) {
+    if (m !== 'POST') return error('not_found');
+    const body = await readJson(req);
+    return body === null ? error('too_large') : reply(await stub.report(body));
+  }
   if (action === undefined) {
     if (m === 'GET') {
       if (req.headers.get('Upgrade')?.toLowerCase() === 'websocket') return stub.fetch(req);
@@ -203,7 +214,11 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
     const url = new URL(req.url);
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50));
     const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-    return json({ boards: await listBoards(env.REGISTRY, limit, offset), limit, offset });
+    const rawFilter = url.searchParams.get('filter') ?? 'all';
+    const filter = isFilter(rawFilter) ? rawFilter : 'all';
+    const q = (url.searchParams.get('q') ?? '').slice(0, 80);
+    const boards = await listBoards(env.REGISTRY, { limit, offset, filter, q });
+    return json({ boards, limit, offset, filter, q });
   }
   if (!ALIAS_RE.test(alias)) return error('not_found');
   const stub = env.BOARDS.getByName(alias);
@@ -212,11 +227,17 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
       const view = await stub.adminView();
       return view ? json(view) : error('not_found');
     }
+    if (m === 'PATCH') {
+      const patch = await readJson(req);
+      return patch === null ? error('too_large') : reply(await stub.adminModerate(patch));
+    }
     if (m === 'DELETE') return reply(await stub.adminDelete());
   } else if (m === 'POST' && id === undefined && (action === 'close' || action === 'reopen')) {
     return reply(await stub.adminStatus(action === 'close' ? 'closed' : 'open'));
   } else if (action === 'items' && id !== undefined && m === 'DELETE') {
     return reply(await stub.adminRemoveItem(id));
+  } else if (action === 'reports' && id === undefined && m === 'DELETE') {
+    return reply(await stub.adminClearReports());
   }
   return error('not_found');
 }

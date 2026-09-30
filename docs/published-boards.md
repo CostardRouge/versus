@@ -31,6 +31,16 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - The panel shows the card in the format chosen (post 4:5, story 9:16, landscape), and offers the system share sheet with the image and a message that carries the link, or copying the message, copying the image, downloading it. The format chosen stays for the session.
 - **Make my own** (D102): on the board page and the end-of-vote page (not for the author), and on a card under Your votes, a button makes a ranking of this browser with the board's title and items, without votes, to change and publish.
 
+## Moderation
+
+Decided on 2026-09-30 (D103 to D105), built in `worker/`, `src/admin/` and the board page.
+
+- **Report** (visitors, not the author): a link at the end of the board page opens a small form, a reason (spam or advertising; hateful, violent or sexual content; personal data or harassment; something else) and an optional note (300 characters). The report travels with the browser's anonymous voter id, so a browser counts once: a new report replaces its previous one. A board keeps 200 voters' reports at most. Reports are anonymous: nobody answers the reporter. Reporting isn't an activity for the inactivity TTL.
+- **The admin page**, `/admin/`, is the publisher's: the boards of the registry with their counts, flags and report counts, filters (all, reported, featured, hidden, open, closed), a title search, and per board the full view (ranking included, whatever its visibility), the reports with their reasons and notes, and the actions: close or reopen the vote, feature, hide, remove an item, mark the reports reviewed, take the board down. It asks for the Worker's `ADMIN_TOKEN` and keeps it in the tab only; wrong token, back to the form. English or French from the browser's language. Out of the index and of the offline cache.
+- **Hidden**: the board keeps working for whoever has its link, and its link previews too, but it appears in no public list (Popular, templates, the sitemap, once they exist). **Featured**: it comes first in those lists. Voters see neither flag; the author isn't told. Neither counts as activity for the TTL.
+- **Take down** deletes the board for everyone, with its cards and registry row, and leaves no copy; the author's page says the board is gone. Remove an item drops its votes, as the author's own removal does.
+- The legal notice tells reporters what a report sends and gives the contact address for what the button can't say.
+
 ## Voting rules
 
 - **One voice per voter per pair.** A new vote on a pair replaces the voter's previous one. A tie is a vote (half a win each). Heavy voters bring more information (more pairs covered), never more weight on a pair.
@@ -124,5 +134,5 @@ To keep publishing light, the modal shows four things: the warning, "push my vot
 ## Still open
 
 - Anti-abuse beyond per-IP limits and Turnstile at publication: an author option to require a check (Turnstile) per voter?
-- Moderation: the admin API can remove an item or take a board down; a report button for visitors is still to do.
+- Moderation of images, once items can carry them on published boards (a validation queue is the plan).
 - TTL of inactive published boards (proposal: 60 days without a vote) and warning the author before deletion.

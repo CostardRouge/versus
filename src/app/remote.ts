@@ -1,7 +1,7 @@
 import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
 import { duelQuery } from '../core/share';
-import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking } from '../core/types';
+import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking, ReportReason } from '../core/types';
 
 /**
  * Network client for published boards. The API lives under /api: on the same origin in dev (the Vite
@@ -58,6 +58,9 @@ export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DE
 /** Boards as this voter may see them, for "Your votes"; null for a board that no longer exists. */
 export const fetchSummaries = (voter: string, aliases: string[]) =>
   call<Record<string, BoardSummary | null>>('POST', '', { voter, aliases }, undefined, '/api/summaries');
+/** Reports a board to the moderator: a reason and a few words, with this browser's anonymous voter id. */
+export const reportBoard = (alias: string, report: { voter: string; reason: ReportReason; note: string }) =>
+  call<true>('POST', `/${alias}/report`, report);
 
 /** The card a board's link (or one duel's link) unfurls with: a PNG the app drew. Resolves with its address. */
 export async function putCard(alias: string, png: Blob, pair: readonly [string, string] | null): Promise<string> {

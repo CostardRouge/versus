@@ -8,7 +8,9 @@ import type {
   ErrorCode,
   Item,
   MethodKey,
+  Moderation,
   Outcome,
+  ReportReason,
   Result,
   SharedBoard,
 } from './types';
@@ -103,6 +105,77 @@ export function boardView(board: SharedBoard, C: Computed, online: number, visib
 
 export const myDuels = (board: SharedBoard, voter: string): Duel[] =>
   votesOf(board, voter).map(({ a, b, s }) => ({ a, b, s }));
+
+// ─── Admin ──────────────────────────────────────────────────────────────────
+
+/** What the admin page can narrow the list of boards to. */
+export const ADMIN_FILTERS = ['all', 'reported', 'featured', 'hidden', 'open', 'closed'] as const;
+export type AdminFilter = (typeof ADMIN_FILTERS)[number];
+export const isAdminFilter = (x: unknown): x is AdminFilter => ADMIN_FILTERS.includes(x as AdminFilter);
+
+/** One board in the admin list: the registry's row (worker/src/registry.ts), refreshed at most once a day for votes. */
+export interface AdminRow {
+  alias: string;
+  title: string;
+  status: BoardStatus;
+  lang: BoardLang;
+  items: number;
+  votes: number;
+  voters: number;
+  /** Visitors' reports awaiting the admin. */
+  reports: number;
+  hidden: boolean;
+  featured: boolean;
+  created: number;
+  /** Last activity, refreshed at most once a day. */
+  active: number;
+}
+
+export interface AdminList {
+  boards: AdminRow[];
+  limit: number;
+  offset: number;
+  filter: AdminFilter;
+  q: string;
+}
+
+export interface AdminTotals {
+  boards: number;
+  open: number;
+  votes: number;
+  voters: number;
+  /** Boards with at least one report awaiting the admin. */
+  reported: number;
+  featured: number;
+  hidden: number;
+}
+
+/** A report as the admin page shows it: its reason, note and time, never who sent it. */
+export interface ReportView {
+  reason: ReportReason;
+  note: string;
+  t: number;
+}
+
+/** Everything the admin page needs about one board: the full view, ranking included, its flags and reports. */
+export interface AdminBoardView extends BoardView {
+  alias: string;
+  lang: BoardLang;
+  touched: number;
+  mod: Moderation;
+  reports: ReportView[];
+}
+
+export function adminBoardView(board: SharedBoard, C: Computed, online: number, alias: string): AdminBoardView {
+  return {
+    ...boardView(board, C, online, true),
+    alias,
+    lang: board.lang,
+    touched: board.touched,
+    mod: board.mod,
+    reports: [...board.reports.values()].map(({ reason, note, t }) => ({ reason, note, t })),
+  };
+}
 
 // ─── Link previews ──────────────────────────────────────────────────────────
 
