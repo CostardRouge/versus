@@ -310,6 +310,7 @@ kbd {
   padding: 0;
 }
 .mosaic {
+  position: relative;
   display: grid;
   grid-template-columns: 1.25fr 1fr;
   grid-template-rows: 1fr 1fr;
@@ -405,6 +406,83 @@ kbd {
 }
 .rcard-actions .icon-btn {
   margin-left: auto;
+}
+/* Your votes: published boards voted on from this browser */
+.sec-head .count {
+  font-size: 0.5em;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0;
+  vertical-align: 0.35em;
+  margin-left: 4px;
+}
+.mosaic-cap {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 99px;
+  padding: 3px 8px;
+}
+.rcard.fresh {
+  border-color: color-mix(in oklab, var(--a) 50%, var(--line));
+}
+.fresh-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--a);
+  margin-right: 8px;
+  vertical-align: 0.12em;
+}
+.lead .new {
+  color: var(--a);
+}
+.rcard-note {
+  margin: 4px 16px 0;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--a) 11%, var(--surface));
+  color: var(--a);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.rcard.gone .mosaic {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+.rcard.gone h3 {
+  color: var(--muted);
+}
+.rcard-actions .forget {
+  margin-left: auto;
+  padding: 7px 4px;
+}
+.g-invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-top: 28px;
+  padding: 20px 22px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-lg);
+}
+.g-invite h2 {
+  margin: 0;
+  font: 700 clamp(22px, 2.6vw, 28px) / 1 var(--f-display);
+  letter-spacing: -0.03em;
+}
+.g-invite p {
+  margin: 6px 0 0;
+  font-size: 14px;
 }
 .new-card {
   display: flex;
@@ -1457,7 +1535,7 @@ kbd {
   font: 800 11px / 1 var(--f-display);
   letter-spacing: 0.02em;
 }
-.demo-head {
+.sec-head {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -1465,12 +1543,12 @@ kbd {
   gap: 10px 20px;
   padding-block: 44px 16px;
 }
-.demo-head h2 {
+.sec-head h2 {
   margin: 0;
   font: 700 clamp(24px, 3vw, 32px) / 1 var(--f-display);
   letter-spacing: -0.03em;
 }
-.demo-head p {
+.sec-head p {
   margin: 8px 0 0;
   max-width: 62ch;
   font-size: 14px;
@@ -1830,13 +1908,38 @@ body.dropping .drop-overlay {
   font-size: 14px;
   max-width: calc(100% - 32px);
   text-align: center;
+  visibility: hidden;
   transition:
     opacity 0.2s,
-    transform 0.2s;
+    transform 0.2s,
+    visibility 0s 0.2s;
 }
 .toast.show {
   opacity: 1;
   transform: translate(-50%, 0);
+  visibility: visible;
+  transition-delay: 0s;
+}
+.toast.has-act {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: auto;
+  text-align: left;
+}
+.toast-act {
+  flex-shrink: 0;
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  opacity: 0.85;
+}
+.toast-act:hover {
+  opacity: 1;
 }
 .modal {
   position: fixed;

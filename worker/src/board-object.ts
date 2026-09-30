@@ -26,6 +26,8 @@ import {
   voteCount,
 } from '../../src/core/board';
 import {
+  type BoardSummary,
+  boardSummary,
   boardView,
   countsOf,
   myDuels,
@@ -237,6 +239,12 @@ export class BoardObject extends DurableObject<Env> {
     const board = this.board;
     if (!board) return null;
     return boardView(board, this.crowd(board), this.ctx.getWebSockets().length, canSeeRanking(board, null, false));
+  }
+
+  /** A card under a voter's "Your votes": the board as this voter may see it, and their vote count. */
+  summary(voter: string): BoardSummary | null {
+    const board = this.board;
+    return board ? boardSummary(board, this.crowd(board), voter) : null;
   }
 
   async updateSettings(token: string, patch: unknown): Promise<Result<BoardSettings>> {

@@ -31,7 +31,17 @@ import { hueOf } from './util';
 export const CROWD_METHODS: readonly MethodKey[] = ['bt', 'elo', 'win'];
 const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
 
-export const LIMITS = { title: 120, label: 200, items: 100, duels: 5000, revealAfter: 1000, queue: 3, skipped: 12 };
+export const LIMITS = {
+  title: 120,
+  label: 200,
+  items: 100,
+  duels: 5000,
+  revealAfter: 1000,
+  queue: 3,
+  skipped: 12,
+  /** Boards refreshed in one "Your votes" request (one Durable Object call each). */
+  summaries: 24,
+};
 /** Undoing the very last vote stays possible this long when votes are final (mis-taps). */
 export const UNDO_GRACE_MS = 10_000;
 /** Minimum delay between two votes or skips of one connection (each one triggers pair assignment). */

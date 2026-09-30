@@ -504,3 +504,56 @@ describe('links', () => {
     expect(FakeSocket.last()).not.toBe(ws);
   });
 });
+
+describe('your votes', () => {
+  const VISITED = 'Vs3dEf7hJk';
+  const joined = () => JSON.parse(localStorage.getItem('versus-joined') ?? '[]');
+
+  it('keeps a card for a board voted on, from the first vote', async () => {
+    location.hash = `#/b/${VISITED}`;
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({ settings: { ...view().settings, visibility: 'blind' }, ranking: null }));
+    // Opening a link is not enough.
+    expect(joined()).toEqual([]);
+    click('[data-action="b-pick"][data-side="b"]');
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    expect(joined()).toMatchObject([{ alias: VISITED, title: 'Pizzas', count: 1, mine: [{ a: 'p0', b: 'p1', s: 0 }] }]);
+    expect($('#toast')?.textContent).toBe('Kept in your gallery, under “Your votes”.');
+    expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').joinedHint).toBe(true);
+    await vi.advanceTimersByTimeAsync(600);
+  });
+
+  it('shows the card under "Your votes", then forgets it with an undo', async () => {
+    respond = (c) =>
+      c.url === '/api/summaries' ? { status: 503, body: { error: 'network' } } : { status: 404, body: {} };
+    click('.board [data-action="back"]');
+    await flush();
+    expect(calls.find((c) => c.url === '/api/summaries')?.body).toEqual({
+      voter: expect.any(String),
+      aliases: [VISITED],
+    });
+    expect($('.votes-head h2')?.textContent).toBe('Your votes 1');
+    const card = $(`.rcard:has([data-action="forget"][data-alias="${VISITED}"])`);
+    // Blind board: the card shows the voter's own top, never the crowd's.
+    expect(card?.querySelector('.mosaic-cap')?.textContent).toBe('Your top');
+    expect(card?.querySelector('.tile.first b')?.textContent).toBe('Regina');
+    expect(card?.querySelector('.lead')?.textContent).toBe('Hidden until the vote closes');
+    expect(card?.querySelector('.stab-line .mono')?.textContent).toBe('1/3');
+
+    click(`[data-action="forget"][data-alias="${VISITED}"]`);
+    expect($('.votes-head')).toBeNull();
+    expect(joined()).toEqual([]);
+    expect($('#toast')?.textContent).toBe('“Pizzas” forgotten.Undo');
+    click('[data-action="toast-act"]');
+    expect(joined()).toHaveLength(1);
+    expect($('.votes-head')).not.toBeNull();
+  });
+
+  it('opens the board from its card', () => {
+    click(`.rcard-main[data-action="open-board"][data-alias="${VISITED}"]`);
+    expect(location.hash).toBe(`#/b/${VISITED}`);
+    click('.board [data-action="back"]');
+  });
+});

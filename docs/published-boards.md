@@ -83,6 +83,23 @@ When a voter has voted on every pair (n(n−1)/2), their result gets a page of i
 - The crowd's side follows live updates (a new order re-renders it), or waits for "Refresh" when they are off.
 - If the author adds items, the page says how many new pairs there are and its main button goes back to voting.
 
+## Your votes (the voter's gallery)
+
+Discussed on 2026-09-30, from mockups of four layouts (a section of its own, filters, one mixed grid, a "continue" shelf). The section won: it matches the gallery's structure and keeps what the voter owns apart from what they took part in.
+
+- A board a visitor voted on gets a card in their gallery under **Your votes**, between their own rankings and the demos. The section is hidden while empty and says it lives on this device (no accounts).
+- The card appears at the first vote, not on opening the link. Opening the board again with votes on it brings a forgotten card back.
+- Boards managed from a local ranking stay under "Your rankings" with their Published badge. On another device, without that local ranking, a board voted on shows under Your votes.
+- A card shows the crowd's top 3 when this voter may see it, otherwise their own top ("Your top"): never more than the board shows. Then the status (Open, Closed, Withdrawn), votes and voters, the crowd's leader and the agreement, and the voter's pairs voted out of all pairs (stability means nothing for a crowd).
+- What changed since the voter's last visit to the board: results revealed (at closing, or when the author makes them visible), vote closed, items added (with the pairs left to vote on). A dot, and first place in the section; opening the board clears it.
+- Order: news first, then the latest vote, boards that are gone last.
+- **Forget** removes the card only: the board and the votes stay. The toast offers Undo instead of a confirmation.
+- A board withdrawn or expired stays, greyed, with its last known state; **Keep a copy** turns it into a local ranking with its items and the voter's votes.
+- Someone who has no ranking of their own yet (typically arriving through a shared link) sees Your votes first, and "Your rankings" shrinks to an invitation to create one.
+- The first time a card appears, a toast says where it is kept.
+- Freshness: the gallery asks for every card in one request (`POST /api/summaries`, the 24 most recent boards), at most once a minute. Offline, the cards keep their snapshot. The voter id travels in the request body, never in a URL.
+- Stored in `versus-joined`: one snapshot per board (items, settings, status, counts, the order this voter may see, their votes, and what they saw on their last visit).
+
 ## Author settings
 
 To keep publishing light, the modal shows four things: the warning, "push my votes", results visibility and the scoring method. The rest sits under "More options", with defaults, and stays editable in the board's settings.
@@ -99,6 +116,5 @@ To keep publishing light, the modal shows four things: the warning, "push my vot
 ## Still open
 
 - Anti-abuse beyond per-IP limits and Turnstile at publication: an author option to require a check (Turnstile) per voter?
-- Do boards a visitor voted on appear in their gallery ("Joined")?
 - Moderation: the admin API can remove an item or take a board down; a report button for visitors is still to do.
 - TTL of inactive published boards (proposal: 60 days without a vote) and warning the author before deletion.

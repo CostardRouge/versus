@@ -1,5 +1,6 @@
 import { VOTER_RE } from '../core/board';
-import type { Ranking } from '../core/types';
+import { parseJoined } from '../core/joined';
+import type { Joined, Ranking } from '../core/types';
 import type { Lang } from '../i18n';
 
 export const STORE_KEY = 'versus-v1';
@@ -20,6 +21,8 @@ export interface Prefs {
   resultView?: 'podium' | 'duo';
   /** How a local ranking's Ranking tab shows it: podium, or lines comparing two methods. */
   rankView?: 'podium' | 'lines';
+  /** The voter was told once where the boards they vote on are kept ("Your votes"). */
+  joinedHint?: boolean;
 }
 
 /** localStorage can be missing or throw (private mode, blocked storage), so every access is guarded. */
@@ -118,5 +121,18 @@ export function saveOwner(alias: string, token: string | null): void {
     storage()?.setItem(OWNERS_KEY, JSON.stringify(owners));
   } catch {
     /* the admin link still works */
+  }
+}
+
+export const JOINED_KEY = 'versus-joined';
+
+/** The published boards this browser voted on ("Your votes"). */
+export const loadJoined = (): Joined[] => parseJoined(readJSON(JOINED_KEY));
+
+export function saveJoined(list: Joined[]): void {
+  try {
+    storage()?.setItem(JOINED_KEY, JSON.stringify(list));
+  } catch {
+    /* the cards come back on the next vote */
   }
 }

@@ -1,4 +1,4 @@
-import type { Computed, ItemStats, Ranking } from '../core/types';
+import type { Computed, ItemStats, Joined, Ranking } from '../core/types';
 import { t } from '../i18n';
 import { toast } from './dom';
 import { type Prefs, saveRanks } from './storage';
@@ -15,8 +15,10 @@ interface Route {
   tab: Tab;
 }
 
-export const S: { ranks: Ranking[]; prefs: Prefs; route: Route; voter: string } = {
+export const S: { ranks: Ranking[]; joined: Joined[]; prefs: Prefs; route: Route; voter: string } = {
   ranks: [],
+  /** Published boards voted on from this browser ("Your votes"). */
+  joined: [],
   prefs: {},
   route: { view: 'gallery', tab: 'duel' },
   /** This browser's anonymous voter id on published boards. */
