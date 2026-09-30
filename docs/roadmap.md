@@ -26,6 +26,7 @@ Last updated 2026-09-30.
 - SEO audit fixes (SEOptimer, Seobility): canonical on versus.steevepommier.com, a 55-character title, and the page text (how it works, the four methods, privacy, links) in the static HTML with a single h1, shown under the gallery in the visitor's language.
 - Your votes: published boards a visitor voted on get a card in their gallery (own section, first for someone with no ranking of their own), refreshed in one request, with what changed since their last visit; forget with undo, keep a copy of a withdrawn board (`docs/published-boards.md#your-votes-the-voters-gallery`).
 - Home page (D84 to D90): a showcase at `/` in English and `/fr/` in French, pre-rendered for search engines (hreflang, bilingual sitemap, a social card per language), with a hero demo played by a virtual pointer, the use cases, how it works, a playable demo on six topics, the four methods on the same duels, the crowd (Worker build) and the chocolatine question. The app moved to `/app/` (`noindex`); installed apps and old links follow.
+- Real addresses in the app (D92): `/app/demo/destinations`, `/app/demo/destinations/ranking`, `/app/r/<id>`, `/app/b/<alias>`; Back and Forward follow the views, old `#/b/` links still open, GitHub Pages included (`404.html`).
 
 ## Next (suggested order)
 
@@ -42,7 +43,7 @@ Last updated 2026-09-30.
 - Native shell (Capacitor) around the web app, only if store presence is ever wanted (D75).
 - Search Console for versus.steevepommier.com: verify, submit the sitemap, request indexing of `/` and `/fr/`.
 - Content pages (one per scoring method, a pairwise ranking guide): internal links and long-tail queries a single page can't reach.
-- Per-board social cards: a `/b/<alias>` path served by the Worker with the board's title and its own card (fragments never reach a server).
+- Per-board social cards: board links are paths now (`/app/b/<alias>`, D92), so the Worker can rewrite the app page's head with the board's title and its own card.
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
 - Images on published boards (R2), once reporting and takedown exist.

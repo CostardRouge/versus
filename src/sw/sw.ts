@@ -59,9 +59,9 @@ self.addEventListener('fetch', (event) => {
   const path = url.pathname.slice(scope.pathname.length);
   if (path.startsWith('api/')) return;
   if (req.mode === 'navigate') {
-    // The app is one page (its routes live in the fragment); anything else opened directly (robots.txt,
-    // llms.txt…) goes to the network. Path routes such as /b/<alias> would need absolute asset URLs first.
-    if (path === 'app/' || path === 'app/index.html') event.respondWith(page(req));
+    // Every address under app/ is a view of the one app page (app/demo/…, app/b/…, D92); anything else opened
+    // directly (robots.txt, llms.txt…) goes to the network.
+    if (path.startsWith('app/')) event.respondWith(page(req));
     else if (path in HOMES) event.respondWith(home(req, HOMES[path] as string));
     return;
   }

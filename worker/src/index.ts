@@ -9,7 +9,8 @@ export { BoardObject } from './board-object';
 
 /**
  * API for published boards. Every board lives in its own Durable Object, named by its alias; anything
- * outside /api is the app itself (static assets).
+ * outside /api is the site itself: static files first, then the app's page for every view under /app/
+ * (D92), and the 404 page for the rest (`site()` below).
  *
  *   POST   /api/boards                          publish (PublishInput + Turnstile token) → { alias, owner }
  *   GET    /api/boards/:alias                   public view, or a WebSocket for voters (Upgrade: websocket)
@@ -192,11 +193,24 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
   return error('not_found');
 }
 
+/**
+ * What no static file matched outside /api: a view of the app (`/app/demo/…`, `/app/b/…`) gets the app's page,
+ * which reads its path; anything else gets the 404 page with a 404 status.
+ */
+async function site(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  if (!env.ASSETS || (req.method !== 'GET' && req.method !== 'HEAD')) return error('not_found');
+  if (url.pathname.startsWith('/app/')) return env.ASSETS.fetch(new Request(new URL('/app/', url), req));
+  // `/404`, not `/404.html`: the platform redirects .html addresses to their short form.
+  const page = await env.ASSETS.fetch(new Request(new URL('/404', url), req));
+  return new Response(page.body, { status: 404, headers: page.headers });
+}
+
 export default {
   async fetch(req, env): Promise<Response> {
     const [api, section, ...rest] = new URL(req.url).pathname.split('/').filter(Boolean);
-    // Static assets are served before the Worker runs; anything else outside /api doesn't exist.
-    if (api !== 'api') return error('not_found');
+    // Static files are served before the Worker runs.
+    if (api !== 'api') return site(req, env);
     if (!(await allowed(env.API_LIMIT, req))) return error('rate_limited');
     if (section === 'admin') return admin(req, env, rest);
     if (section === 'summaries')

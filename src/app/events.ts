@@ -39,7 +39,7 @@ import {
   openBoard,
   resetDemo,
   resetRank,
-  routeFromHash,
+  routeFromURL,
   toggleDemos,
 } from './rankings';
 import { copyRanking, setCompare, setRankView } from './results';
@@ -388,7 +388,9 @@ export function bindEvents(): void {
     placeColor();
     drawSlopes();
   });
-  window.addEventListener('hashchange', routeFromHash);
+  window.addEventListener('popstate', routeFromURL);
+  // A link written the old way (#/b/<alias>) pasted into an open app.
+  window.addEventListener('hashchange', routeFromURL);
   narrow.addEventListener('change', () => {
     if (cur()) setTab(S.route.tab);
     placeColor();

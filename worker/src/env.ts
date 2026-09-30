@@ -2,6 +2,8 @@ import type { BoardObject } from './board-object';
 
 export interface Env {
   BOARDS: DurableObjectNamespace<BoardObject>;
+  /** The static build (dist/): the app's page for its views, the 404 page for the rest. */
+  ASSETS?: Fetcher;
   /** Board registry for the admin view (D1). Optional: without it, boards still work. */
   REGISTRY?: D1Database;
   /** Per-IP limits: publications, and every other API request. Optional in local tools. */

@@ -20,7 +20,7 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - **Close**: votes are frozen and the board is read-only; results become visible to everyone (this is when a blind board is revealed). The author can reopen it.
 - **Withdraw**: the board is deleted from the server and its link shows "withdrawn". The author keeps a local copy with the crowd's result (items + every vote as an anonymous duel). Very large boards may need per-pair totals instead of individual duels to fit in `localStorage`.
 - While published, the author's gallery shows the board with a "Published" or "Closed" badge; its content lives on the server.
-- **Links** live in the URL fragment: `#/b/<alias>` to share, `#/b/<alias>?owner=<token>` as the admin link. Opening an admin link stores the token in this browser and removes it from the address bar.
+- **Links** are paths of the app (D92): `…/app/b/<alias>` to share, `…/app/b/<alias>#owner=<token>` as the admin link, the token in the fragment so it never reaches a server. Opening an admin link stores the token in this browser and removes it from the address bar. Links from before (`#/b/<alias>`, `?owner=`) still open and are rewritten to the path form.
 - If a board turns out to be gone (withdrawn elsewhere or expired), nothing is deleted automatically: the author's page offers to go back to the local version, which also forgets the owner token.
 - v1: text and color items only. A ranking containing images can't be published (the modal says why). Images come later, with R2 storage and moderation.
 

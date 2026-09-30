@@ -57,6 +57,7 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   demos.ts            demo data (EN/FR labels) + deterministic simulation (seeded PRNG)
   board.ts            published boards: publish validation, one voice per pair, visibility, pair assignment, sessions
   protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker
+  route.ts            the app's addresses (D92): demo/<slug>, r/<id>, b/<alias>, tab; parse and write, author fragment
   published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
   joined.ts           "Your votes": cards of boards voted on (snapshot, what's new since the last visit, order, copy)
   model.ts, util.ts   constructors, ids, escaping, small helpers
@@ -65,7 +66,7 @@ src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
   ui.ts               mount(): loads data, adds demos, binds events, first render
   state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
-  rankings.ts         render() (gallery or workspace) and ranking-level actions (new, open, reset, duplicate, delete, language)
+  rankings.ts         render() (gallery or workspace), routeFromURL() and ranking-level actions (new, open, reset, duplicate, delete, language)
   gallery.ts          gallery cards: your rankings, your votes (boards voted on), demos
   joined.ts           "Your votes": records a card at the first vote, refreshes cards from the server, forget, keep a copy
   about.ts            the page text closing the gallery (what Versus is, how it works, methods); its static English copy
@@ -81,6 +82,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   board.ts            published board page: server-assigned duels, crowd ranking (live or frozen), author panel
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
+  router.ts           the address bar follows the view (push, replace), app folder from the page's <base>
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
   header.ts, format.ts  static header texts and theme / score, record and date formatting
@@ -103,11 +105,12 @@ docs/                 decisions, roadmap, published boards model, online archite
 
 - **All user-facing text goes through `t()`** (`src/i18n`). Add every key to both `en.ts` and `fr.ts` (typecheck enforces parity; tests check placeholders match). Plurals via `plural(n, key)`, percentages via `pct()`. The home page's texts go in `landing-en.ts` and `landing-fr.ts` (same rules); it renders at build time, so its script gets texts as JSON and never imports a dictionary.
 - **Business logic lives in `src/core`**, never in `src/app/` or `worker/`. It is shared with the Cloudflare Worker, so keep it free of DOM, browser and Workers APIs; `worker/` only adapts it (storage, sockets, alarms).
+- **Addresses:** every view has a path under `app/` (D92, `core/route.ts`): open views through `open()` / `openBoard()` / `goBack()` / `setTab()`, which keep the address bar in step, never with `history` directly. Links the app builds come from `routeURL()`; an author's token only ever goes in the fragment.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home page reads theme and lang and writes lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home page reads theme and lang and writes lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Changing the stored shape requires a migration in `storage.ts`.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in the HTML shells or `public/`: each page's head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The home pages (`/`, `/fr/`) are the indexed ones, linked by hreflang, with every word in their static HTML and one h1; the app (`/app/`) is `noindex` and keeps its own static text (`src/app/about.ts`). Links between pages are relative (the site also lives under github.io/versus/). A redesigned icon or social card gets new file names (caches key on the URL). Modules the Vite config reaches import with their `.ts` extension (D90). Details in `docs/seo.md`.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.

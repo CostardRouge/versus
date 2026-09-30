@@ -61,7 +61,10 @@ export function publishRequest(
 
 // ─── Links ──────────────────────────────────────────────────────────────────
 
-/** Everything lives in the URL fragment, so the owner token never reaches a server log or a referrer. */
+/**
+ * Links written before the app had paths (D92): the board in the fragment, `?owner=` for its author. Still read
+ * (src/app/rankings.ts) and turned into `b/<alias>` addresses; new links come from src/core/route.ts.
+ */
 export const boardHash = (alias: string): string => `#/b/${alias}`;
 export const adminHash = (alias: string, owner: string): string => `${boardHash(alias)}?owner=${owner}`;
 

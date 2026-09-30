@@ -24,6 +24,7 @@ Last updated 2026-09-30. Ported from the SEO/GEO work on steevepommier.com (its 
 | The app's `<noscript>` line | `noscriptHtml()`, at `<!-- seo:noscript -->` | dev and build |
 | `manifest.webmanifest`, `robots.txt`, `sitemap.xml`, `llms.txt` | `generatedFiles()` | build (emitted into `dist/`), and answered by the dev server |
 | `_headers` (Cloudflare static assets) | `headersFile()` | Worker build only (`--mode worker`) |
+| `404.html` (`noindex`; on GitHub Pages it also carries app views to the app, D92) | `notFoundHtml()` | build |
 | Icons and the social cards (`og.png`, `og-fr.png`) in `public/` | `scripts/icons.ts` (`npm run icons`) | by hand, files committed |
 
 `tests/seo.test.ts` and `tests/landing.test.ts` hold the invariants: titles (50–60 characters) and descriptions in both languages, hreflang pairs, one h1 per page, no skipped heading level, every in-page anchor resolves, relative links that go back to the root from every page, and: title (50–60 characters) and description lengths, one h1 and at least 250 words in the static HTML, no skipped heading level, canonical = `og:url` = JSON-LD ids, every `@id` reference resolves, every linked file exists, PNG sizes match their declarations, favicons are multiples of 48 px, the `.ico` holds 16/32/48.
@@ -32,7 +33,7 @@ Last updated 2026-09-30. Ported from the SEO/GEO work on steevepommier.com (its 
 
 `https://versus.steevepommier.com/`, the Worker's domain (`DEFAULT_SITE_URL` in `build/site.ts`); `VITE_SITE_URL` at build time overrides it (repository variable `SITE_URL` in CI, passed to both the Pages and the Worker builds), normalized to https with a trailing slash. Canonical, `og:url`, `og:image`, the JSON-LD `@id`s, the sitemap and llms.txt all derive from it, each page adding its folder (`fr/`, `app/`).
 
-Both builds declare it, so the GitHub Pages copy and `workers.dev` hand their ranking signal to the one domain. Until 2026-09-30 the default was the Pages address, and audits of versus.steevepommier.com flagged a canonical pointing to another domain.
+Both builds declare it, so the GitHub Pages copy and `workers.dev` hand their ranking signal to the one domain. The site's path on its host is a separate setting, `VITE_BASE_PATH` (`/` by default, `/versus/` for the Pages copy, set by CI): only the app's `<base>` uses it (D92). Until 2026-09-30 the default was the Pages address, and audits of versus.steevepommier.com flagged a canonical pointing to another domain.
 
 ## What is in place
 
@@ -81,6 +82,6 @@ From SEOptimer and Seobility on versus.steevepommier.com, once the fixes above w
 
 ## Possible next steps
 
-- **A card per published board**: share links are `#/b/<alias>`, and a fragment never reaches a server, so every board unfurls with the generic card. A path form (`/b/<alias>`) served by the Worker could rewrite the head (`HTMLRewriter`) with the board's title and a generated card.
+- **A card per published board**: share links are now paths (`/app/b/<alias>`, D92), which reach the Worker: it could rewrite the app page's head (`HTMLRewriter`) with the board's title and a generated card. Today every board unfurls with the generic card.
 - **Manifest screenshots** (`form_factor` wide and narrow) for Chrome's richer install dialog.
 - **`standalone`**: offline support is in place (`docs/pwa.md`); switching waits for export/import, so rankings can move into an iOS home-screen app.

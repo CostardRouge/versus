@@ -1,0 +1,61 @@
+import { type Route, routePath } from '../core/route';
+import { doc } from './dom';
+import { S } from './state';
+
+/**
+ * The address bar follows the view (D92): each view has a real path under the app's folder
+ * (src/core/route.ts). The page's <base> is that folder (written at build time, build/seo-plugin.ts), so every
+ * relative address resolves from it, however deep the view.
+ */
+
+/**
+ * The app's folder: `/app/` on the site, `/versus/app/` on GitHub Pages, from the page's <base>. Without one
+ * (tests), the app sits at the origin's root.
+ */
+export const appRoot = (): URL =>
+  doc.querySelector('base[href]') ? new URL('./', doc.baseURI) : new URL('/', location.href);
+
+/** Where the current address sits under the app's folder, without a leading slash. */
+export function currentPath(): string {
+  const root = appRoot().pathname;
+  const path = location.pathname;
+  if (!path.startsWith(root)) return '';
+  try {
+    return decodeURIComponent(path.slice(root.length));
+  } catch {
+    return '';
+  }
+}
+
+export function routeOfState(): Route {
+  const r = S.route;
+  if (r.view === 'board' && r.alias) return { view: 'board', alias: r.alias };
+  if (r.view === 'rank' && r.id) return { view: 'rank', id: r.id, tab: r.tab };
+  return { view: 'gallery' };
+}
+
+/** The shareable address of a route. */
+export const routeURL = (route: Route): string => new URL(routePath(route), appRoot()).href;
+
+/**
+ * Writes the current view into the address bar: a new history entry for a change of view (Back returns to the
+ * previous one), a replacement for a tab or a correction. Nothing happens when the address is already right.
+ */
+export function syncURL(mode: 'push' | 'replace' = 'push'): void {
+  const url = new URL(routeURL(routeOfState()));
+  if (url.pathname === location.pathname && !location.hash && !location.search) return;
+  if (mode === 'push') history.pushState(null, '', url.pathname);
+  else history.replaceState(null, '', url.pathname);
+}
+
+/** GitHub Pages answers a deep link with 404.html, which keeps the path here and loads the app's folder. */
+export const STASH_KEY = 'versus-path';
+export function takeStash(): string | null {
+  try {
+    const path = sessionStorage.getItem(STASH_KEY);
+    sessionStorage.removeItem(STASH_KEY);
+    return path;
+  } catch {
+    return null;
+  }
+}

@@ -10,9 +10,11 @@ import {
   llmsTxt,
   manifest,
   noscriptHtml,
+  notFoundHtml,
   pageUrl,
   ROBOTS_APP,
   rootFrom,
+  sitePath,
   siteUrl,
 } from '../build/seo';
 import {
@@ -32,6 +34,7 @@ import {
   TITLES,
 } from '../build/site';
 import { aboutHTML } from '../src/app/about';
+import { STASH_KEY } from '../src/app/router';
 import { en } from '../src/i18n/en';
 import { fr } from '../src/i18n/fr';
 
@@ -63,6 +66,19 @@ describe('siteUrl', () => {
     expect(siteUrl('https://versus.example.com')).toBe('https://versus.example.com/');
     expect(siteUrl('https://example.com/versus?x=1#top')).toBe('https://example.com/versus/');
     expect(siteUrl(DEFAULT_SITE_URL)).toBe(DEFAULT_SITE_URL);
+  });
+});
+
+describe('sitePath', () => {
+  it('is the root unless a path is given, with slashes on both ends', () => {
+    expect(sitePath()).toBe('/');
+    expect(sitePath('')).toBe('/');
+    expect(sitePath('/')).toBe('/');
+    expect(sitePath('versus')).toBe('/versus/');
+    expect(sitePath('/versus/')).toBe('/versus/');
+    expect(sitePath('/a/b')).toBe('/a/b/');
+    expect(sitePath('https://x.example/')).toBe('/');
+    expect(sitePath('/../x')).toBe('/');
   });
 });
 
@@ -298,6 +314,17 @@ describe('generated files', () => {
     expect(llms).toContain(`(${URL_}app/)`);
   });
 
+  it('writes a 404 page that sends app views to the app and stays out of the index', () => {
+    const html = files['404.html']?.body ?? '';
+    expect(html).toBe(notFoundHtml(URL_));
+    expect(html).toContain('<meta name="robots" content="noindex" />');
+    // The key the app reads back (src/app/router.ts).
+    expect(html).toContain(`sessionStorage.setItem('${STASH_KEY}'`);
+    expect(html).toContain(`href="${URL_}"`);
+    expect(html).toContain(`href="${URL_}fr/"`);
+    expect(html).toContain(`href="${URL_}app/"`);
+  });
+
   it('adds the Cloudflare headers to the Worker build only', () => {
     expect(files._headers).toBeUndefined();
     const worker = generatedFiles(URL_, { lastmod: '2026-09-30', worker: true });
@@ -306,5 +333,6 @@ describe('generated files', () => {
     for (const path of ['/\n', '/fr/\n', '/app/\n']) expect(worker._headers?.body).toContain(path);
     expect(worker._headers?.body).toContain('/app/*\n  X-Robots-Tag: noindex');
     expect(worker._headers?.body).toContain('/sitemap.xml\n  Content-Type: application/xml; charset=utf-8');
+    expect(worker._headers?.body).toContain('/404\n  Content-Type: text/html; charset=utf-8');
   });
 });

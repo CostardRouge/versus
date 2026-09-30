@@ -142,6 +142,12 @@ describe('publishing', () => {
     expect((await view('0OIl0OIl0O')).status).toBe(404);
     expect((await view('1111111111')).status).toBe(404);
     expect((await server.fetch('/elsewhere')).status).toBe(404);
+    // Every view of the app gets the app's page, whatever the build in dist/ holds.
+    const app = await server.fetch('/app/');
+    const page = await server.fetch('/app/demo/destinations/ranking');
+    expect(page.status).toBe(app.status);
+    expect(await page.text()).toBe(await app.text());
+    expect((await server.fetch('/app/b/Ab3dEf7hJk', { method: 'POST' })).status).toBe(404);
     expect((await api('/1111111111/close/now', { method: 'POST' })).status).toBe(404);
   });
 
