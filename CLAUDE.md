@@ -11,6 +11,13 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 - Status: local-first; the live app is client-only and stores everything in `localStorage`. Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects), UI in `src/app/board.ts` and `publish.ts`. Not deployed yet: they work against `npm run worker:dev`, and production builds hide publishing until `VITE_API_URL` is set (see `docs/published-boards.md`, `docs/online-architecture.md`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
+## How this project is built
+
+- **The owner doesn't write code.** Every line in this repo was written by Claude Code from the owner's prompts; the owner decides, reviews the result and tests it by hand. The owner has a Claude Max plan (×20), so there is plenty of capacity.
+- **Estimate effort in agent time, not developer time.** A full UI rewrite or a port to another stack fits in a day of sessions. Don't argue against an option because of code volume, rewrite size or "double maintenance".
+- **What really costs is what Claude can't do:** the owner's time (testing on real devices, accounts, store listings and reviews, decisions), fees, and regression risk. Weigh options on those, and on product quality.
+- **No stack choice is sacred.** Past choices made to go fast in the POC (e.g. no UI framework, D24) can be reopened.
+
 ## Commands
 
 ```bash
@@ -22,7 +29,7 @@ npm run format       # Biome auto-fix
 npm run worker:dev   # published boards API on :8787 (Vite proxies /api to it)
 ```
 
-Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker. No UI framework, on purpose.
+Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker. No UI framework so far: a POC speed choice, not a principle; a framework (e.g. Expo + React Native Web for web and native apps) is open (D24, D54).
 
 ## Code map
 

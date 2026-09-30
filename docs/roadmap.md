@@ -29,7 +29,7 @@ Last updated 2026-09-29.
 - More languages (ES, PT-BR, DE), driven by traffic.
 - Export / import a ranking as JSON; share a results image.
 - Glicko as an extra method, if ever needed.
-- PWA / installable app, offline-first.
+- Native apps (iOS, Android) with app links and push notifications; stack open (D54). PWA / installable app, offline-first, at least.
 - Self-host the fonts (avoid Google Fonts requests; privacy and speed).
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.

@@ -54,11 +54,12 @@ Decisions made while designing Versus (conversation of 2026-09-29, prototyped as
 
 | # | Decision | Status | Notes |
 | --- | --- | --- | --- |
-| D24 | Vite + TypeScript, no framework | Decided | Ported from the single-file prototype; small bundle (~20 kB gzip JS). |
+| D24 | Vite + TypeScript, no framework | Decided | Ported from the single-file prototype; small bundle (~20 kB gzip JS). A POC speed choice, not a principle: open to a UI framework (see D54). |
 | D25 | Pure `src/core` shared by UI and future backend | Decided | Enables running the same scoring on a Cloudflare Worker. |
 | D26 | Biome, strict TS, Vitest with a 90% coverage floor on `src/core` | Decided | Plus a jsdom smoke test of the whole app. |
 | D27 | Single CI workflow; deploy to GitHub Pages from `main` only after checks pass | Decided | Relative `base: './'`, so the build works under `/versus/`. Dependabot weekly for npm and actions; `@types/node` majors ignored to match Node 22. |
 | D28 | MIT license | Decided | © 2026 Steeve Pommier. |
+| D54 | Native apps (iOS, Android) next to the web app, with app links and push notifications | Open | Candidates: Expo + React Native Web (one codebase for web and native), Capacitor (the current web app in a native shell), PWA (no app links and limited push on iOS). Code is written by Claude Code, so rewrite size isn't the criterion; the owner's time (device testing, stores) and product quality are. App links need a custom domain and path URLs (`/b/<alias>`) instead of D51's fragment. |
 
 ## Going online
 
