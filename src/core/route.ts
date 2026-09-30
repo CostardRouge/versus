@@ -36,6 +36,17 @@ export function routePath(route: Route): string {
   return tab ? `${base}/${tab}` : base;
 }
 
+/**
+ * A route as audience measurement records it (docs/analytics.md): the same path, with what identifies a ranking
+ * of this browser or a published board replaced by a placeholder (`r/:id/ranking`, `b/:alias`). Demos keep their
+ * slug: they are the same for everyone.
+ */
+export function trackedPath(route: Route): string {
+  if (route.view === 'board') return routePath({ view: 'board', alias: ':alias' });
+  if (route.view === 'rank' && !route.id.startsWith(DEMO_PREFIX)) return routePath({ ...route, id: ':id' });
+  return routePath(route);
+}
+
 /** The route a path names, or null when it names none (the app then shows the gallery). */
 export function parseRoute(path: string): Route | null {
   const parts = path.split('/').filter(Boolean);

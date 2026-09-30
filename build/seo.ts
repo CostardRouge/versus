@@ -10,6 +10,9 @@ import {
   HOMES,
   ICONS,
   LANGUAGES,
+  LEGAL_DESCRIPTIONS,
+  LEGAL_TITLES,
+  LEGALS,
   LICENSE_URL,
   LOCALES,
   METHODS,
@@ -22,6 +25,7 @@ import {
   type SiteLang,
   TITLES,
   VERIFICATION,
+  VERSIONS,
 } from './site.ts';
 
 /**
@@ -72,7 +76,11 @@ export const pageUrl = (url: string, page: PageKey): string => abs(url, PAGES[pa
 export const rootFrom = (page: PageKey): string =>
   '../'.repeat(PAGES[page].path.split('/').filter(Boolean).length) || './';
 
-const isHome = (page: PageKey): boolean => page !== 'app';
+/** A page's title and description: the home page's for the language, or the legal notice's. */
+export const titleOf = (page: PageKey): string =>
+  PAGES[page].kind === 'legal' ? LEGAL_TITLES[PAGES[page].lang] : TITLES[PAGES[page].lang];
+export const descriptionOf = (page: PageKey): string =>
+  PAGES[page].kind === 'legal' ? LEGAL_DESCRIPTIONS[PAGES[page].lang] : DESCRIPTIONS[PAGES[page].lang];
 
 /** Max snippet and a large image preview in results; the rest states the default posture explicitly. */
 export const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
@@ -99,15 +107,7 @@ export function graph(url: string, lang: SiteLang = 'en'): Record<string, unknow
   const person = { '@id': AUTHOR.id };
   const image = OG_IMAGES[lang];
   return [
-    {
-      '@type': 'WebSite',
-      '@id': id('website'),
-      url,
-      name: NAME,
-      description: DESCRIPTIONS[lang],
-      inLanguage: [...LANGUAGES],
-      publisher: person,
-    },
+    websiteNode(url, lang),
     {
       '@type': 'WebPage',
       '@id': `${page}#webpage`,
@@ -155,42 +155,73 @@ export function graph(url: string, lang: SiteLang = 'en'): Record<string, unknow
       author: person,
       targetProduct: { '@id': id('app') },
     },
+    personNode(),
+  ];
+}
+
+function websiteNode(url: string, lang: SiteLang): Record<string, unknown> {
+  return {
+    '@type': 'WebSite',
+    '@id': `${url}#website`,
+    url,
+    name: NAME,
+    description: DESCRIPTIONS[lang],
+    inLanguage: [...LANGUAGES],
+    publisher: { '@id': AUTHOR.id },
+  };
+}
+
+function personNode(): Record<string, unknown> {
+  return { '@type': 'Person', '@id': AUTHOR.id, name: AUTHOR.name, url: AUTHOR.url, sameAs: [...AUTHOR.sameAs] };
+}
+
+/** The legal notice's graph: the page, part of the site, about its publisher. */
+export function legalGraph(url: string, lang: SiteLang = 'en'): Record<string, unknown>[] {
+  const page = pageUrl(url, LEGALS[lang]);
+  return [
+    websiteNode(url, lang),
     {
-      '@type': 'Person',
-      '@id': AUTHOR.id,
-      name: AUTHOR.name,
-      url: AUTHOR.url,
-      sameAs: [...AUTHOR.sameAs],
+      '@type': 'WebPage',
+      '@id': `${page}#webpage`,
+      url: page,
+      name: LEGAL_TITLES[lang],
+      description: LEGAL_DESCRIPTIONS[lang],
+      isPartOf: { '@id': `${url}#website` },
+      about: { '@id': AUTHOR.id },
+      inLanguage: lang,
     },
+    personNode(),
   ];
 }
 
 /** JSON-LD safe inside <script>: no "</script>" or "<!--" can come out of it. */
-export const jsonLd = (url: string, lang: SiteLang = 'en'): string =>
-  JSON.stringify({ '@context': 'https://schema.org', '@graph': graph(url, lang) }).replace(/</g, '\\u003c');
+export const jsonLd = (url: string, lang: SiteLang = 'en', nodes = graph(url, lang)): string =>
+  JSON.stringify({ '@context': 'https://schema.org', '@graph': nodes }).replace(/</g, '\\u003c');
 
 /**
- * Every tag describing a page, in the order they appear in <head> (replaces <!-- seo:head -->). Home pages get
- * hreflang links to each other (x-default: English) and the JSON-LD graph; the app gets `noindex`.
+ * Every tag describing a page, in the order they appear in <head> (replaces <!-- seo:head -->). Home and legal
+ * pages get hreflang links to their other language (x-default: English) and a JSON-LD graph; the app gets `noindex`.
  */
 export function headTags(url: string, page: PageKey = 'home'): string[] {
-  const { lang } = PAGES[page];
+  const { lang, kind } = PAGES[page];
   const canonical = pageUrl(url, page);
   const card = OG_IMAGES[lang];
   const image = abs(url, card.path);
   const root = rootFrom(page);
-  const home = isHome(page);
+  const title = titleOf(page);
+  const description = descriptionOf(page);
+  const versions = kind === 'app' ? null : VERSIONS[kind];
   return [
-    `<title>${esc(TITLES[lang])}</title>`,
-    meta('name', 'description', DESCRIPTIONS[lang]),
+    `<title>${esc(title)}</title>`,
+    meta('name', 'description', description),
     link({ rel: 'canonical', href: canonical }),
-    ...(home
+    ...(versions
       ? [
-          ...LANGUAGES.map((l) => link({ rel: 'alternate', hreflang: l, href: pageUrl(url, HOMES[l]) })),
-          link({ rel: 'alternate', hreflang: 'x-default', href: pageUrl(url, HOMES.en) }),
+          ...LANGUAGES.map((l) => link({ rel: 'alternate', hreflang: l, href: pageUrl(url, versions[l]) })),
+          link({ rel: 'alternate', hreflang: 'x-default', href: pageUrl(url, versions.en) }),
         ]
       : []),
-    meta('name', 'robots', home ? ROBOTS : ROBOTS_APP),
+    meta('name', 'robots', versions ? ROBOTS : ROBOTS_APP),
     meta('name', 'author', AUTHOR.name),
     meta('name', 'application-name', NAME),
     meta('name', 'apple-mobile-web-app-title', NAME),
@@ -211,8 +242,8 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
     // Open Graph
     meta('property', 'og:type', 'website'),
     meta('property', 'og:site_name', NAME),
-    meta('property', 'og:title', TITLES[lang]),
-    meta('property', 'og:description', DESCRIPTIONS[lang]),
+    meta('property', 'og:title', title),
+    meta('property', 'og:description', description),
     meta('property', 'og:url', canonical),
     meta('property', 'og:locale', LOCALES[lang]),
     ...LANGUAGES.filter((l) => l !== lang).map((l) => meta('property', 'og:locale:alternate', LOCALES[l])),
@@ -224,11 +255,15 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
     // X
     meta('name', 'twitter:card', 'summary_large_image'),
     meta('name', 'twitter:creator', AUTHOR.twitter),
-    meta('name', 'twitter:title', TITLES[lang]),
-    meta('name', 'twitter:description', DESCRIPTIONS[lang]),
+    meta('name', 'twitter:title', title),
+    meta('name', 'twitter:description', description),
     meta('name', 'twitter:image', image),
     meta('name', 'twitter:image:alt', card.alt),
-    ...(home ? [`<script type="application/ld+json">${jsonLd(url, lang)}</script>`] : []),
+    ...(kind === 'app'
+      ? []
+      : [
+          `<script type="application/ld+json">${jsonLd(url, lang, kind === 'legal' ? legalGraph(url, lang) : graph(url, lang))}</script>`,
+        ]),
   ];
 }
 
@@ -239,7 +274,7 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
  * has the published boards API (Worker build).
  */
 export function aboutStatic(publish: boolean): string {
-  return aboutHTML((key) => String(en[key]), { h1: true, publish });
+  return aboutHTML((key) => String(en[key]), { h1: true, publish, lang: 'en' });
 }
 
 /** What a browser without JavaScript gets on top of the page text. No heading: the page text has the h1. */
@@ -293,16 +328,17 @@ export function robotsTxt(url: string): string {
 }
 
 /**
- * The home page of each language, in the plain sitemap format. Their hreflang pairs are in each page's head,
- * which Google reads as well as a sitemap's: `xhtml:link` alternates here would make browsers render the file
- * as a (nearly blank) page instead of showing the XML, for no gain. The app is left out: it is `noindex`, and
- * its rankings and boards live in the URL fragment, which crawlers ignore.
+ * The home page and the legal notice of each language, in the plain sitemap format. Their hreflang pairs are in
+ * each page's head, which Google reads as well as a sitemap's: `xhtml:link` alternates here would make browsers
+ * render the file as a (nearly blank) page instead of showing the XML, for no gain. The app is left out: it is
+ * `noindex`, and its views are this browser's rankings or boards shared by link.
  */
 export function sitemapXml(url: string, lastmod: string): string {
+  const pages = [...LANGUAGES.map((l) => HOMES[l]), ...LANGUAGES.map((l) => LEGALS[l])];
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    ...LANGUAGES.map((l) => `  <url><loc>${esc(pageUrl(url, HOMES[l]))}</loc><lastmod>${esc(lastmod)}</lastmod></url>`),
+    ...pages.map((p) => `  <url><loc>${esc(pageUrl(url, p))}</loc><lastmod>${esc(lastmod)}</lastmod></url>`),
     '</urlset>',
     '',
   ].join('\n');
@@ -333,6 +369,7 @@ export function llmsTxt(url: string): string {
     `- [${NAME} en français](${pageUrl(url, HOMES.fr)}): home page, in French`,
     `- [The app](${pageUrl(url, 'app')}): start ranking (English or French)`,
     `- [Source code](${REPOSITORY}): TypeScript, MIT license`,
+    `- [Legal notice and privacy](${pageUrl(url, LEGALS.en)}): publisher, hosting, what is stored and counted`,
     `- [${AUTHOR.name}](${AUTHOR.url}): author`,
     '',
   ].join('\n');

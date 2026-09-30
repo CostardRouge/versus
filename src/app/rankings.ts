@@ -1,3 +1,4 @@
+import { trackEvent } from '../audience';
 import { buildDemo, DEMOS, relabelDemos } from '../core/demos';
 import { mkRank } from '../core/model';
 import { parseBoardHash } from '../core/published';
@@ -66,6 +67,7 @@ export function newRank(title?: string): Ranking {
   const r = mkRank(title ?? t('newRanking'));
   S.ranks.push(r);
   save();
+  trackEvent('ranking-created', { from: 'new' });
   open(r.id, narrow.matches ? 'items' : 'duel');
   if (!title) {
     const input = $<HTMLInputElement>('#rank-title');
@@ -112,6 +114,7 @@ export function duplicateRank(id: string | undefined): void {
   c.items = r.items.map((it) => ({ ...structuredClone(it), id: uid() }));
   S.ranks.push(c);
   save();
+  trackEvent('ranking-created', { from: r.demo ? 'demo' : 'copy' });
   open(c.id, 'duel');
   toast(t('copyCreated'));
 }

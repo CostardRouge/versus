@@ -22,7 +22,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Search and share ready:** a head per page with hreflang, Open Graph cards in both languages, structured data, favicons for every platform, a bilingual sitemap and `llms.txt`, all generated from one file (see [`docs/seo.md`](docs/seo.md)).
 - **Light and dark themes** that follow the system setting or can be pinned from the header; the choice is applied before the first paint.
 - **Installable and offline:** a service worker keeps the app on the device, so it opens without a network; new versions are offered, never forced (see [`docs/pwa.md`](docs/pwa.md)).
-- Data stays in the browser (`localStorage`); nothing is sent anywhere.
+- Rankings stay in the browser (`localStorage`); only what you publish is sent. Visits are counted with a self-hosted, cookie-free Umami, never loaded for visitors who decline (a switch on the [legal notice](https://versus.steevepommier.com/legal/), Do Not Track, Global Privacy Control), and never with a ranking's content or id (see [`docs/analytics.md`](docs/analytics.md)).
 - **Published boards**: publish a ranking, share the link, and let a crowd vote in real time (on versus.steevepommier.com; the GitHub Pages copy has no backend). See [`docs/published-boards.md`](docs/published-boards.md).
 
 ## Development

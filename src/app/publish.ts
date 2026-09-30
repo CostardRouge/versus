@@ -1,3 +1,4 @@
+import { trackEvent } from '../audience';
 import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS } from '../core/board';
 import { lastDuelPerPair, type PublishBlock, publishBlock, publishMethod, publishRequest } from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
@@ -133,6 +134,13 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
   try {
     const request = { ...publishRequest(r, S.voter, chosen, withVotes), ...(turnstile ? { turnstile } : {}) };
     const { alias, owner } = await publishBoard(request);
+    const used = { ...settings, ...chosen };
+    trackEvent('board-published', {
+      method: used.method,
+      visibility: used.visibility,
+      items: r.items.length,
+      votes: withVotes,
+    });
     r.pub = { alias, status: 'open' };
     r.updated = Date.now();
     saveOwner(alias, owner);

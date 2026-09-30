@@ -1,3 +1,4 @@
+import { trackEvent } from '../audience';
 import { revealAt } from '../core/board';
 import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
 import type { BoardView, Counts, RankingView, ServerMessage } from '../core/protocol';
@@ -483,8 +484,10 @@ export function boardPick(side: string | undefined): void {
       b.busy = false;
       if (B !== b) return;
       // The last pair: the result gets a page of its own.
-      if (b.view?.status === 'open' && b.count >= totalPairs(b.view.items.length)) openFinale();
-      else renderDuel();
+      if (b.view?.status === 'open' && b.count >= totalPairs(b.view.items.length)) {
+        trackEvent('board-finished', { items: b.view.items.length });
+        openFinale();
+      } else renderDuel();
     },
     reduced ? 200 : 540,
   );

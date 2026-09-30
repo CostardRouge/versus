@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEMOS } from '../src/core/demos';
 import { adminHash, parseBoardHash } from '../src/core/published';
-import { ownerFragment, parseOwnerFragment, parseRoute, type Route, routePath } from '../src/core/route';
+import { ownerFragment, parseOwnerFragment, parseRoute, type Route, routePath, trackedPath } from '../src/core/route';
 
 const ALIAS = 'Ab3dEf7hJk';
 const TOKEN = 'a'.repeat(64);
@@ -56,5 +56,15 @@ describe('author links', () => {
 
   it('still read the links written before paths', () => {
     expect(parseBoardHash(adminHash(ALIAS, TOKEN))).toEqual({ alias: ALIAS, owner: TOKEN });
+  });
+});
+
+describe('trackedPath', () => {
+  it('keeps demos and the gallery, and hides what identifies a ranking or a board', () => {
+    expect(trackedPath({ view: 'gallery' })).toBe('');
+    expect(trackedPath({ view: 'rank', id: 'demo-destinations', tab: 'results' })).toBe('demo/destinations/ranking');
+    expect(trackedPath({ view: 'rank', id: 'x7Kq2', tab: 'duel' })).toBe('r/:id');
+    expect(trackedPath({ view: 'rank', id: 'x7Kq2', tab: 'items' })).toBe('r/:id/items');
+    expect(trackedPath({ view: 'board', alias: ALIAS })).toBe('b/:alias');
   });
 });

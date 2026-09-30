@@ -5,5 +5,8 @@ import '@fontsource-variable/figtree/wght.css';
 import '@fontsource/jetbrains-mono/500.css';
 import './styles.css';
 import { mount } from './app/ui';
+import { startAnalytics } from './audience';
 
+// Audience measurement (docs/analytics.md): the app counts its views as the address follows them (app/router.ts).
+startAnalytics();
 mount(document);

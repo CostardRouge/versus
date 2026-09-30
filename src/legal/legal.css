@@ -1,0 +1,129 @@
+/* The legal notice: the home page's header, footer and type (landing.css), with a single reading column.
+   Headings in the display face, body at a comfortable measure, links in ink with an offset underline. */
+
+/* No section links in this header: the languages take the room they leave (body.lg-page in the shells). */
+.lg-page .langs {
+  margin-left: auto;
+}
+
+/* Two classes: the build links landing.css after this file, and its .wrap would win at equal weight. */
+.wrap.lg {
+  max-width: calc(760px + 2 * clamp(16px, 4vw, 40px));
+  padding-block: clamp(36px, 6vw, 72px) 0;
+}
+.lg-head {
+  display: grid;
+  gap: 16px;
+  padding-bottom: clamp(24px, 4vw, 36px);
+  border-bottom: 1px solid var(--line);
+}
+.lg-h {
+  margin: 0;
+  font: 800 clamp(36px, 5.6vw, 60px) / 0.98 var(--f-display);
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.lg-toc ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lg-toc a {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.lg-toc a:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.lg-sec {
+  padding-top: clamp(32px, 5vw, 48px);
+  scroll-margin-top: 72px;
+}
+.lg h2 {
+  margin: 0 0 14px;
+  font: 800 clamp(26px, 3.4vw, 34px) / 1.05 var(--f-display);
+  letter-spacing: -0.03em;
+}
+.lg h3 {
+  margin: 28px 0 10px;
+  font: 700 19px / 1.25 var(--f-display);
+  letter-spacing: -0.015em;
+  scroll-margin-top: 80px;
+}
+.lg p {
+  margin: 0 0 12px;
+  max-width: 68ch;
+}
+.lg-sec p,
+.lg-sec li {
+  color: color-mix(in oklab, var(--ink) 86%, var(--muted));
+}
+.lg-sec a {
+  color: var(--ink);
+  font-weight: 600;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.lg code {
+  font: 500 0.88em / 1 var(--f-mono);
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+}
+
+/* The measurement switch: what this browser does, and the way to change it. */
+.lg-count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin: 18px 0 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.lg-count[hidden],
+.lg-count [hidden] {
+  display: none;
+}
+.lg .lg-count-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+.lg-count-state::before {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.lg-count[data-state="on"] .lg-count-state::before {
+  background: var(--good);
+}
+.lg-count .btn {
+  flex: none;
+}
+.lg-updated {
+  margin-top: clamp(32px, 5vw, 48px);
+  font-size: 14px;
+}

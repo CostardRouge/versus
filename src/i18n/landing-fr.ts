@@ -131,6 +131,7 @@ export const landingFr: LandingMessages = {
 
   footApp: 'Ouvrir l’app',
   footSource: 'Code source (MIT)',
+  footLegal: 'Mentions légales et confidentialité',
 
   suggestText: 'Cette page existe en français.',
   suggestGo: 'Voir en français',

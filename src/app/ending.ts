@@ -1,3 +1,5 @@
+import { trackEvent } from '../audience';
+import { methodOf } from '../core/scoring';
 import type { Ranking } from '../core/types';
 import { plural, t } from '../i18n';
 import { $, reduced } from './dom';
@@ -19,6 +21,7 @@ export const endingOf = (r: Ranking): EndKind | null => (ending?.id === r.id ? e
 
 export function startEnding(r: Ranking, kind: EndKind): void {
   ending = { id: r.id, kind, stopped: reduced };
+  trackEvent('ranking-finished', { method: methodOf(r), end: kind, demo: Boolean(r.demo), items: r.items.length });
 }
 
 /** Stops the countdown; the announcement stays. */

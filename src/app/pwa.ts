@@ -1,3 +1,4 @@
+import { trackEvent } from '../audience';
 import { t } from '../i18n';
 import { $, doc, toast } from './dom';
 
@@ -27,6 +28,7 @@ export function initPwa(): void {
     renderPwa();
   });
   window.addEventListener('appinstalled', () => {
+    trackEvent('app-installed');
     installPrompt = null;
     renderPwa();
     toast(t('installed'));

@@ -1,3 +1,4 @@
+import { trackEvent } from '../audience';
 import { LIMITS } from '../core/board';
 import { applySummary, type BoardSnapshot, joinedCopy, seeBoard, sortJoined, upsertJoined } from '../core/joined';
 import type { Joined } from '../core/types';
@@ -41,6 +42,7 @@ export function noteBoard(snap: BoardSnapshot, voted: boolean, lazy = false): vo
     return;
   }
   persist();
+  if (!prev) trackEvent('board-joined');
   if (!prev && !S.prefs.joinedHint) {
     S.prefs.joinedHint = true;
     savePrefs(S.prefs);

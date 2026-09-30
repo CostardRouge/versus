@@ -138,8 +138,8 @@ describe('home page content', () => {
 
 describe('boot script', () => {
   it('sends old app links and installed apps to the app, relative to each page', () => {
-    expect(landingBoot('en')).toContain("location.replace('./app/' + location.hash)");
-    expect(landingBoot('fr')).toContain("location.replace('../app/' + location.hash)");
+    expect(landingBoot('en')).toContain("leave('./app/' + location.hash)");
+    expect(landingBoot('fr')).toContain("leave('../app/' + location.hash)");
     expect(landingBoot('fr')).toContain('display-mode: minimal-ui');
   });
 
@@ -147,7 +147,9 @@ describe('boot script', () => {
     const js = landingBoot('en');
     expect(js).toContain("prefs.lang !== 'en'");
     expect(js).toContain('document.referrer');
-    expect(landingBoot('fr')).toContain("location.replace('../' +");
+    expect(landingBoot('fr')).toContain("leave('../' +");
+    // The page that redirects says so, and counts no view of its own.
+    expect(js).toContain('d.dataset.leaving');
   });
 });
 

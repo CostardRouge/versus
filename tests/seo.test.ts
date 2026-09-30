@@ -7,6 +7,7 @@ import {
   graph,
   headTags,
   jsonLd,
+  legalGraph,
   llmsTxt,
   manifest,
   noscriptHtml,
@@ -23,6 +24,8 @@ import {
   DESCRIPTIONS,
   ICONS,
   LANGUAGES,
+  LEGAL_DESCRIPTIONS,
+  LEGAL_TITLES,
   METHODS,
   NAME,
   OG_IMAGE,
@@ -200,6 +203,36 @@ describe('pages', () => {
     expect(html).not.toContain('application/ld+json');
   });
 
+  it('links the two legal pages to each other, each titled and described in its language', () => {
+    for (const lang of LANGUAGES) {
+      expect(LEGAL_TITLES[lang].length, lang).toBeLessThanOrEqual(60);
+      expect(LEGAL_DESCRIPTIONS[lang].length, lang).toBeGreaterThanOrEqual(70);
+      expect(LEGAL_DESCRIPTIONS[lang].length, lang).toBeLessThanOrEqual(155);
+    }
+    for (const page of ['legal', 'legalFr'] as const) {
+      const html = tags(page);
+      const { lang } = PAGES[page];
+      expect(html).toContain(`<title>${LEGAL_TITLES[lang]}</title>`);
+      expect(html).toContain(`<link rel="canonical" href="${pageUrl(URL_, page)}" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="en" href="${URL_}legal/" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="fr" href="${URL_}fr/mentions-legales/" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="x-default" href="${URL_}legal/" />`);
+      expect(html).not.toContain('noindex');
+      expect(html).toContain(`"@id":"${pageUrl(URL_, page)}#webpage"`);
+    }
+    expect(rootFrom('legalFr')).toBe('../../');
+  });
+
+  it('resolves every reference of the legal graph', () => {
+    for (const lang of LANGUAGES) {
+      const nodes = legalGraph(URL_, lang);
+      const ids = new Set(nodes.map((n) => n['@id']));
+      const page = nodes.find((n) => n['@type'] === 'WebPage') as Record<string, { '@id': string }>;
+      expect(ids.has(page.isPartOf?.['@id'])).toBe(true);
+      expect(ids.has(page.about?.['@id'])).toBe(true);
+    }
+  });
+
   it('resolves the French graph: page ids of its own, entity ids shared', () => {
     const nodes = graph(URL_, 'fr');
     const ids = new Set(nodes.map((n) => n['@id']));
@@ -230,7 +263,7 @@ describe('page text', () => {
 
   it('never skips a heading level, static or in the gallery', () => {
     for (const h1 of [true, false]) {
-      const found = levels(aboutHTML((k) => String(en[k]), { h1, publish: true }));
+      const found = levels(aboutHTML((k) => String(en[k]), { h1, publish: true, lang: 'en' }));
       expect(found[0]).toBe(h1 ? 1 : 2);
       for (const l of found) expect(l - (found[0] ?? 0)).toBeLessThanOrEqual(1);
     }
@@ -295,10 +328,11 @@ describe('generated files', () => {
     expect(robots).toContain('Disallow: /api/');
   });
 
-  it('lists both home pages in a plain sitemap, with their last change, not the app', () => {
+  it('lists the home and legal pages in a plain sitemap, with their last change, not the app', () => {
     const sitemap = files['sitemap.xml']?.body ?? '';
-    expect(sitemap).toContain(`<url><loc>${URL_}</loc><lastmod>2026-09-30</lastmod></url>`);
-    expect(sitemap).toContain(`<url><loc>${URL_}fr/</loc><lastmod>2026-09-30</lastmod></url>`);
+    for (const path of ['', 'fr/', 'legal/', 'fr/mentions-legales/']) {
+      expect(sitemap).toContain(`<url><loc>${URL_}${path}</loc><lastmod>2026-09-30</lastmod></url>`);
+    }
     expect(sitemap).not.toContain(`${URL_}app/`);
     // Only the sitemap namespace: an XHTML one makes browsers render the file as a blank page.
     expect([...sitemap.matchAll(/xmlns(:\w+)?=/g)]).toHaveLength(1);
@@ -312,6 +346,7 @@ describe('generated files', () => {
     expect(llms).toContain(`(${URL_})`);
     expect(llms).toContain(`(${URL_}fr/)`);
     expect(llms).toContain(`(${URL_}app/)`);
+    expect(llms).toContain(`(${URL_}legal/)`);
   });
 
   it('writes a 404 page that sends app views to the app and stays out of the index', () => {
@@ -330,7 +365,9 @@ describe('generated files', () => {
     const worker = generatedFiles(URL_, { lastmod: '2026-09-30', worker: true });
     expect(worker._headers?.body).toContain('Content-Type: text/html; charset=utf-8');
     expect(worker._headers?.body).toContain('Content-Type: application/manifest+json');
-    for (const path of ['/\n', '/fr/\n', '/app/\n']) expect(worker._headers?.body).toContain(path);
+    for (const path of ['/\n', '/fr/\n', '/app/\n', '/legal/\n', '/fr/mentions-legales/\n']) {
+      expect(worker._headers?.body).toContain(path);
+    }
     expect(worker._headers?.body).toContain('/app/*\n  X-Robots-Tag: noindex');
     expect(worker._headers?.body).toContain('/sitemap.xml\n  Content-Type: application/xml; charset=utf-8');
     expect(worker._headers?.body).toContain('/404\n  Content-Type: text/html; charset=utf-8');

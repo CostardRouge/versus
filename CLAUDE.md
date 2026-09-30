@@ -7,7 +7,7 @@ Project memory for Claude Code. Read this first, then `docs/` for the full histo
 A web app to **rank anything by comparing two items at a time** (pairwise comparison). Users create rankings, add items (text, images, colors), then play duels A vs B (buttons, keyboard or swipe). A scoring method turns the duels into a ranking.
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
-- Live: https://versus.steevepommier.com/ (the Worker: home page + app + API; the canonical address) and https://costardrouge.github.io/versus/ (GitHub Pages, without publishing), both deployed by CI from `main`. The home page is at `/` (English) and `/fr/` (French), the app at `/app/` (D84 to D90).
+- Live: https://versus.steevepommier.com/ (the Worker: home page + app + API; the canonical address) and https://costardrouge.github.io/versus/ (GitHub Pages, without publishing), both deployed by CI from `main`. The home page is at `/` (English) and `/fr/` (French), the app at `/app/` (D84 to D90), the legal notice at `/legal/` and `/fr/mentions-legales/` (D96). Visits are counted with the author's self-hosted Umami, cookie-free, declinable (D93 to D95, `docs/analytics.md`).
 - Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D75). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts`, `publish.ts` and `joined.ts` (the boards a visitor voted on, under "Your votes"). The Worker also serves the app; CI deploys it with the repository's Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
@@ -38,15 +38,19 @@ Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAcce
 ```
 index.html, fr/index.html  the home page shells (English, French): <!-- seo:head -->, <!-- landing:boot --> and
                       <!-- landing:body --> are filled at build time with the whole page (src/landing/markup.ts)
+legal/index.html, fr/mentions-legales/index.html  the legal notice shells, same placeholders (src/legal/markup.ts)
 app/index.html        the app's static shell (header, overlays, modal) + inline script applying the saved theme before
                       first paint; <!-- seo:head -->, <!-- seo:noscript --> and <!-- seo:about --> are filled at build time
 build/                build-time only (never shipped): site.ts = every sitewide SEO fact (pages, titles and descriptions per
                       language, colors, icons, social cards, author); seo.ts = head tags per page (hreflang), JSON-LD, manifest,
                       robots, sitemap, llms.txt, _headers; seo-plugin.ts = the Vite plugin filling each page; pwa.ts + pwa-plugin.ts = build the service worker
-                      as sw.js with its precache list and content version
+                      as sw.js with its precache list and content version; analytics.ts = the Umami settings written into each page's head
 scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch) and og.png / og-fr.png from build/site.ts
 public/               icons and the social card (generated, committed); favicon.svg is a legacy address
-src/main.ts           imports the fonts and styles, calls mount(document)
+src/main.ts           imports the fonts and styles, starts audience measurement, calls mount(document)
+src/audience.ts       audience measurement in the browser (docs/analytics.md): loads Umami only for visitors who don't decline
+                      (switch, Do Not Track, GPC), sends views and anonymous events with clean paths; shared by every page
+                      (never name a module "analytics": shared chunks take its name and filter lists block it)
 src/tokens.css        design tokens shared by the app and the home page: light on :root, dark via prefers-color-scheme and [data-theme]
 src/styles.css        the app's styles (imports tokens.css)
 src/sw/sw.ts          service worker (offline app shell, updates on request); own tsconfig (WebWorker types)
@@ -57,12 +61,13 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   demos.ts            demo data (EN/FR labels) + deterministic simulation (seeded PRNG)
   board.ts            published boards: publish validation, one voice per pair, visibility, pair assignment, sessions
   protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker
-  route.ts            the app's addresses (D92): demo/<slug>, r/<id>, b/<alias>, tab; parse and write, author fragment
+  route.ts            the app's addresses (D92): demo/<slug>, r/<id>, b/<alias>, tab; parse and write, author fragment;
+                      trackedPath() = the address audience measurement records (ids and aliases replaced)
   published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
   joined.ts           "Your votes": cards of boards voted on (snapshot, what's new since the last visit, order, copy)
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
-                      landing-en.ts / landing-fr.ts: the home page's texts (same rules)
+                      landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules)
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
   ui.ts               mount(): loads data, adds demos, binds events, first render
   state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
@@ -82,7 +87,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   board.ts            published board page: server-assigned duels, crowd ranking (live or frozen), author panel
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
-  router.ts           the address bar follows the view (push, replace), app folder from the page's <base>
+  router.ts           the address bar follows the view (push, replace), app folder from the page's <base>; counts each view
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
   header.ts, format.ts  static header texts and theme / score, record and date formatting
@@ -92,13 +97,16 @@ src/landing/          the home page: markup.ts renders it at build time (pure st
                       (texts at build time), crowd.ts (simulated votes); main.ts + mount.ts bring it to life: board.ts (a
                       demo frame over src/core), demo.ts (the hero's scripted demo), cursor.ts, motion.ts (on-screen loops,
                       pause), sections.ts (title word, vignettes, try it, methods, crowd, languages), landing.css
+src/legal/            the legal notice (publisher, hosting, privacy, measurement, licence): markup.ts renders it at build time with
+                      the home page's header and footer; main.ts + mount.ts count the view and run the measurement switch; legal.css
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
                       registry.ts + migrations/ (D1 registry), turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + board-ui.test.ts and votes-ui.test.ts (published boards and
                       "Your votes" against a fake API) + worker.test.ts (end to end in workerd via Wrangler's test harness)
                       + seo.test.ts (heads per page, hreflang, JSON-LD, icons and generated files stay consistent) + pwa.test.ts (precache
                       list, version) + landing.test.ts (home page markup and texts) + landing-ui.test.ts (jsdom smoke test)
-docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA
+                      + audience.test.ts (measurement settings, loading rules, clean payloads) + legal.test.ts (legal pages, switch)
+docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 
 ## Conventions
@@ -110,7 +118,8 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home page reads theme and lang and writes lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home and legal pages read theme and lang and write lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"), `umami.disabled` (Umami's own opt-out key, set by the legal page's switch); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Changing the stored shape requires a migration in `storage.ts`.
+- **Audience measurement** (`docs/analytics.md`): views and events go through `src/audience.ts`, never through the tracker's automatic tracking or `data-umami-event` attributes. An event's data is anonymous facts only (method, counts, flags), never a title, a label, an id or an alias. The legal notice lists what is counted: change an event, a tracked path or what is stored, and update `src/i18n/legal-*.ts` in the same commit.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in the HTML shells or `public/`: each page's head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The home pages (`/`, `/fr/`) are the indexed ones, linked by hreflang, with every word in their static HTML and one h1; the app (`/app/`) is `noindex` and keeps its own static text (`src/app/about.ts`). Links between pages are relative (the site also lives under github.io/versus/). A redesigned icon or social card gets new file names (caches key on the URL). Modules the Vite config reaches import with their `.ts` extension (D90). Details in `docs/seo.md`.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
@@ -133,3 +142,4 @@ docs/                 decisions, roadmap, published boards model, online archite
 - `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (built, not deployed).
 - `docs/online-architecture.md`: backend for published boards on Cloudflare (`worker/`), how to deploy it.
 - `docs/seo.md`: head tags, JSON-LD, icons, social card, manifest, robots, sitemap, llms.txt; decisions and what the owner has to do (Search Console, `SITE_URL`).
+- `docs/analytics.md`: audience measurement (Umami, what is sent and never sent, how it loads, settings) and the legal notice; what is left to check live.

@@ -5,7 +5,7 @@ import { addedItems, joinedAgreement, joinedTop, newsOf, pairsOf, sortJoined } f
 import { compute, stability } from '../core/scoring';
 import type { Item, Joined, Ranking } from '../core/types';
 import { esc } from '../core/util';
-import { methodText as M, pct, plural, t } from '../i18n';
+import { getLang, methodText as M, pct, plural, t } from '../i18n';
 import { aboutHTML } from './about';
 import { trashSvg } from './dom';
 import { ago, fmtScore } from './format';
@@ -151,6 +151,6 @@ export function galleryHTML(): string {
       <button class="link" type="button" data-action="toggle-demos">${hide ? t('showDemos') : t('hideDemos')}</button>
     </div>
     ${hide ? '' : `<div class="g-grid">${demos.map(rcardHTML).join('')}</div>`}
-    ${aboutHTML(t, { h1: false, publish: online() })}
+    ${aboutHTML(t, { h1: false, publish: online(), lang: getLang() })}
   </section>`;
 }

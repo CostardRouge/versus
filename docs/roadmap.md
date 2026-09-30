@@ -27,6 +27,7 @@ Last updated 2026-09-30.
 - Your votes: published boards a visitor voted on get a card in their gallery (own section, first for someone with no ranking of their own), refreshed in one request, with what changed since their last visit; forget with undo, keep a copy of a withdrawn board (`docs/published-boards.md#your-votes-the-voters-gallery`).
 - Home page (D84 to D90): a showcase at `/` in English and `/fr/` in French, pre-rendered for search engines (hreflang, bilingual sitemap, a social card per language), with a hero demo played by a virtual pointer, the use cases, how it works, a playable demo on six topics, the four methods on the same duels, the crowd (Worker build) and the chocolatine question. The app moved to `/app/` (`noindex`); installed apps and old links follow.
 - Real addresses in the app (D92): `/app/demo/destinations`, `/app/demo/destinations/ranking`, `/app/r/<id>`, `/app/b/<alias>`; Back and Forward follow the views, old `#/b/` links still open, GitHub Pages included (`404.html`).
+- Audience measurement and legal notice (D93 to D96, `docs/analytics.md`): self-hosted Umami, loaded only for visitors who don't decline (switch, Do Not Track, Global Privacy Control), views with ids stripped and a few anonymous events; `/legal/` and `/fr/mentions-legales/` with publisher, hosting, privacy and the measurement switch.
 
 ## Next (suggested order)
 
@@ -37,6 +38,7 @@ Last updated 2026-09-30.
 
 ## Later / ideas
 
+- Check the first real figures in Umami (both hosts, clean paths, events), and that the zone's `final slash` redirect rule spares the subdomains (`docs/analytics.md#left-to-check-live`).
 - More languages (ES, PT-BR, DE), driven by traffic.
 - Export / import a ranking as JSON; share a results image.
 - Glicko as an extra method, if ever needed.
