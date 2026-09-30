@@ -105,9 +105,36 @@ Remaining questions are listed in `docs/published-boards.md` (still open) and `d
 
 ## Deploying
 
-Needs a Cloudflare account (free plan is enough to start).
+Needs a Cloudflare account; the free plan is enough to start, and an account that already hosts other sites works as is (Versus is one more Worker named `versus`). Free-plan quotas are per account, shared by all its projects: requests for static assets are free and unlimited, while Worker requests (API calls and WebSocket connections; a vote is 1/20 of a request) and Durable Object SQLite writes (one per vote) count against the daily limits (see Costs). When a free limit is reached, requests fail until the daily reset; nothing is billed. The $5/month Workers Paid plan lifts the limits for the whole account.
 
-1. `npx wrangler login`, or a `CLOUDFLARE_API_TOKEN` (Workers, D1 and Durable Objects edit rights) for CI.
-2. Secrets: `npx wrangler secret put ADMIN_TOKEN -c worker/wrangler.jsonc` (a long random string); for Turnstile, create a widget in the dashboard, `wrangler secret put TURNSTILE_SECRET`, and put the public site key in `.env.worker` as `VITE_TURNSTILE_SITE_KEY`.
-3. `npm run worker:deploy`: builds the app, deploys the Worker (Wrangler creates the D1 database on the first deploy), then applies the D1 migrations.
-4. Optional: a custom domain on the Worker, then point the GitHub Pages site to it (or retire it).
+### From CI (recommended)
+
+The `deploy-worker` job in `.github/workflows/ci.yml` runs `npm run worker:deploy` on every push to `main` once the repository is configured. Until then it is skipped.
+
+1. **API token**: Cloudflare dashboard → *My Profile* → *API Tokens* → *Create Token* → template *Edit Cloudflare Workers*. Add the permission *Account* · *D1* · *Edit* if the template lacks it, and limit it to your account.
+2. **GitHub**: *Settings* → *Secrets and variables* → *Actions*:
+   - secret `CLOUDFLARE_API_TOKEN`: the token;
+   - variable `CLOUDFLARE_ACCOUNT_ID`: the account ID (Workers & Pages overview, right column). Setting it turns the job on.
+3. **Deploy**: merge to `main`, or run the CI workflow by hand (*Actions* → *CI* → *Run workflow* on `main`). The first run creates the Worker, the Durable Object class and the D1 database, then applies the D1 migrations. The app answers at `https://versus.<account subdomain>.workers.dev`.
+4. **Secrets of the Worker** (once it exists), in *Workers & Pages* → `versus` → *Settings* → *Variables and Secrets*, type *Secret*, or with `npx wrangler secret put <NAME> -c worker/wrangler.jsonc`:
+   - `ADMIN_TOKEN`: a long random string (`openssl rand -base64 32`); the admin API stays off without it;
+   - `TURNSTILE_SECRET`: optional, see below.
+   Deploys never delete secrets.
+5. **Custom domain**: `versus` → *Settings* → *Domains & Routes* → *Add* → *Custom domain*, for example `versus.example.com` on a zone of the account. Cloudflare creates the DNS record and the certificate. Deploys keep it, since the config declares no routes. The workers.dev address stays on.
+
+### Turnstile (optional)
+
+Create a widget in *Turnstile* for the custom domain (and the workers.dev host if you use it), then:
+
+- set the site key as the GitHub variable `TURNSTILE_SITE_KEY` (the CI build reads it; it is public);
+- set the secret key as the Worker secret `TURNSTILE_SECRET`.
+
+Set both, or neither. The server requires a token when `TURNSTILE_SECRET` is set, and the app shows the widget when the site key was set at build time.
+
+### By hand
+
+`npx wrangler login`, then `npm run worker:deploy`, then the secrets and domain as above. For Turnstile, put the site key in `.env.worker` as `VITE_TURNSTILE_SITE_KEY`.
+
+### GitHub Pages
+
+The Pages site keeps deploying without publishing. Rankings are stored per origin, so rankings made on github.io don't appear on the new address. Retire Pages, or point it to the new address, once the Worker's address is settled.

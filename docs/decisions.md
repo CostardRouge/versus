@@ -104,3 +104,5 @@ See `docs/published-boards.md`.
 | D57 | Items after publication: the author adds and removes, visitors suggest when allowed; removing drops the item's votes; same label refused; 2 to 100 items | Decided | Keeps every remaining vote meaningful. |
 | D58 | Admin API behind a secret token (`ADMIN_TOKEN`), off when unset | Decided | Cloudflare Access for an admin page later. |
 | D59 | No client-side vote batching for now | Decided | A vote costs 1/20 of a request; batching would need a longer pair queue for little gain before a board goes viral. |
+| D60 | CI deploys the Worker from `main`, switched on by the `CLOUDFLARE_ACCOUNT_ID` repository variable (plus the `CLOUDFLARE_API_TOKEN` secret) | Decided | Same checks as the Pages deploy; skipped while unconfigured, so CI stays green. Wrangler creates the D1 database by name and applies migrations without prompts. |
+| D61 | Custom domain and Worker secrets are managed in the Cloudflare dashboard, not in the repo | Decided | The config declares no routes, so deploys keep the dashboard's domain; secrets survive deploys. Start on a subdomain of an existing zone; a dedicated domain waits for D3. |

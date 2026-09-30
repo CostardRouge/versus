@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-20",
   "observability": { "enabled": true },
+  // No routes on purpose: the custom domain is added in the dashboard, and deploys keep it.
   "assets": { "directory": "../dist" },
   "durable_objects": {
     "bindings": [{ "name": "BOARDS", "class_name": "BoardObject" }]

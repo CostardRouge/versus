@@ -73,7 +73,7 @@ tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Work
 
 ## CI and deployment
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages. Dependabot keeps npm packages and actions up to date.
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
 
 The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated 2026-09-29.
+Last updated 2026-09-30.
 
 ## Done
 
@@ -11,7 +11,7 @@ Last updated 2026-09-29.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (185 tests), CI, GitHub Pages deploy, Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (185 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
 - Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
@@ -20,8 +20,8 @@ Last updated 2026-09-29.
 
 ## Next (suggested order)
 
-1. **Deploy**: a Cloudflare account, secrets and `npm run worker:deploy` (steps in `docs/online-architecture.md`), then a deploy job in CI with an API token as a GitHub secret.
-2. **Trademark and domain check** for "Versus" (and a custom domain).
+1. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
+2. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
 3. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point.
 
 ## Later / ideas
