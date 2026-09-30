@@ -133,6 +133,7 @@ export const landingEn = {
 
   footApp: 'Open the app',
   footSource: 'Source code (MIT)',
+  footLegal: 'Legal notice and privacy',
 
   suggestText: 'This page is available in English.',
   suggestGo: 'View in English',

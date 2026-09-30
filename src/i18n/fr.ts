@@ -46,12 +46,13 @@ export const fr: Messages = {
     'Chaque méthode est recalculée à partir des mêmes duels : tu peux en changer à tout moment sans en perdre un seul.',
   aboutPrivateTitle: 'Privé par défaut',
   aboutPrivate:
-    'Tes classements restent dans ton navigateur : pas de compte, pas d’inscription, et ça fonctionne hors ligne une fois installé. Versus est gratuit et open source.',
+    'Tes classements restent dans ton navigateur : pas de compte, pas d’inscription, pas de cookie, et ça fonctionne hors ligne une fois installé. Les visites sont comptées anonymement, et tu peux refuser. Versus est gratuit et open source.',
   aboutPublishTitle: 'Fais voter la foule',
   aboutPublish:
     'Publie un classement et partage son lien : chacun vote sur les paires qui lui sont proposées, et le classement de la foule se met à jour en direct.',
   aboutBy: 'Fait par',
   aboutSource: 'Code source sur GitHub',
+  aboutLegal: 'Mentions légales et confidentialité',
   showDemos: 'Afficher les démos',
   hideDemos: 'Masquer les démos',
   yourVotes: 'Tes votes',

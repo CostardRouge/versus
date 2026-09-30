@@ -1,3 +1,4 @@
+import { trackEvent } from '../audience';
 import { nextPair, target } from '../core/scoring';
 import type { MethodKey } from '../core/types';
 import { esc, mulberry32 } from '../core/util';
@@ -331,6 +332,7 @@ export function finale(S: Strings, appHref: string, burst: (host: HTMLElement) =
     const b = (e.target as Element).closest<HTMLElement>('[data-v]');
     if (!b) return;
     const v = b.dataset.v === 'b' ? 'b' : 'a';
+    trackEvent('chocolatine', { side: v === 'a' ? 'chocolatine' : 'pain-au-chocolat' });
     fin.classList.remove('va', 'vb');
     void fin.offsetWidth;
     fin.classList.add(`v${v}`);

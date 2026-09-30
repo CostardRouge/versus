@@ -30,19 +30,58 @@ export const DESCRIPTIONS: Record<SiteLang, string> = {
 };
 export const DESCRIPTION = DESCRIPTIONS.en;
 
+/** Home pages and legal pages are static and indexed, one per language; the app is one page for both. */
+export type PageKind = 'home' | 'legal' | 'app';
+
 /**
- * The pages the build writes (vite.config.ts), relative to the site's root. Each language has its home page,
- * a static page search engines index (hreflang between the two); the app, which renders everything with
- * JavaScript and switches language by itself, lives under app/ and stays out of the index.
+ * The pages the build writes (vite.config.ts), relative to the site's root. Each language has its home page and
+ * its legal notice, static pages search engines index (hreflang between the two versions); the app, which
+ * renders everything with JavaScript and switches language by itself, lives under app/ and stays out of the index.
  */
 export const PAGES = {
-  home: { file: 'index.html', path: '', lang: 'en' },
-  homeFr: { file: 'fr/index.html', path: 'fr/', lang: 'fr' },
-  app: { file: 'app/index.html', path: 'app/', lang: 'en' },
-} as const satisfies Record<string, { file: string; path: string; lang: SiteLang }>;
+  home: { file: 'index.html', path: '', lang: 'en', kind: 'home' },
+  homeFr: { file: 'fr/index.html', path: 'fr/', lang: 'fr', kind: 'home' },
+  legal: { file: 'legal/index.html', path: 'legal/', lang: 'en', kind: 'legal' },
+  legalFr: { file: 'fr/mentions-legales/index.html', path: 'fr/mentions-legales/', lang: 'fr', kind: 'legal' },
+  app: { file: 'app/index.html', path: 'app/', lang: 'en', kind: 'app' },
+} as const satisfies Record<string, { file: string; path: string; lang: SiteLang; kind: PageKind }>;
 export type PageKey = keyof typeof PAGES;
 /** The home page of each language. */
 export const HOMES: Record<SiteLang, PageKey> = { en: 'home', fr: 'homeFr' };
+/** The legal notice (publisher, hosting, privacy, audience measurement) of each language. */
+export const LEGALS: Record<SiteLang, PageKey> = { en: 'legal', fr: 'legalFr' };
+/** The language versions of each indexed kind of page, linked to each other by hreflang. */
+export const VERSIONS: Record<Exclude<PageKind, 'app'>, Record<SiteLang, PageKey>> = { home: HOMES, legal: LEGALS };
+
+/** The legal pages' titles and descriptions (their text: src/i18n/legal-*.ts). */
+export const LEGAL_TITLES: Record<SiteLang, string> = {
+  en: 'Legal notice and privacy · Versus',
+  fr: 'Mentions légales et confidentialité · Versus',
+};
+export const LEGAL_DESCRIPTIONS: Record<SiteLang, string> = {
+  en: 'Who publishes Versus, who hosts it and what it knows about you: rankings stay in your browser, and visits are counted anonymously, with no cookie.',
+  fr: 'Qui publie Versus, qui l’héberge et ce qu’il sait de toi : les classements restent dans ton navigateur, et les visites sont comptées sans cookie.',
+};
+
+/**
+ * Audience measurement (docs/analytics.md): Umami, self-hosted by the author on the instance that measures
+ * steevepommier.com, with this site's own website id. Nothing here is secret, it all ends up in the pages; each
+ * value can be overridden at build time (`VITE_UMAMI_SRC`, `VITE_UMAMI_WEBSITE_ID`, `VITE_UMAMI_DOMAINS`), and
+ * an empty `VITE_UMAMI_WEBSITE_ID` removes measurement from the build.
+ */
+export const ANALYTICS = {
+  /** The tracker, named /insight on the instance (TRACKER_SCRIPT_NAME): /script.js is on the filter lists. */
+  src: 'https://insight.steevepommier.com/insight',
+  websiteId: 'e2a05317-59c3-4075-a59d-d1e497f0403a',
+  /**
+   * Hosts allowed to report, besides the canonical one: the GitHub Pages copy. Anything else (localhost, a
+   * preview, a fork's deploy) loads the tracker but never counts.
+   */
+  domains: ['versus.steevepommier.com', 'costardrouge.github.io'],
+} as const;
+
+/** Where the legal notice sends questions, requests and reports of published content. */
+export const CONTACT = 'pommier.steeve+versus@gmail.com';
 
 /** What the app does, one line each: JSON-LD featureList and llms.txt. */
 export const FEATURES = [

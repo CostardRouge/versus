@@ -47,12 +47,13 @@ export const en = {
     'Every method is recomputed from the same duels, so you can switch at any time without losing one.',
   aboutPrivateTitle: 'Private by default',
   aboutPrivate:
-    'Your rankings stay in your browser: no account, no sign-up, and it keeps working offline once installed. Versus is free and open source.',
+    'Your rankings stay in your browser: no account, no sign-up, no cookie, and it keeps working offline once installed. Visits are counted anonymously, and you can opt out. Versus is free and open source.',
   aboutPublishTitle: 'Let a crowd vote',
   aboutPublish:
     'Publish a ranking and share its link: everyone votes on the pairs they are given, and the crowd’s ranking updates live.',
   aboutBy: 'Made by',
   aboutSource: 'Source code on GitHub',
+  aboutLegal: 'Legal notice and privacy',
   showDemos: 'Show demos',
   hideDemos: 'Hide demos',
   yourVotes: 'Your votes',

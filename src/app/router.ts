@@ -1,4 +1,5 @@
-import { type Route, routePath } from '../core/route';
+import { pagePath, trackView } from '../audience';
+import { type Route, routePath, trackedPath } from '../core/route';
 import { doc } from './dom';
 import { S } from './state';
 
@@ -40,9 +41,13 @@ export const routeURL = (route: Route): string => new URL(routePath(route), appR
 /**
  * Writes the current view into the address bar: a new history entry for a change of view (Back returns to the
  * previous one), a replacement for a tab or a correction. Nothing happens when the address is already right.
+ * Every view goes through here, at startup and on Back and Forward too, so it is also where a view is counted
+ * (src/audience.ts), under its path without identifiers: the same view twice in a row counts once.
  */
 export function syncURL(mode: 'push' | 'replace' = 'push'): void {
-  const url = new URL(routeURL(routeOfState()));
+  const route = routeOfState();
+  trackView(`${pagePath()}${trackedPath(route)}`);
+  const url = new URL(routeURL(route));
   if (url.pathname === location.pathname && !location.hash && !location.search) return;
   if (mode === 'push') history.pushState(null, '', url.pathname);
   else history.replaceState(null, '', url.pathname);

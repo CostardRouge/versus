@@ -3,14 +3,19 @@ import { relative } from 'node:path';
 import type { Plugin } from 'vite';
 import { LINKS } from '../src/app/about.ts';
 import { landingBody, landingBoot } from '../src/landing/markup.ts';
+import { legalBody, legalBoot } from '../src/legal/markup.ts';
+import { type AnalyticsConfig, analyticsConfig, analyticsTag } from './analytics.ts';
 import { aboutStatic, generatedFiles, headTags, noscriptHtml, rootFrom, sitePath, siteUrl } from './seo.ts';
-import { PAGES, type PageKey } from './site.ts';
+import { CONTACT, PAGES, type PageKey } from './site.ts';
 
 /** Placeholders in the pages, replaced at dev and build time. */
 export const HEAD_MARK = '<!-- seo:head -->';
 export const NOSCRIPT_MARK = '<!-- seo:noscript -->';
 export const ABOUT_MARK = '<!-- seo:about -->';
-/** Home pages only: the script run before the first paint, and the page itself (src/landing/markup.ts). */
+/**
+ * Home and legal pages: the script run before the first paint, and the page itself (src/landing/markup.ts,
+ * src/legal/markup.ts).
+ */
 export const BOOT_MARK = '<!-- landing:boot -->';
 /** The app only: its folder as the page's <base>, so its deep paths (app/demo/…) resolve every relative URL. */
 export const BASE_MARK = '<!-- app:base -->';
@@ -38,17 +43,23 @@ export function pageOf(file: string): PageKey {
 export function fillPage(
   html: string,
   page: PageKey,
-  opts: { url: string; publish: boolean; head: string[]; path?: string },
+  opts: { url: string; publish: boolean; head: string[]; path?: string; analytics?: AnalyticsConfig | null },
 ): string {
-  const { lang } = PAGES[page];
-  const marks = page === 'app' ? [BASE_MARK, HEAD_MARK, NOSCRIPT_MARK, ABOUT_MARK] : [HEAD_MARK, BOOT_MARK, BODY_MARK];
+  const { lang, kind } = PAGES[page];
+  const marks = kind === 'app' ? [BASE_MARK, HEAD_MARK, NOSCRIPT_MARK, ABOUT_MARK] : [HEAD_MARK, BOOT_MARK, BODY_MARK];
   for (const mark of marks) if (!html.includes(mark)) throw new Error(`${PAGES[page].file} needs ${mark}`);
-  const out = html.replace(HEAD_MARK, [...headTags(opts.url, page), ...opts.head].join('\n    '));
-  if (page === 'app') {
+  const analytics = opts.analytics ? [analyticsTag(opts.analytics, PAGES[page].path)] : [];
+  const out = html.replace(HEAD_MARK, [...headTags(opts.url, page), ...opts.head, ...analytics].join('\n    '));
+  if (kind === 'app') {
     return out
       .replace(BASE_MARK, `<base href="${opts.path ?? '/'}${PAGES.app.path}" />`)
       .replace(NOSCRIPT_MARK, noscriptHtml())
       .replace(ABOUT_MARK, aboutStatic(opts.publish));
+  }
+  if (kind === 'legal') {
+    return out
+      .replace(BOOT_MARK, legalBoot())
+      .replace(BODY_MARK, legalBody(lang, { contact: CONTACT, author: LINKS.author, source: LINKS.source }));
   }
   return out
     .replace(BOOT_MARK, landingBoot(lang))
@@ -71,10 +82,10 @@ function lastmod(): string {
 }
 
 /**
- * Each page's head tags and static content (the home pages entirely, the app's page text and <noscript> line),
- * and the generated files (manifest, robots.txt, sitemap, llms.txt, and the Cloudflare _headers in the Worker
- * build) from build/site.ts. The canonical address comes from `VITE_SITE_URL`, defaulting to
- * versus.steevepommier.com.
+ * Each page's head tags and static content (the home and legal pages entirely, the app's page text and <noscript>
+ * line), the audience measurement settings (production builds, build/analytics.ts), and the generated files
+ * (manifest, robots.txt, sitemap, llms.txt, and the Cloudflare _headers in the Worker build) from build/site.ts.
+ * The canonical address comes from `VITE_SITE_URL`, defaulting to versus.steevepommier.com.
  */
 export function seo(): Plugin {
   let url = siteUrl();
@@ -83,6 +94,7 @@ export function seo(): Plugin {
   let root = process.cwd();
   let worker = false;
   let publish = false;
+  let analytics: AnalyticsConfig | null = null;
   return {
     name: 'versus-seo',
     configResolved(config) {
@@ -92,6 +104,7 @@ export function seo(): Plugin {
       root = config.root;
       worker = config.mode === 'worker';
       publish = config.env.VITE_API_URL !== undefined;
+      analytics = analyticsConfig(config.env, { production: config.isProduction, url });
     },
     transformIndexHtml: {
       order: 'post',
@@ -102,7 +115,7 @@ export function seo(): Plugin {
         const fonts = Object.keys(ctx.bundle ?? {})
           .filter((file) => PRELOAD_FONTS.some((re) => re.test(file)))
           .map((file) => `<link rel="preload" href="${prefix}${file}" as="font" type="font/woff2" crossorigin />`);
-        return fillPage(html, page, { url, publish, head: fonts, path });
+        return fillPage(html, page, { url, publish, head: fonts, path, analytics });
       },
     },
     configureServer(server) {

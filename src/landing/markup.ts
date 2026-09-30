@@ -1,3 +1,4 @@
+import { LEGAL_PATH } from '../app/about.ts';
 import { simulate } from '../core/demos.ts';
 import { compute, nextPair, pushDuel } from '../core/scoring.ts';
 import type { MethodKey } from '../core/types.ts';
@@ -35,6 +36,16 @@ const other = (lang: Lang): Lang => (lang === 'en' ? 'fr' : 'en');
 /** From a home page back to the site's root. */
 const rootOf = (lang: Lang): string => (HOME_PATH[lang] ? '../' : './');
 
+/** Where a page's header and footer link from: the site's root as seen from the page, and the page in each language. */
+export interface PageLinks {
+  root: string;
+  versions: Record<Lang, string>;
+}
+const homeLinks = (lang: Lang): PageLinks => {
+  const root = rootOf(lang);
+  return { root, versions: { en: `${root}${HOME_PATH.en}`, fr: `${root}${HOME_PATH.fr}` } };
+};
+
 export interface PageData {
   S: Strings;
   /** First pair of the "try it" frame (the frame's static HTML shows it). */
@@ -59,18 +70,23 @@ export function landingBoot(lang: Lang): string {
       (function () {
         var d = document.documentElement;
         d.classList.add('js');
+        // Marked, so the page's script doesn't count a view on its way out (src/landing/main.ts).
+        function leave(to) {
+          d.dataset.leaving = '';
+          location.replace(to);
+        }
         // Links from before the home page: the app's routes live in the fragment (#/b/<alias>).
-        if (/^#\\//.test(location.hash)) return location.replace('${root}${APP_PATH}' + location.hash);
+        if (/^#\\//.test(location.hash)) return leave('${root}${APP_PATH}' + location.hash);
         // An app installed before the home page existed still opens here.
         if (matchMedia('(display-mode: standalone), (display-mode: minimal-ui), (display-mode: fullscreen)').matches) {
-          return location.replace('${root}${APP_PATH}');
+          return leave('${root}${APP_PATH}');
         }
         var prefs = {};
         try { prefs = JSON.parse(localStorage.getItem('versus-prefs') || '{}') || {}; } catch (e) {}
         var inside = false;
         try { inside = new URL(document.referrer).origin === location.origin; } catch (e) {}
         if (!inside && (prefs.lang === 'en' || prefs.lang === 'fr') && prefs.lang !== '${lang}') {
-          return location.replace('${root}' + (prefs.lang === 'fr' ? '${HOME_PATH.fr}' : '${HOME_PATH.en}'));
+          return leave('${root}' + (prefs.lang === 'fr' ? '${HOME_PATH.fr}' : '${HOME_PATH.en}'));
         }
         if (prefs.theme === 'light' || prefs.theme === 'dark') d.dataset.theme = prefs.theme;
       })();
@@ -106,17 +122,20 @@ function methodsData(lang: Lang, S: Strings): PageData['methods'] {
   return { rows, duels: r.history.length, sortDuels: s.history.length };
 }
 
-function nav(lang: Lang, S: Strings): string {
-  const root = rootOf(lang);
+/** The sticky header: brand, the home page's sections (home only), languages and the way into the app. */
+export function navHTML(lang: Lang, S: Strings, links: PageLinks = homeLinks(lang), sections = true): string {
+  const root = links.root;
   const langLink = (l: Lang) => {
     const name = l === 'en' ? 'English' : 'Français';
     const current = l === lang ? ' aria-current="page"' : '';
-    return `<a href="${root}${HOME_PATH[l]}" hreflang="${l}" lang="${l}" data-lang="${l}" aria-label="${l.toUpperCase()}, ${name}"${current}>${l.toUpperCase()}</a>`;
+    return `<a href="${links.versions[l]}" hreflang="${l}" lang="${l}" data-lang="${l}" aria-label="${l.toUpperCase()}, ${name}"${current}>${l.toUpperCase()}</a>`;
   };
+  const inPage = sections
+    ? `\n      <nav class="nav-links" aria-label="${esc(S.navAria)}"><a href="#how">${esc(S.navHow)}</a><a href="#try">${esc(S.navTry)}</a><a href="#methods">${esc(S.navMethods)}</a></nav>`
+    : '';
   return `<header class="nav" id="nav">
     <div class="wrap nav-in">
-      <a class="brand" href="${root}${HOME_PATH[lang]}" aria-label="${esc(S.homeAria)}"><span class="brand-mark" aria-hidden="true">vs</span>Versus</a>
-      <nav class="nav-links" aria-label="${esc(S.navAria)}"><a href="#how">${esc(S.navHow)}</a><a href="#try">${esc(S.navTry)}</a><a href="#methods">${esc(S.navMethods)}</a></nav>
+      <a class="brand" href="${root}${HOME_PATH[lang]}" aria-label="${esc(S.homeAria)}"><span class="brand-mark" aria-hidden="true">vs</span>Versus</a>${inPage}
       <nav class="langs" aria-label="${esc(S.langAria)}">${langLink('en')}${langLink('fr')}</nav>
       <a class="btn primary sm nav-cta" href="${root}${APP_PATH}">${esc(S.openApp)}</a>
     </div>
@@ -361,14 +380,21 @@ function finale(lang: Lang, S: Strings): string {
     </section>`;
 }
 
-function footer(lang: Lang, S: Strings, author: { name: string; url: string }, source: string): string {
-  const root = rootOf(lang);
+/** The footer: the app, the source, the author, the legal notice and the languages. */
+export function footerHTML(
+  lang: Lang,
+  S: Strings,
+  author: { name: string; url: string },
+  source: string,
+  links: PageLinks = homeLinks(lang),
+): string {
+  const root = links.root;
   const lang2 = (l: Lang) =>
-    `<a href="${root}${HOME_PATH[l]}" hreflang="${l}" lang="${l}" data-lang="${l}"${l === lang ? ' aria-current="page"' : ''}>${l === 'en' ? 'English' : 'Français'}</a>`;
+    `<a href="${links.versions[l]}" hreflang="${l}" lang="${l}" data-lang="${l}"${l === lang ? ' aria-current="page"' : ''}>${l === 'en' ? 'English' : 'Français'}</a>`;
   return `<footer class="foot">
     <div class="wrap foot-in">
       <p class="foot-brand"><span class="brand"><span class="brand-mark" aria-hidden="true">vs</span>Versus</span><span>${esc(S.tagline)}</span></p>
-      <p class="foot-links"><a href="${root}${APP_PATH}">${esc(S.footApp)}</a><a href="${source}">${esc(S.footSource)}</a><span>${esc(S.aboutBy)} <a href="${author.url}">${esc(author.name)}</a></span></p>
+      <p class="foot-links"><a href="${root}${APP_PATH}">${esc(S.footApp)}</a><a href="${source}">${esc(S.footSource)}</a><span>${esc(S.aboutBy)} <a href="${author.url}">${esc(author.name)}</a></span><a href="${root}${LEGAL_PATH[lang]}">${esc(S.footLegal)}</a></p>
       <nav class="foot-langs" aria-label="${esc(S.langAria)}">${lang2('en')}${lang2('fr')}</nav>
     </div>
   </footer>`;
@@ -391,7 +417,7 @@ export function landingBody(lang: Lang, opts: LandingOpts): string {
   return `<a class="skip" href="#main">${esc(S.skipLink)}</a>
     ${SPRITE}
     ${langHint(lang)}
-    ${nav(lang, S)}
+    ${navHTML(lang, S)}
     <main id="main" tabindex="-1">
     ${hero(lang, S)}
     ${cases(lang, S)}
@@ -402,7 +428,7 @@ export function landingBody(lang: Lang, opts: LandingOpts): string {
     ${features(S)}
     ${finale(lang, S)}
     </main>
-    ${footer(lang, S, opts.author, opts.source)}
+    ${footerHTML(lang, S, opts.author, opts.source)}
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script type="application/json" id="landing-data">${json}</script>`;
 }
