@@ -1,7 +1,8 @@
-import { ALIAS_RE, LIMITS } from './board';
+import { ALIAS_RE, LIMITS, totalPairs } from './board';
+import { mkRank } from './model';
 import type { RankingView } from './protocol';
-import { methodOf, pairKey, validHistory } from './scoring';
-import type { BoardSettings, Duel, Item, MethodKey, Ranking } from './types';
+import { compute, methodOf, pairKey, validHistory } from './scoring';
+import type { BoardSettings, Computed, Duel, Item, MethodKey, Ranking } from './types';
 
 /**
  * Client-side helpers for published boards: what can be published and how, share links, and how a
@@ -76,24 +77,39 @@ const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 /** Anonymous voter id from random bytes (one per browser). */
 export const voterId = (bytes: Uint8Array): string => Array.from(bytes, (b) => ID_CHARS[b & 63]).join('');
 
-export const totalPairs = (n: number): number => (n * (n - 1)) / 2;
+export { totalPairs };
 
 // ─── The voter and the crowd ────────────────────────────────────────────────
 
-/** Share of the voter's decisive votes (ties aside) the crowd order agrees with; null below `min` of them. */
-export function agreement(mine: readonly Duel[], view: RankingView, min = 3): number | null {
+/**
+ * The voter's decisive votes (ties aside) on items the crowd ranks, and those the crowd order
+ * contradicts, as [their pick, the other], widest gap in the crowd ranking first.
+ */
+export function crowdCheck(mine: readonly Duel[], view: RankingView): { total: number; against: [string, string][] } {
   const pos = new Map(view.order.map((id, i) => [id, i]));
-  let n = 0;
-  let agree = 0;
+  let total = 0;
+  const against: { pick: [string, string]; gap: number }[] = [];
   for (const d of mine) {
     const pa = pos.get(d.a);
     const pb = pos.get(d.b);
     if (d.s === 0.5 || pa === undefined || pb === undefined) continue;
-    n++;
-    if (d.s === 1 ? pa < pb : pb < pa) agree++;
+    total++;
+    const gap = d.s === 1 ? pa - pb : pb - pa;
+    if (gap > 0) against.push({ pick: d.s === 1 ? [d.a, d.b] : [d.b, d.a], gap });
   }
-  return n >= min ? agree / n : null;
+  against.sort((x, y) => y.gap - x.gap);
+  return { total, against: against.map((x) => x.pick) };
 }
+
+/** Share of the voter's decisive votes (ties aside) the crowd order agrees with; null below `min` of them. */
+export function agreement(mine: readonly Duel[], view: RankingView, min = 3): number | null {
+  const { total, against } = crowdCheck(mine, view);
+  return total >= min ? (total - against.length) / total : null;
+}
+
+/** A voter's own ranking, from their votes alone, scored with the board's method. */
+export const ownRanking = (items: Item[], mine: readonly Duel[], method: MethodKey): Computed =>
+  compute({ ...mkRank('', method), items, history: [...mine] });
 
 /**
  * Items too close to the one ranked just above to tell apart: the gap is below the standard error of

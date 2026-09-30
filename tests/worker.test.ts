@@ -346,6 +346,31 @@ describe('items after publication', () => {
     expect((await remove('p4')).status).toBe(409);
   });
 
+  it('lets the author recolor a color item; its votes are dropped', async () => {
+    const red = { type: 'solid', colors: ['#aa0000'] };
+    const colored = items.map((it, i) => (i < 2 ? { ...it, label: i ? '#AA0000' : 'Rouge', fill: red } : it));
+    const duels = [
+      { a: 'p0', b: 'p1', s: 1 },
+      { a: 'p2', b: 'p3', s: 1 },
+    ];
+    const res = await api('', { method: 'POST', body: { title: 'Couleurs', items: colored, voter: AUTHOR, duels } });
+    const { alias, owner } = (await res.json()) as { alias: string; owner: string };
+    const voter = await Client.open(alias, 'voter-one-1');
+    await voter.next('state');
+    const blue = { type: 'solid', colors: ['#2743f5'] };
+    const recolor = (id: string, body: unknown, token = owner) =>
+      api(`/${alias}/items/${id}`, { method: 'PATCH', body, token });
+    expect((await recolor('p1', { fill: blue }, 'f'.repeat(64))).status).toBe(403);
+    expect((await recolor('p2', { fill: blue })).status).toBe(400);
+    expect((await recolor('p1', {})).status).toBe(400);
+    expect((await recolor('nope', { fill: blue })).status).toBe(404);
+    expect(await (await recolor('p1', { fill: blue })).json()).toBe(1);
+    const state = await voter.next('state');
+    expect(state.board.items.find((i) => i.id === 'p1')).toMatchObject({ label: '#2743F5', fill: blue });
+    expect(state.board.counts.votes).toBe(1);
+    voter.close();
+  });
+
   it('lets visitors add items only when the author allows it, a few seconds apart', async () => {
     const { alias, owner } = await publish();
     const voter = await Client.open(alias, 'voter-one-1');

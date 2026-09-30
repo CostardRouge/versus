@@ -11,6 +11,7 @@ import {
   openSession,
   type PublishInput,
   parseNewItem,
+  recolorItem,
   refill,
   removeItem,
   restoreBoard,
@@ -271,6 +272,16 @@ export class BoardObject extends DurableObject<Env> {
     return board.ok ? this.applyRemove(board.value, id) : board;
   }
 
+  /** Gives a color item a new fill; its votes are dropped. Returns how many votes went with them. */
+  async recolorItem(token: string, id: string, fill: unknown): Promise<Result<number>> {
+    const board = await this.ownedBoard(token);
+    if (!board.ok) return board;
+    const r = recolorItem(board.value, id, fill, Date.now());
+    if (!r.ok) return r;
+    this.itemsChanged(board.value, r.value.removed);
+    return { ok: true, value: r.value.removed.length };
+  }
+
   /** Deletes the board and returns the author's local copy with the crowd's result. */
   async withdraw(token: string): Promise<Result<Ranking>> {
     const board = await this.ownedBoard(token);
@@ -325,7 +336,7 @@ export class BoardObject extends DurableObject<Env> {
     }
   }
 
-  /** After items were added or removed: persist, then refresh every connection (queues and state). */
+  /** After items were added, changed or removed: persist, then refresh every connection (queues and state). */
   private itemsChanged(board: SharedBoard, removed: Vote[]): void {
     this.ctx.storage.transactionSync(() => {
       this.saveItems(board);

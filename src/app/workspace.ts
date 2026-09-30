@@ -2,7 +2,7 @@ import { METHOD_KEYS, methodOf } from '../core/scoring';
 import type { MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, t } from '../i18n';
-import { $, $$, imgSvg, narrow, toast } from './dom';
+import { $, $$, castSvg, imgSvg, narrow, toast } from './dom';
 import { bindStage, duelHTML } from './duel';
 import { markPair, renderList } from './items';
 import { online } from './remote';
@@ -24,12 +24,15 @@ function methodMenuHTML(m: MethodKey): string {
   </div>`;
 }
 export function wsHTML(r: Ranking): string {
+  // Publishing is the ranking's main action: last in the header (first after the score on phones).
+  const pub = online() && !r.demo;
   return `<div class="ws">
     <div class="ws-head">
       <button class="back" type="button" data-action="back">${t('back')}</button>
       <input id="rank-title" class="title-input" value="${esc(r.title)}" aria-label="${t('rankNameAria')}" maxlength="80" autocomplete="off">${r.demo ? `<span class="chip">${t('demoChip')}</span>` : ''}
+      ${pub ? '<span class="ws-break" aria-hidden="true"></span>' : ''}
       ${methodMenuHTML(methodOf(r))}
-      ${online() && !r.demo ? `<button class="btn sm" type="button" data-action="publish">${t('publish')}</button>` : ''}
+      ${pub ? `<button class="pub-btn" type="button" data-action="publish">${castSvg}<span>${t('publish')}</span></button>` : ''}
       <div class="tabs" role="tablist">
         <button class="tab tab-items" type="button" role="tab" data-action="tab" data-tab="items">${t('tabItems')}<span class="n" id="n-items"></span></button>
         <button class="tab" type="button" role="tab" data-action="tab" data-tab="duel">${t('tabDuel')}</button>

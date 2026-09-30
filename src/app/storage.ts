@@ -16,6 +16,8 @@ export interface Prefs {
   theme?: Theme;
   /** Live updates of crowd rankings; on unless turned off. */
   live?: boolean;
+  /** How the end-of-vote page shows the result; the podium unless changed. */
+  resultView?: 'podium' | 'duo';
 }
 
 /** localStorage can be missing or throw (private mode, blocked storage), so every access is guarded. */

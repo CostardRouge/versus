@@ -1,3 +1,4 @@
+import { fillCode, sameFill } from './colors';
 import { mkRank } from './model';
 import { compute, pairKey } from './scoring';
 import type {
@@ -273,6 +274,34 @@ export function removeItem(board: SharedBoard, id: string, now: number): Result<
   return ok(removed);
 }
 
+/**
+ * Gives a color item a new fill on an open board. Its votes were cast on the old color, so they are
+ * dropped: the item starts again from zero (and, with no votes, gets priority in pair assignment).
+ * A label that was the color code follows the new code.
+ */
+export function recolorItem(
+  board: SharedBoard,
+  id: string,
+  raw: unknown,
+  now: number,
+): Result<{ item: Item; removed: Vote[] }> {
+  const it = board.items.find((i) => i.id === id);
+  if (!it) return fail('not_found');
+  if (board.status !== 'open') return fail('closed');
+  const fill = parseFill(raw);
+  if (!it.fill || !fill) return fail('bad_request');
+  if (sameFill(fill, it.fill)) return ok({ item: it, removed: [] });
+  const label = it.label.toUpperCase() === fillCode(it.fill) ? fillCode(fill) : it.label;
+  const key = label.toLowerCase();
+  if (board.items.some((i) => i.id !== id && i.label.toLowerCase() === key)) return fail('exists');
+  const item: Item = { ...it, label, fill, h: label === it.label ? it.h : hueOf(label) };
+  board.items = board.items.map((i) => (i.id === id ? item : i));
+  const removed = [...board.votes.values()].filter((v) => v.a === id || v.b === id);
+  for (const v of removed) removeVote(board, v.voter, pairKey(v.a, v.b));
+  board.touched = now;
+  return ok({ item, removed });
+}
+
 // ─── Votes ──────────────────────────────────────────────────────────────────
 
 export function castVote(
@@ -324,12 +353,23 @@ export function toRanking(board: SharedBoard): Ranking {
 
 export const crowd = (board: SharedBoard): Computed => compute(toRanking(board));
 
+export const totalPairs = (n: number): number => (n * (n - 1)) / 2;
+
+/**
+ * Votes a voter needs to see the crowd in "after N votes" mode: N, or every pair when the board has
+ * fewer, so that voting on everything always reveals it.
+ */
+export const revealAt = (revealAfter: number, items: number): number =>
+  Math.max(1, Math.min(revealAfter, totalPairs(items)));
+
 /** Whether this viewer may see the crowd ranking. Enforced by the server, never by hiding UI. */
 export function canSeeRanking(board: SharedBoard, voter: string | null, owner: boolean): boolean {
   if (owner || board.status === 'closed') return true;
   const { visibility, revealAfter } = board.settings;
   if (visibility === 'always') return true;
-  if (visibility === 'after') return voter !== null && voteCount(board, voter) >= revealAfter;
+  if (visibility === 'after') {
+    return voter !== null && voteCount(board, voter) >= revealAt(revealAfter, board.items.length);
+  }
   return false;
 }
 
