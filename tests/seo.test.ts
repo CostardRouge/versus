@@ -279,14 +279,14 @@ describe('generated files', () => {
     expect(robots).toContain('Disallow: /api/');
   });
 
-  it('lists both home pages in the sitemap, with their alternates and last change, not the app', () => {
+  it('lists both home pages in a plain sitemap, with their last change, not the app', () => {
     const sitemap = files['sitemap.xml']?.body ?? '';
-    expect(sitemap).toContain(`<loc>${URL_}</loc>`);
-    expect(sitemap).toContain(`<loc>${URL_}fr/</loc>`);
+    expect(sitemap).toContain(`<url><loc>${URL_}</loc><lastmod>2026-09-30</lastmod></url>`);
+    expect(sitemap).toContain(`<url><loc>${URL_}fr/</loc><lastmod>2026-09-30</lastmod></url>`);
     expect(sitemap).not.toContain(`${URL_}app/`);
-    expect(sitemap).toContain('<lastmod>2026-09-30</lastmod>');
-    expect(sitemap.match(/hreflang="x-default"/g)).toHaveLength(2);
-    expect(sitemap).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
+    // Only the sitemap namespace: an XHTML one makes browsers render the file as a blank page.
+    expect([...sitemap.matchAll(/xmlns(:\w+)?=/g)]).toHaveLength(1);
+    expect(sitemap).not.toContain('xhtml');
   });
 
   it('describes the app and every scoring method in llms.txt', () => {
@@ -305,5 +305,6 @@ describe('generated files', () => {
     expect(worker._headers?.body).toContain('Content-Type: application/manifest+json');
     for (const path of ['/\n', '/fr/\n', '/app/\n']) expect(worker._headers?.body).toContain(path);
     expect(worker._headers?.body).toContain('/app/*\n  X-Robots-Tag: noindex');
+    expect(worker._headers?.body).toContain('/sitemap.xml\n  Content-Type: application/xml; charset=utf-8');
   });
 });

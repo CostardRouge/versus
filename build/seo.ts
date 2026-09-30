@@ -281,23 +281,16 @@ export function robotsTxt(url: string): string {
 }
 
 /**
- * The home page of each language, with its hreflang alternates (x-default: English). The app is left out: it
- * is `noindex`, and its rankings and boards live in the URL fragment, which crawlers ignore.
+ * The home page of each language, in the plain sitemap format. Their hreflang pairs are in each page's head,
+ * which Google reads as well as a sitemap's: `xhtml:link` alternates here would make browsers render the file
+ * as a (nearly blank) page instead of showing the XML, for no gain. The app is left out: it is `noindex`, and
+ * its rankings and boards live in the URL fragment, which crawlers ignore.
  */
 export function sitemapXml(url: string, lastmod: string): string {
-  const alternates = [
-    ...LANGUAGES.map((l) => [l, pageUrl(url, HOMES[l])] as const),
-    ['x-default', pageUrl(url, HOMES.en)] as const,
-  ]
-    .map(([l, href]) => `    <xhtml:link rel="alternate" hreflang="${l}" href="${esc(href)}"/>`)
-    .join('\n');
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
-    ...LANGUAGES.map(
-      (l) =>
-        `  <url>\n    <loc>${esc(pageUrl(url, HOMES[l]))}</loc>\n    <lastmod>${esc(lastmod)}</lastmod>\n${alternates}\n  </url>`,
-    ),
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...LANGUAGES.map((l) => `  <url><loc>${esc(pageUrl(url, HOMES[l]))}</loc><lastmod>${esc(lastmod)}</lastmod></url>`),
     '</urlset>',
     '',
   ].join('\n');
@@ -353,6 +346,9 @@ export function headersFile(): string {
     '',
     '/assets/*',
     '  Cache-Control: public, max-age=31536000, immutable',
+    '',
+    '/sitemap.xml',
+    '  Content-Type: application/xml; charset=utf-8',
     '',
     '/manifest.webmanifest',
     '  Content-Type: application/manifest+json; charset=utf-8',
