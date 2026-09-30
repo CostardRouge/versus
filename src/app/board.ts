@@ -1,10 +1,11 @@
-import { isHex, normHex } from '../core/colors';
+import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
 import type { BoardView, Counts, ItemScore, RankingView, ServerMessage } from '../core/protocol';
 import { adminHash, agreement, boardHash, neckAndNeck, totalPairs } from '../core/published';
 import { pairKey } from '../core/scoring';
 import type { BoardStatus, Duel, ErrorCode, Fill, Item, MethodKey, Outcome, Ranking } from '../core/types';
 import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
+import { closeColor, cp, openBoardColor } from './color';
 import { $, announce, ask, copyText, reduced, thumbHTML, toast, trashSvg } from './dom';
 import { bindStage, cardHTML } from './duel';
 import { optionsHTML, readSettings, settingsHTML } from './publish';
@@ -15,6 +16,7 @@ import {
   BoardSocket,
   type Connection,
   patchBoard,
+  recolorBoardItem,
   removeBoardItem,
   setBoardStatus,
   withdrawBoard,
@@ -216,6 +218,12 @@ export function renderBoard(): void {
   const input = $('#b-add-input') as HTMLInputElement | null;
   if (input && draft && draft !== b.sentLabel) input.value = draft;
   b.sentLabel = null;
+  // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
+  if (cp.id) {
+    const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
+    if (swatch) cp.anchor = swatch;
+    else closeColor();
+  }
   if (b.view) {
     renderDuel();
     renderRanking();
@@ -262,12 +270,21 @@ const addFormHTML = (): string =>
     <button class="add-btn" type="submit" aria-label="${t('add')}">+</button>
   </form>`;
 
+/** An item's swatch: while the board is open, a color item's swatch opens the color editor. */
+function itemThumbHTML(it: Item, open: boolean): string {
+  if (!it.fill || !open) return thumbHTML(it);
+  return `<button class="thumb thumb-btn" type="button" data-action="b-edit-color" data-id="${esc(it.id)}" style="background:${fillCSS(it.fill)}" aria-label="${esc(t('editColorAria', { label: it.label }))}" title="${t('editColor')}"></button>`;
+}
+
 function itemsHTML(v: BoardView): string {
+  const open = v.status === 'open';
   const rows = v.items
-    .map(
-      (it) => `<li>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span>
-        <button class="icon-btn" type="button" data-action="b-remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">${trashSvg}</button></li>`,
-    )
+    .map((it) => {
+      const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
+      const warn = twin ? `<small class="b-twin">${esc(t('sameColor', { label: twin.label }))}</small>` : '';
+      return `<li>${itemThumbHTML(it, open)}<span class="b-item"><span class="rlabel">${esc(it.label)}</span>${warn}</span>
+        <button class="icon-btn" type="button" data-action="b-remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">${trashSvg}</button></li>`;
+    })
     .join('');
   return `<fieldset class="set"><legend>${t('boardItems')}</legend><ul class="b-items">${rows}</ul>${v.status === 'open' ? addFormHTML() : ''}</fieldset>`;
 }
@@ -584,6 +601,41 @@ export async function boardRemoveItem(id: string | undefined): Promise<void> {
   });
   if (!ok || B !== b) return;
   if ((await ownerCall((alias, token) => removeBoardItem(alias, token, id))) !== null) toast(t('itemRemoved'));
+}
+
+/** Opens the color editor on a color item of the board (a second click on its swatch closes it). */
+export function boardEditColor(id: string | undefined, anchor: HTMLElement): void {
+  const b = B;
+  const it = id ? itemOf(id) : undefined;
+  if (!b?.owner || !b.view || !it?.fill) return;
+  if (cp.id === it.id) {
+    closeColor();
+    return;
+  }
+  openBoardColor(it, b.view.items, anchor, (fill) => void boardRecolor(it.id, fill));
+}
+
+/**
+ * Gives an item a new color for everyone. Its votes were cast on the old color, so they go (after a
+ * confirmation when there are some) and the item starts again from zero.
+ */
+async function boardRecolor(id: string, fill: Fill): Promise<void> {
+  const b = B;
+  const it = itemOf(id);
+  if (!b?.owner || !it?.fill || sameFill(it.fill, fill)) return;
+  const x = b.latest?.stats[id];
+  const votes = x ? x.w + x.l + x.d : 0;
+  if (votes) {
+    const ok = await ask({
+      title: t('recolorTitle', { label: it.label }),
+      body: t('recolorBody', { votes: plural(votes, 'vote'), label: it.label }),
+      ok: t('recolorOk'),
+      danger: true,
+    });
+    if (!ok || B !== b) return;
+  }
+  const n = await ownerCall((alias, token) => recolorBoardItem(alias, token, id, fill));
+  if (n !== null) toast(n ? t('recoloredReset', { label: it.label }) : t('recolored'));
 }
 
 export async function copyBoardLink(alias: string | undefined, admin = false): Promise<void> {

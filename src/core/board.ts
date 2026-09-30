@@ -1,3 +1,4 @@
+import { fillCode, sameFill } from './colors';
 import { mkRank } from './model';
 import { compute, pairKey } from './scoring';
 import type {
@@ -271,6 +272,34 @@ export function removeItem(board: SharedBoard, id: string, now: number): Result<
   for (const v of removed) removeVote(board, v.voter, pairKey(v.a, v.b));
   board.touched = now;
   return ok(removed);
+}
+
+/**
+ * Gives a color item a new fill on an open board. Its votes were cast on the old color, so they are
+ * dropped: the item starts again from zero (and, with no votes, gets priority in pair assignment).
+ * A label that was the color code follows the new code.
+ */
+export function recolorItem(
+  board: SharedBoard,
+  id: string,
+  raw: unknown,
+  now: number,
+): Result<{ item: Item; removed: Vote[] }> {
+  const it = board.items.find((i) => i.id === id);
+  if (!it) return fail('not_found');
+  if (board.status !== 'open') return fail('closed');
+  const fill = parseFill(raw);
+  if (!it.fill || !fill) return fail('bad_request');
+  if (sameFill(fill, it.fill)) return ok({ item: it, removed: [] });
+  const label = it.label.toUpperCase() === fillCode(it.fill) ? fillCode(fill) : it.label;
+  const key = label.toLowerCase();
+  if (board.items.some((i) => i.id !== id && i.label.toLowerCase() === key)) return fail('exists');
+  const item: Item = { ...it, label, fill, h: label === it.label ? it.h : hueOf(label) };
+  board.items = board.items.map((i) => (i.id === id ? item : i));
+  const removed = [...board.votes.values()].filter((v) => v.a === id || v.b === id);
+  for (const v of removed) removeVote(board, v.voter, pairKey(v.a, v.b));
+  board.touched = now;
+  return ok({ item, removed });
 }
 
 // ─── Votes ──────────────────────────────────────────────────────────────────

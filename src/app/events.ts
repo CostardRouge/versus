@@ -3,6 +3,7 @@ import {
   boardAddItem,
   boardAdminLink,
   boardChange,
+  boardEditColor,
   boardKeydown,
   boardPick,
   boardRefresh,
@@ -169,6 +170,9 @@ function onClick(e: MouseEvent): void {
     case 'b-remove-item':
       void boardRemoveItem(id);
       break;
+    case 'b-edit-color':
+      boardEditColor(id, el);
+      break;
   }
 }
 
@@ -188,9 +192,10 @@ function onInput(e: Event): void {
 
 function onChange(e: Event): void {
   const tg = e.target as HTMLInputElement;
-  if (S.route.view === 'board' && boardChange(tg)) return;
+  // The color editor also serves published boards, where there is no local ranking.
+  if (colorChange(tg) || (S.route.view === 'board' && boardChange(tg))) return;
   const r = cur();
-  if (!r || colorChange(tg)) return;
+  if (!r) return;
   if (tg.id === 'c-grad') {
     const c2 = $('#c2');
     if (c2) c2.hidden = !tg.checked;

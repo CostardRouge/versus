@@ -488,9 +488,13 @@ kbd {
   gap: 2px;
 }
 .tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
   border: 0;
   background: transparent;
-  padding: 8px 16px;
+  padding: 0 16px;
   border-radius: 999px;
   font-weight: 600;
   font-size: 14px;
@@ -1280,10 +1284,11 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 44px;
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 0 14px;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -1510,6 +1515,85 @@ kbd {
 }
 .ws-head .chip {
   align-self: center;
+}
+
+/* Publish: the header's one colored control, in the A → B gradient. Every header control is 44 px tall. */
+.pub-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  background: linear-gradient(100deg, var(--a), color-mix(in oklab, var(--a) 50%, var(--b)) 50%, var(--b));
+  background-size: 160% 100%;
+  background-position: 0% 50%;
+  box-shadow:
+    0 8px 20px -10px color-mix(in oklab, var(--a) 70%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition:
+    background-position 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.pub-btn:hover {
+  background-position: 100% 50%;
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 24px -10px color-mix(in oklab, var(--b) 70%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.pub-btn:active {
+  transform: none;
+}
+.pub-btn svg {
+  flex: none;
+}
+/* Forces the header's controls onto their own line (medium widths only). */
+.ws-break {
+  display: none;
+  flex-basis: 100%;
+  height: 0;
+}
+@media (max-width: 859px) {
+  .pub-btn {
+    margin-left: auto;
+  }
+}
+@media (min-width: 860px) {
+  .pub-btn {
+    order: 1;
+  }
+}
+/* Wide: one line, Publish after a divider. */
+@media (min-width: 1024px) {
+  .pub-btn {
+    position: relative;
+    margin-left: 16px;
+  }
+  .pub-btn::before {
+    content: "";
+    position: absolute;
+    left: -16.5px;
+    top: 9px;
+    bottom: 9px;
+    width: 1px;
+    background: var(--line);
+  }
+}
+/* Medium: title on the first line, score and tabs on the second, Publish at its right end. */
+@media (min-width: 860px) and (max-width: 1023px) {
+  .ws-break {
+    display: block;
+  }
+  .pub-btn {
+    margin-left: auto;
+  }
 }
 
 /* Language switch + color editor */
@@ -1807,7 +1891,7 @@ body.dropping .drop-overlay {
     padding-inline: 8px;
   }
   .tab-items {
-    display: inline-block;
+    display: inline-flex;
   }
   .ws-body {
     display: block;
@@ -2138,6 +2222,17 @@ body.dropping .drop-overlay {
 .b-items .thumb {
   width: 28px;
   height: 28px;
+}
+.b-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.b-twin {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bad);
 }
 .b-suggest {
   background: var(--surface);

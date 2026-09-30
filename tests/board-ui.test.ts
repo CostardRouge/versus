@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { BoardView, ClientMessage, RankingView, ServerMessage } from '../src/core/protocol';
+import type { BoardView, ClientMessage, ItemScore, RankingView, ServerMessage } from '../src/core/protocol';
 import type { Ranking } from '../src/core/types';
 
 /** The publish modal and the board page, against a fake API and fake WebSockets. */
@@ -300,6 +300,55 @@ describe('author', () => {
     click('#m-ok');
     await flush();
     expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
+  });
+
+  it('recolors a color item: a draft until validated, then its votes go after a confirmation', async () => {
+    const ws = FakeSocket.last();
+    const red = { type: 'solid' as const, colors: ['#aa0000'] };
+    const colored = [{ ...items[0], label: 'Rouge', fill: red }, { ...items[1], label: 'Carmin', fill: red }, items[2]];
+    const rv = ranking(['p0', 'p1', 'p2']);
+    (rv.stats.p1 as ItemScore).w = 2;
+    ws.receive(state({ items: colored, ranking: rv } as Partial<BoardView>, true));
+    expect($('#b-admin .b-twin')?.textContent).toBe('Same color as Carmin');
+    expect(document.querySelectorAll('#b-admin [data-action="b-edit-color"]')).toHaveLength(2);
+
+    const edit = (hexValue: string) => {
+      click('[data-action="b-edit-color"][data-id="p1"]');
+      expect($('#cp-twin')?.textContent).toBe('Same color as Rouge');
+      const hex = $('#cpop .cp-hex') as HTMLInputElement;
+      hex.value = hexValue;
+      hex.dispatchEvent(new Event('input', { bubbles: true }));
+      change(hex);
+      expect($('#cp-twin')?.hidden).toBe(true);
+    };
+    edit('#2743F5');
+    click('[data-action="cp-cancel"]');
+    expect($('#cpop')?.hidden).toBe(true);
+    expect(calls).toHaveLength(0);
+
+    edit('2743f5');
+    respond = () => ({ status: 200, body: 2 });
+    click('[data-action="cp-ok"]');
+    expect($('#m-title')?.textContent).toBe('Change the color of Carmin?');
+    expect($('#m-body')?.textContent).toContain('Its 2 votes were cast on the old color');
+    click('#m-ok');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}/items/p1`,
+      body: { fill: { type: 'solid', colors: ['#2743f5'] } },
+      auth: `Bearer ${OWNER}`,
+    });
+    expect($('#toast')?.textContent).toBe('Color changed. Carmin starts again from zero.');
+
+    // An item without votes changes without a confirmation; a closed board has no editor.
+    click('[data-action="b-edit-color"][data-id="p0"]');
+    ($('#cpop .cp-sw') as HTMLElement).click();
+    click('[data-action="cp-ok"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', url: `/api/boards/${ALIAS}/items/p0` });
+    ws.receive(state({ items: colored, status: 'closed' } as Partial<BoardView>, true));
+    expect($('#b-admin [data-action="b-edit-color"]')).toBeNull();
   });
 
   it('saves settings and closes the vote through the API', async () => {

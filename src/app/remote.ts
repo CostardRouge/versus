@@ -49,6 +49,9 @@ export const addBoardItem = (alias: string, token: string, item: { label: string
 /** Removes an item and the votes that involve it; resolves with how many votes went. */
 export const removeBoardItem = (alias: string, token: string, id: string) =>
   call<number>('DELETE', `/${alias}/items/${encodeURIComponent(id)}`, undefined, token);
+/** Gives a color item a new fill; its votes are dropped. Resolves with how many votes went. */
+export const recolorBoardItem = (alias: string, token: string, id: string, fill: Fill) =>
+  call<number>('PATCH', `/${alias}/items/${encodeURIComponent(id)}`, { fill }, token);
 /** Deletes the board; the server hands back the author's local copy. */
 export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DELETE', `/${alias}`, undefined, token);
 
