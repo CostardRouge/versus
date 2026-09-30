@@ -81,6 +81,51 @@ describe('app', () => {
     expect(document.querySelectorAll('#item-list li[data-id]')).toHaveLength(2);
     expect($('.thumb-btn')?.getAttribute('aria-label')).toContain('#2743F5');
   });
+
+  it('announces the end of an exact sort, then shows the ranking by itself', () => {
+    click('[data-action="set-method"][data-m="sort"]');
+    const input = $('#add-input') as HTMLInputElement;
+    input.value = 'Coffee';
+    $('#add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    click('.tab[data-tab="duel"]');
+    for (let i = 0; i < 6 && !$('.end'); i++) {
+      click('[data-action="pick"][data-side="a"]');
+      vi.advanceTimersByTime(600);
+    }
+    expect($('.end-h')?.textContent).toBe('Sort complete!');
+    expect($('.end-facts')?.textContent).toContain('3 items placed');
+    // "Stay here" stops the countdown.
+    click('[data-action="end-stay"]');
+    vi.advanceTimersByTime(5000);
+    expect($('.end')).not.toBeNull();
+    expect($('[data-action="end-stay"]')).toBeNull();
+    click('[data-action="end-see"]');
+    expect($('.results')).not.toBeNull();
+  });
+
+  it('shows the ranking as lines comparing two methods, and remembers it', () => {
+    click('[data-action="rank-view"][data-view="lines"]');
+    expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').rankView).toBe('lines');
+    expect(document.querySelectorAll('.slope-l li')).toHaveLength(3);
+    expect(document.querySelectorAll('.slope svg path')).toHaveLength(3);
+    expect($('.slope-r .slope-h')?.textContent).toBe('Balanced');
+    click('[data-action="set-compare"][data-m="elo"]');
+    expect($('.slope-r .slope-h')?.textContent).toBe('Dynamic');
+    expect($('.podium')).toBeNull();
+    click('[data-action="rank-view"][data-view="podium"]');
+    expect($('.slope')).toBeNull();
+  });
+
+  it('moves to the ranking when the countdown ends', () => {
+    click('.tab[data-tab="duel"]');
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    click('[data-action="pick"][data-side="a"]');
+    vi.advanceTimersByTime(600);
+    expect($('.end-run')).not.toBeNull();
+    vi.advanceTimersByTime(4100);
+    expect($('.tab[data-tab="results"]')?.getAttribute('aria-selected')).toBe('true');
+    expect($('.res-enter')).not.toBeNull();
+  });
 });
 
 describe('installable app', () => {

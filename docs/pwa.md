@@ -1,6 +1,6 @@
 # Installable, offline app (PWA)
 
-Last updated 2026-09-30. Web first (D73): Versus is a web app, made installable and usable offline without a framework or a PWA library. Native apps, if store presence is ever wanted, would be a Capacitor shell around this same build.
+Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable and usable offline without a framework or a PWA library. Native apps, if store presence is ever wanted, would be a Capacitor shell around this same build.
 
 ## What is in place
 
@@ -12,7 +12,7 @@ Last updated 2026-09-30. Web first (D73): Versus is a web app, made installable 
   - **Version**: a hash of the stored files' names and bytes (`build/pwa.ts`), written into the worker at build time. A deploy that changes the app changes `sw.js`, so browsers install the new worker.
 - **In the app** (`src/app/pwa.ts`):
   - Registered in production builds only, after the page's `load`, so storing the files doesn't compete with the first render. The dev server runs without a worker.
-  - **Updates are offered, never forced** (D76): once a new worker is installed and waiting, a bar above the header says a new version is ready, with **Reload** and **Later**. Reload asks the worker to take over, then the page reloads. Later hides the bar; the new version starts once every tab of the app is closed. An open app checks for a new version when it comes back to the foreground, at most hourly.
+  - **Updates are offered, never forced** (D78): once a new worker is installed and waiting, a bar above the header says a new version is ready, with **Reload** and **Later**. Reload asks the worker to take over, then the page reloads. Later hides the bar; the new version starts once every tab of the app is closed. An open app checks for a new version when it comes back to the foreground, at most hourly.
   - **Install button** in the header, shown only when the browser offers installation (`beforeinstallprompt`: Chrome and Edge on desktop and Android). It replaces Chrome's mini-infobar on Android. A toast confirms the installation.
   - **Persistent storage** (`navigator.storage.persist()`) requested in the installed app only: installed apps get it silently, while a tab in Firefox would show a prompt.
 
@@ -52,4 +52,4 @@ These steps were run in Chromium with Playwright while building this (served und
 4. **Native share sheet** (Web Share API) for results and board links, with the results image.
 5. **Manifest shortcuts** ("New ranking") and **screenshots** for Chrome's richer install dialog.
 6. **Notifications** for published boards (Web Push) once the backend is deployed: a board closes, results are revealed. On iOS, only for home-screen apps in `standalone` (step 1).
-7. **Capacitor shell**, only if the stores are ever wanted (D73): same build, native push and app links.
+7. **Capacitor shell**, only if the stores are ever wanted (D75): same build, native push and app links.

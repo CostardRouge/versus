@@ -4,6 +4,7 @@ import {
   compute,
   ensurePair,
   expected,
+  finishedBy,
   methodOf,
   nextPair,
   pushDuel,
@@ -15,10 +16,11 @@ import type { Computed, Item, Outcome, Ranking } from '../core/types';
 import { esc, sizeClass } from '../core/util';
 import { methodText as M, pct, plural, t } from '../i18n';
 import { $, announce, doc, reduced, toast } from './dom';
+import { clearEnding, endingHTML, endingOf, startEnding, stopEnding } from './ending';
 import { deltaInfo } from './format';
 import { renderList } from './items';
 import { cur, save, stat } from './state';
-import { effTab, renderMain } from './workspace';
+import { effTab, renderMain, setTab } from './workspace';
 
 /** Duel stage: cards, swipe and tap, picks with score deltas, skip, undo and keyboard shortcuts. */
 
@@ -55,6 +57,7 @@ function sortDoneHTML(C: Computed): string {
 export function duelHTML(r: Ranking): string {
   if (r.items.length < 2) return emptyDuelHTML();
   const C = compute(r);
+  if (endingOf(r)) return endingHTML(r, C.n);
   const m = C.m;
   if (ensurePair(r, C)) save();
   const pair = r.pair;
@@ -162,6 +165,8 @@ export function choose(side: string | undefined): void {
   const C0 = compute(r);
   pushDuel(r, a, b, outcome);
   const C1 = compute(r);
+  const done = finishedBy(r, C0, C1);
+  if (done) startEnding(r, done);
   r.pair = null;
   save();
   renderList(r, true);
@@ -196,6 +201,7 @@ export function undoLast(): void {
   const r = cur();
   if (busy || !r) return;
   if (undoDuel(r)) {
+    clearEnding();
     save();
     renderList(r, true);
     renderMain(r);
@@ -203,10 +209,28 @@ export function undoLast(): void {
   }
 }
 
+/** The announcement's buttons: go to the ranking now, stay on the announcement, or keep dueling. */
+export function endSee(): void {
+  clearEnding();
+  setTab('results');
+  $('.results')?.classList.add('res-enter');
+}
+export function endStay(): void {
+  const r = cur();
+  stopEnding();
+  if (r) renderMain(r);
+  $<HTMLElement>('[data-action="end-see"]')?.focus();
+}
+export function endContinue(): void {
+  const r = cur();
+  clearEnding();
+  if (r) renderMain(r);
+}
+
 /** Duel shortcuts: ← and → pick, ↓ or = ties, S skips, ⌘/Ctrl+Z undoes. */
 export function duelKeydown(e: KeyboardEvent, tg: HTMLElement): void {
   const r = cur();
-  if (!r || effTab() !== 'duel') return;
+  if (!r || effTab() !== 'duel' || endingOf(r)) return;
   if (tg.classList.contains('card') && (e.key === 'Enter' || e.key === ' ')) {
     e.preventDefault();
     choose(tg.dataset.side);

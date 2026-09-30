@@ -4,8 +4,9 @@ import { agreement, crowdCheck, neckAndNeck, ownRanking, totalPairs } from '../c
 import type { BoardStatus, Computed, Duel, Item, MethodKey } from '../core/types';
 import { esc } from '../core/util';
 import { pct, plural, t } from '../i18n';
-import { $, $$, doc, reduced, thumbHTML } from './dom';
+import { $, $$, reduced, thumbHTML } from './dom';
 import { fmtCrowd, fmtRecord } from './format';
+import { mountSlopes } from './slope';
 
 /**
  * End-of-vote page of a published board: once a voter has voted on every pair, their result on a page
@@ -321,11 +322,11 @@ function duoHTML(c: Ctx): string {
       <p class="fin-sub">${esc(sub)}</p>
     </header>
     <div class="fin-grid fin-grid-duo">
-      <section class="fin-duo" aria-label="${t('finDuoAria')}">
+      <section class="fin-duo" data-slope aria-label="${t('finDuoAria')}">
         <div class="fin-cols">
-          <div class="fin-mine"><p class="fin-duo-h">${t('finMe')} <i class="fin-dot-a"></i></p><ol>${mine}</ol></div>
-          <div class="fin-mid" aria-hidden="true"><svg class="fin-lines" data-delay="${linesAt.toFixed(2)}"></svg></div>
-          <div class="fin-theirs"><p class="fin-duo-h"><i class="fin-dot-b"></i>${t('finCrowd')}${crowd ? '' : ` <span class="fin-later">· ${t('finAtClosing')}</span>`}</p><ol>${theirs}</ol></div>
+          <div class="fin-mine" data-slope-l><p class="fin-duo-h">${t('finMe')} <i class="fin-dot-a"></i></p><ol>${mine}</ol></div>
+          <div class="fin-mid" aria-hidden="true"><svg class="fin-lines" data-slope-svg data-delay="${linesAt.toFixed(2)}"></svg></div>
+          <div class="fin-theirs" data-slope-r><p class="fin-duo-h"><i class="fin-dot-b"></i>${t('finCrowd')}${crowd ? '' : ` <span class="fin-later">· ${t('finAtClosing')}</span>`}</p><ol>${theirs}</ol></div>
         </div>
         <p class="fin-duo-foot">${crowd ? t('finHover') : t('finOwnFrom', { votes: plural(d.mine.length, 'vote') })}</p>
       </section>
@@ -338,50 +339,6 @@ function duoHTML(c: Ctx): string {
 export function finaleHTML(d: FinaleData): string {
   const c = ctxOf(d);
   return `<div class="fin" id="fin">${topHTML(d)}<div class="fin-body">${d.view === 'duo' ? duoHTML(c) : podiumHTML(c)}</div></div>`;
-}
-
-/** Lines from each item's place in the voter's ranking to its place in the crowd's. */
-export function drawLines(): void {
-  const duo = $('.fin-duo');
-  const svg = duo ? $<SVGSVGElement>('.fin-lines', duo) : null;
-  if (!duo || !svg) return;
-  const box = svg.getBoundingClientRect();
-  const w = box.width;
-  svg.setAttribute('viewBox', `0 0 ${w} ${box.height}`);
-  const y = (el: Element) => {
-    const r = el.getBoundingClientRect();
-    return r.top + r.height / 2 - box.top;
-  };
-  const mine = $$('.fin-mine li[data-id]', duo);
-  const at = duo.closest('.play') ? Number(svg.dataset.delay ?? 0) : 0;
-  let out = `<defs><linearGradient id="fin-ab" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${w}" y2="0"><stop offset="0" style="stop-color:var(--a)"/><stop offset="1" style="stop-color:var(--b)"/></linearGradient></defs>`;
-  $$('.fin-theirs li[data-id]', duo).forEach((right, i) => {
-    const id = right.dataset.id ?? '';
-    const left = mine.find((li) => li.dataset.id === id);
-    if (!left) return;
-    const y1 = y(left);
-    const y2 = y(right);
-    const same = mine.indexOf(left) === i;
-    const d = `--d:${(at ? at + i * 0.06 : 0).toFixed(2)}s`;
-    out += `<path data-id="${esc(id)}" class="${same ? 'fin-same' : 'fin-moved'}" d="M4 ${y1} C ${w / 2} ${y1}, ${w / 2} ${y2}, ${w - 4} ${y2}" pathLength="1" stroke-dasharray="1" style="${d}"/>`;
-    out += `<circle data-id="${esc(id)}" class="fin-ea" cx="4" cy="${y1}" r="3.5" style="${d}"/><circle data-id="${esc(id)}" class="fin-eb" cx="${w - 4}" cy="${y2}" r="3.5" style="${d}"/>`;
-  });
-  svg.innerHTML = out;
-}
-
-/** Pointing at an item (in either ranking, or its line) highlights it on both sides. */
-function bindDuo(fin: HTMLElement): void {
-  const duo = $('.fin-duo', fin);
-  if (!duo) return;
-  const light = (id: string | null) => {
-    duo.classList.toggle('hovering', id !== null);
-    for (const el of $$<Element>('[data-id]', duo)) el.classList.toggle('hl', el.getAttribute('data-id') === id);
-  };
-  duo.addEventListener('pointerover', (e) => {
-    const el = (e.target as Element | null)?.closest?.('[data-id]');
-    light(el?.getAttribute('data-id') ?? null);
-  });
-  duo.addEventListener('pointerleave', () => light(null));
 }
 
 function countUp(el: HTMLElement): void {
@@ -417,7 +374,5 @@ export function mountFinale(mode: FinaleMode, onSettled: () => void): void {
       onSettled();
     }, PLAY_MS);
   }
-  drawLines();
-  bindDuo(fin);
-  doc.fonts?.ready.then(drawLines, () => {});
+  mountSlopes(fin);
 }

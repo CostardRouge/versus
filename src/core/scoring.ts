@@ -199,6 +199,15 @@ export function stability(r: Ranking, C: Computed = compute(r)): number {
   return Math.min(1, C.n / target(r));
 }
 
+/**
+ * What the duel between `before` and `after` completed: the exact sort placing its last item, or a
+ * rating method reaching full stability for the first time. Null otherwise.
+ */
+export function finishedBy(r: Ranking, before: Computed, after: Computed): 'sort' | 'stable' | null {
+  if (r.items.length < 2 || stability(r, before) >= 1 || stability(r, after) < 1) return null;
+  return after.ex ? 'sort' : 'stable';
+}
+
 export function remaining(r: Ranking, C: Computed): number {
   if (C.ex) return C.ex.done ? 0 : sortRemaining(r.items.length, C.ex.sorted.length);
   return Math.max(0, target(r) - C.n);

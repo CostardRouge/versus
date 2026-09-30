@@ -54,7 +54,7 @@ Decisions made while designing Versus (conversation of 2026-09-29, prototyped as
 
 | # | Decision | Status | Notes |
 | --- | --- | --- | --- |
-| D24 | Vite + TypeScript, no framework | Decided | Ported from the single-file prototype; small bundle (~20 kB gzip JS). A POC speed choice, reopened and kept: the web app comes first and stays light (D73). |
+| D24 | Vite + TypeScript, no framework | Decided | Ported from the single-file prototype; small bundle (~20 kB gzip JS). A POC speed choice, reopened and kept: the web app comes first and stays light (D75). |
 | D25 | Pure `src/core` shared by UI and future backend | Decided | Enables running the same scoring on a Cloudflare Worker. |
 | D26 | Biome, strict TS, Vitest with a 90% coverage floor on `src/core` | Decided | Plus a jsdom smoke test of the whole app. |
 | D27 | Single CI workflow; deploy to GitHub Pages from `main` only after checks pass | Decided | Relative `base: './'`, so the build works under `/versus/`. Dependabot weekly for npm and actions; `@types/node` majors ignored to match Node 22. |
@@ -118,17 +118,24 @@ See `docs/published-boards.md`.
 | D66 | Every SEO fact in `build/site.ts`; head, manifest, robots.txt, sitemap and llms.txt generated from it by a Vite plugin | Decided | The steevepommier.com pattern: one source, nothing hand-copied, invariants tested (`tests/seo.test.ts`). |
 | D67 | Canonical address from `VITE_SITE_URL` (CI variable `SITE_URL`), GitHub Pages by default, for both builds | Decided | One canonical while the Worker's domain isn't settled; setting the variable moves both. |
 | D68 | Icons and social card drawn by a script (satori + resvg) and committed; new file names when the drawing changes | Decided | Glyphs as paths, identical on any machine; search engines and unfurlers cache images by URL. |
-| D69 | Web app manifest with `display: minimal-ui` | Decided | iOS gives standalone home-screen apps their own storage, which would hide localStorage rankings; revisit with offline support. Offline is in (D75); `standalone` waits for export/import (`docs/pwa.md`). |
+| D69 | Web app manifest with `display: minimal-ui` | Decided | iOS gives standalone home-screen apps their own storage, which would hide localStorage rankings; revisit with offline support. Offline is in (D77); `standalone` waits for export/import (`docs/pwa.md`). |
 | D70 | Fonts self-hosted with Fontsource, first-render fonts preloaded | Decided | No third-party request on the critical path, no visitor IP sent to Google; screenshots pixel-identical to Google Fonts. |
 | D71 | robots.txt allows every crawler, AI included, except `/api/`; llms.txt describes the app | Decided | Same policy as steevepommier.com. |
 | D72 | JSON-LD author = `https://steevepommier.com/#person` | Decided | The same `@id` on both sites joins them into one entity; the full profile stays there. |
+
+## Local rankings
+
+| # | Decision | Status | Notes |
+| --- | --- | --- | --- |
+| D73 | The end of a local ranking is announced: when a duel completes the exact sort, or first brings a rating method to full stability, the duel pane shows a short celebration and a bar that empties, then the Ranking tab opens by itself | Decided | "Stay here" stops the countdown; rating methods also offer "Keep dueling". No countdown under `prefers-reduced-motion`. |
+| D74 | The Ranking tab has a discreet switch between the podium and lines comparing the ranking's method with another one on the same duels | Decided | No crowd locally, so the lines compare methods (the comparison table stays below). Exact sort is offered only once these duels complete it. Remembered in `rankView`; the lines code is shared with the end-of-vote page (`slope.ts`). |
 
 ## App platform
 
 | # | Decision | Status | Notes |
 | --- | --- | --- | --- |
-| D73 | Web first: Versus is a web app, made installable and offline as a PWA; native apps, if store presence is ever wanted, come as a Capacitor shell around the same web app | Decided | The web is the main platform and the stores aren't wanted for now. Expo + React Native Web was considered (one codebase, true native UI) and set aside to keep the app light, with few dependencies. Known PWA limits on iOS: no app links, push only for home-screen apps. |
-| D74 | Hand-written service worker (`src/sw/sw.ts`); a small Vite plugin builds it as `sw.js` and writes in the files to precache and a version derived from their content | Decided | About 80 lines, no Workbox or vite-plugin-pwa (D73: few dependencies). Every deploy that changes the app changes the worker, so browsers pick it up. |
-| D75 | Offline-first app shell: the page, script, styles, latin fonts, manifest and icon are stored at install and served from the cache; other font subsets are stored on first use | Decided | The app opens instantly and without a network. The API, WebSockets, other origins and every other file (robots.txt, images for sharing) never go through the worker. Only the scope's root is served from the cache: routes live in the fragment (D51). |
-| D76 | A new version is offered, never forced: a bar above the header with Reload and Later | Decided | Reloading on its own could interrupt a duel or a form. Later lets the new version start once every tab is closed. An open app checks for a new version when it comes back to the foreground, at most hourly. |
-| D77 | Our own install button, shown only when the browser offers installation (Chromium, desktop and Android); persistent storage requested only in the installed app | Decided | iOS has no install prompt and keeps `minimal-ui` (D69). Asking for persistent storage in a tab would show a prompt in Firefox; installed apps get it silently. |
+| D75 | Web first: Versus is a web app, made installable and offline as a PWA; native apps, if store presence is ever wanted, come as a Capacitor shell around the same web app | Decided | The web is the main platform and the stores aren't wanted for now. Expo + React Native Web was considered (one codebase, true native UI) and set aside to keep the app light, with few dependencies. Known PWA limits on iOS: no app links, push only for home-screen apps. |
+| D76 | Hand-written service worker (`src/sw/sw.ts`); a small Vite plugin builds it as `sw.js` and writes in the files to precache and a version derived from their content | Decided | About 80 lines, no Workbox or vite-plugin-pwa (D75: few dependencies). Every deploy that changes the app changes the worker, so browsers pick it up. |
+| D77 | Offline-first app shell: the page, script, styles, latin fonts, manifest and icon are stored at install and served from the cache; other font subsets are stored on first use | Decided | The app opens instantly and without a network. The API, WebSockets, other origins and every other file (robots.txt, images for sharing) never go through the worker. Only the scope's root is served from the cache: routes live in the fragment (D51). |
+| D78 | A new version is offered, never forced: a bar above the header with Reload and Later | Decided | Reloading on its own could interrupt a duel or a form. Later lets the new version start once every tab is closed. An open app checks for a new version when it comes back to the foreground, at most hourly. |
+| D79 | Our own install button, shown only when the browser offers installation (Chromium, desktop and Android); persistent storage requested only in the installed app | Decided | iOS has no install prompt and keeps `minimal-ui` (D69). Asking for persistent storage in a tab would show a prompt in Firefox; installed apps get it silently. |

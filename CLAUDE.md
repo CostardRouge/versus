@@ -8,7 +8,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
 - Live: https://costardrouge.github.io/versus/ (GitHub Pages, deployed by CI from `main`).
-- Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D73). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
+- Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D75). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
 ## How this project is built
@@ -16,7 +16,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 - **The owner doesn't write code.** Every line in this repo was written by Claude Code from the owner's prompts; the owner decides, reviews the result and tests it by hand. The owner has a Claude Max plan (×20), so there is plenty of capacity.
 - **Estimate effort in agent time, not developer time.** A full UI rewrite or a port to another stack fits in a day of sessions. Don't argue against an option because of code volume, rewrite size or "double maintenance".
 - **What really costs is what Claude can't do:** the owner's time (testing on real devices, accounts, store listings and reviews, decisions), fees, and regression risk. Weigh options on those, and on product quality.
-- **No stack choice is sacred.** Past choices made to go fast in the POC can be reopened; the owner decides. D24 (no UI framework) was reopened and kept: the web app comes first and stays light (D73).
+- **No stack choice is sacred.** Past choices made to go fast in the POC can be reopened; the owner decides. D24 (no UI framework) was reopened and kept: the web app comes first and stays light (D75).
 
 ## Commands
 
@@ -31,7 +31,7 @@ npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1
 npm run worker:deploy  # build, deploy the Worker, apply D1 migrations (needs a Cloudflare login)
 ```
 
-Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script. No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D73).
+Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script. No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D75).
 
 ## Code map
 
@@ -65,7 +65,9 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   workspace.ts        workspace shell, tabs, method menu, renderMain() (duel or results)
   items.ts            side list (live-sorted, FLIP) and item edits (add text/colors/images, rename, remove)
   duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
-  results.ts          podium, table, method comparison, copy
+  results.ts          podium or lines comparing two methods (switch), table, method comparison, copy
+  ending.ts           end of a local ranking: announcement with confetti and a countdown to the Ranking tab
+  slope.ts            lines between two rankings (end-of-vote page, method comparison): drawing and hover
   color.ts            color editor popover
   publish.ts          publish modal and the settings form shared with the author panel
   board.ts            published board page: server-assigned duels, crowd ranking (live or frozen), author panel
@@ -90,7 +92,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in `index.html` or `public/`: the head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address comes from `VITE_SITE_URL` (CI variable `SITE_URL`). A redesigned icon or social card gets new file names (caches key on the URL). Details in `docs/seo.md`.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
