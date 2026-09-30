@@ -72,7 +72,7 @@ export const fr: Messages = {
   forget: 'Oublier',
   forgetAria: 'Oublier {title}',
   forgotten: '« {title} » oublié.',
-  undoForget: 'Annuler',
+  undoToast: 'Annuler',
   keepCopy: 'Garder une copie',
   keepCopyTitle: 'En faire un classement à toi, avec tes votes',
   copyKept: 'Copie gardée dans tes classements, avec tes votes',
@@ -113,7 +113,7 @@ export const fr: Messages = {
   gradient: 'Dégradé',
   addColor: 'Ajouter la couleur',
   asideFoot:
-    'Colle une liste pour ajouter plusieurs lignes d’un coup ; les codes #hex deviennent des couleurs. La liste se réordonne après chaque duel.',
+    'Colle une liste, simple ou en Markdown, pour ajouter toutes ses lignes d’un coup ; les codes #hex deviennent des couleurs. La liste se réordonne après chaque duel.',
   emptyList: 'Aucun élément pour l’instant. Écris un nom ci-dessus, colle une liste ou dépose des images.',
   renameAria: 'Renommer {label}',
   removeAria: 'Retirer {label}',
@@ -198,6 +198,9 @@ export const fr: Messages = {
   onlyImages: 'Seules les images sont acceptées',
   imagesAdded: (v: Vars) => `${v.images} ajoutée${Number(v.n) > 1 ? 's' : ''}`,
   itemsAdded: (v: Vars) => `${v.items} ajouté${Number(v.n) > 1 ? 's' : ''}`,
+  itemsAddedDupes: (v: Vars) =>
+    `${v.items} ajouté${Number(v.n) > 1 ? 's' : ''} · ${v.dupes} ignoré${Number(v.d) > 1 ? 's' : ''}`,
+  allDupes: 'Déjà tous dans la liste',
   cantRead: 'Impossible de lire ces images',
   imagesRankTitle: 'Images · {date}',
   cpTitle: 'Modifier la couleur',
@@ -368,4 +371,5 @@ export const frPlurals: Record<PluralKey, [string, string]> = {
   vote: ['vote', 'votes'],
   voter: ['votant', 'votants'],
   pair: ['paire', 'paires'],
+  duplicate: ['doublon', 'doublons'],
 };

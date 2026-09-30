@@ -1,4 +1,5 @@
 import { fillCode, fillCSS, hslToHex, isHex, normHex } from '../core/colors';
+import { freshLabels, LABEL_MAX, parseList } from '../core/list';
 import { getItem, mkItem } from '../core/model';
 import { compute, methodOf } from '../core/scoring';
 import type { Fill, Item, Ranking } from '../core/types';
@@ -33,7 +34,7 @@ export function renderList(r: Ranking, animate: boolean): void {
           return `<li data-id="${it.id}">
       <span class="pos mono">${m === 'sort' && !s.placed ? '·' : i + 1}</span>
       ${listThumbHTML(it)}
-      <input class="row-label" data-id="${it.id}" value="${esc(it.label)}" aria-label="${esc(t('renameAria', { label: it.label }))}" maxlength="120">
+      <input class="row-label" data-id="${it.id}" value="${esc(it.label)}" aria-label="${esc(t('renameAria', { label: it.label }))}" maxlength="${LABEL_MAX}">
       <span class="rt mono ${s.games && s.placed ? '' : 'dim'}" title="${M(m).col}">${m === 'sort' ? (s.placed ? '' : t('toPlace')) : fmtScore(m, s)}</span>
       <span class="dl mono ${mv > 0 ? 'up' : mv < 0 ? 'down' : ''}">${mv > 0 ? `↑${mv}` : mv < 0 ? `↓${-mv}` : ''}</span>
       <button class="rm" type="button" data-action="remove-item" data-id="${it.id}" aria-label="${esc(t('removeAria', { label: it.label }))}">×</button>
@@ -75,21 +76,49 @@ function afterItemsChange(r: Ranking, prevCount: number): void {
   renderList(r, true);
   if (effTab() === 'results' || prevCount < 2 || !r.pair || methodOf(r) === 'sort') renderMain(r);
 }
-export function addLabels(r: Ranking, labels: string[]): number {
+function addLabels(r: Ranking, labels: string[]): Item[] {
   const clean = labels
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 200);
-  if (!clean.length) return 0;
+  if (!clean.length) return [];
   const prev = r.items.length;
-  for (const l of clean) {
-    r.items.push(
-      isHex(l) ? mkItem(normHex(l).toUpperCase(), null, { type: 'solid', colors: [normHex(l)] }) : mkItem(l),
-    );
-  }
+  const added = clean.map((l) =>
+    isHex(l) ? mkItem(normHex(l).toUpperCase(), null, { type: 'solid', colors: [normHex(l)] }) : mkItem(l),
+  );
+  r.items.push(...added);
   r.updated = Date.now();
   afterItemsChange(r, prev);
-  return clean.length;
+  return added;
+}
+/**
+ * A list typed or pasted in the add field (core/list.ts): adds its labels not in the ranking yet, with a toast
+ * that can undo. False when the text isn't a list, for the field to take it as one label.
+ */
+export function addList(r: Ranking, text: string): boolean {
+  const labels = parseList(text);
+  if (labels.length < 2) return false;
+  const { fresh, dupes } = freshLabels(
+    labels,
+    r.items.map((i) => i.label),
+  );
+  const added = addLabels(r, fresh);
+  const n = added.length;
+  if (!n) {
+    toast(t('allDupes'));
+    return true;
+  }
+  const items = plural(n, 'item');
+  const msg = dupes
+    ? t('itemsAddedDupes', { items, n, dupes: plural(dupes, 'duplicate'), d: dupes })
+    : t('itemsAdded', { items, n });
+  const ids = new Set(added.map((i) => i.id));
+  toast(msg, { label: t('undoToast'), run: () => dropItems(r, ids) });
+  return true;
+}
+/** What was typed in the add field and sent: a list, or one item. False when there was nothing to add. */
+export function addTyped(r: Ranking, text: string): boolean {
+  return addList(r, text) || addLabels(r, parseList(text)).length > 0;
 }
 export function addColor(): void {
   const r = cur();
@@ -156,15 +185,18 @@ export async function addFiles(r: Ranking, files: FileList | File[]): Promise<vo
   else save();
   toast(n ? t('imagesAdded', { images: plural(n, 'image'), n }) : t('cantRead'));
 }
+function dropItems(r: Ranking, ids: Set<string>): void {
+  if (cp.id && ids.has(cp.id)) closeColor();
+  const prev = r.items.length;
+  r.items = r.items.filter((i) => !ids.has(i.id));
+  if (r.pair?.some((id) => ids.has(id))) r.pair = null;
+  r.updated = Date.now();
+  if (cur() === r) afterItemsChange(r, prev);
+  else save();
+}
 export function removeItem(id: string | undefined): void {
   const r = cur();
-  if (!r || !id) return;
-  if (cp.id === id) closeColor();
-  const prev = r.items.length;
-  r.items = r.items.filter((i) => i.id !== id);
-  if (r.pair?.includes(id)) r.pair = null;
-  r.updated = Date.now();
-  afterItemsChange(r, prev);
+  if (r && id) dropItems(r, new Set([id]));
 }
 
 /** Commits a label edited in the side list; an empty label is reverted. */

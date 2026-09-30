@@ -136,6 +136,47 @@ describe('app', () => {
     expect($('.tab[data-tab="results"]')?.getAttribute('aria-selected')).toBe('true');
     expect($('.res-enter')).not.toBeNull();
   });
+
+  it('adds every item of a pasted, typed or dropped list, without duplicates, and can undo it', () => {
+    click('[data-action="back"]');
+    click('[data-action="new-rank"]');
+    const input = $('#add-input') as HTMLInputElement;
+    const submit = (v: string) => {
+      input.value = v;
+      $('#add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    };
+    const paste = (text: string) => {
+      const e = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'clipboardData', { value: { files: [], getData: () => text } });
+      input.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    const labels = () =>
+      [...document.querySelectorAll<HTMLInputElement>('#item-list .row-label')].map((i) => i.value).sort();
+    submit('Tea');
+    // One line goes into the field, as typed.
+    expect(paste('Green tea')).toBe(false);
+    expect(paste('## Drinks\n- **Coffee**\n- [ ] tea\n- #2743f5\n- Cocoa')).toBe(true);
+    expect(labels()).toEqual(['#2743F5', 'Cocoa', 'Coffee', 'Tea']);
+    expect($('#toast')?.textContent).toContain('3 items added · 1 duplicate skipped');
+    click('[data-action="toast-act"]');
+    expect(labels()).toEqual(['Tea']);
+    submit('Coffee\\nCocoa');
+    expect(labels()).toEqual(['Cocoa', 'Coffee', 'Tea']);
+    expect(input.value).toBe('');
+    const drop = new InputEvent('beforeinput', {
+      data: 'Mate\nChai',
+      inputType: 'insertFromDrop',
+      bubbles: true,
+      cancelable: true,
+    });
+    input.dispatchEvent(drop);
+    expect(drop.defaultPrevented).toBe(true);
+    expect(labels()).toEqual(['Chai', 'Cocoa', 'Coffee', 'Mate', 'Tea']);
+    expect(paste('tea\nMATE')).toBe(true);
+    expect($('#toast')?.textContent).toBe('All already in the list');
+    expect(labels()).toHaveLength(5);
+  });
 });
 
 describe('addresses', () => {
