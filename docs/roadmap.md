@@ -7,7 +7,7 @@ Last updated 2026-09-30.
 - Prototype as a claude.ai artifact, then ported to this repo (Vite + TS).
 - Gallery, workspace with live-sorted items, duel stage (swipe, tap, buttons, keyboard, undo, skip, tie), results with podium and method comparison.
 - Four scoring methods (Balanced/BT default, Dynamic/Elo, Simple/win rate, Exact sort), switchable per ranking.
-- Items: text, images (drop, paste, file picker), solid colors and gradients; `#hex` paste; color editor popover.
+- Items: text, images (drop, paste, file picker), solid colors and gradients; `#hex` paste; color editor popover; lists pasted, typed or dropped at once (plain, Markdown, spreadsheet row, JSON), duplicates skipped, undo (D97).
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.

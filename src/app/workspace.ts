@@ -1,3 +1,4 @@
+import { LABEL_MAX } from '../core/list';
 import { METHOD_KEYS, methodOf } from '../core/scoring';
 import type { MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
@@ -46,7 +47,7 @@ export function wsHTML(r: Ranking): string {
       <aside class="pane-items" aria-label="${t('itemsTitle')}">
         <div class="aside-head"><h2>${t('itemsTitle')}</h2><span class="mono muted" id="aside-count"></span></div>
         <form id="add-form" class="add" autocomplete="off">
-          <input id="add-input" placeholder="${t('addPlaceholder')}" aria-label="${t('itemNameAria')}" maxlength="120">
+          <input id="add-input" placeholder="${t('addPlaceholder')}" aria-label="${t('itemNameAria')}" maxlength="${LABEL_MAX}">
           <button class="add-btn" type="submit" aria-label="${t('add')}">+</button>
         </form>
         <button class="drop" type="button" data-action="pick-files">${imgSvg}<span>${t('imagesDrop')}</span></button>

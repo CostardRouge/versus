@@ -7,7 +7,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 ## Features
 
 - **Duels** with buttons, arrow keys (`←` A, `→` B, `↓` tie, `S` skip, `⌘/Ctrl+Z` undo) or swipe.
-- **Items of any kind:** text, images (drag and drop or paste, downscaled in the browser), solid colors and gradients with an inline color editor.
+- **Items of any kind:** text, images (drag and drop or paste, downscaled in the browser), solid colors and gradients with an inline color editor. Paste a whole list (plain lines, Markdown, a spreadsheet row) to add it at once.
 - **Four scoring methods**, switchable at any time without losing duels:
   | Method | Algorithm | Best for |
   | --- | --- | --- |

@@ -65,6 +65,8 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
                       trackedPath() = the address audience measurement records (ids and aliases replaced)
   published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
   joined.ts           "Your votes": cards of boards voted on (snapshot, what's new since the last visit, order, copy)
+  list.ts             a list typed or pasted in the add field as labels (lines, `\n`, Markdown and bulleted lists, tabs,
+                      JSON array); duplicates of what the ranking has
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
                       landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules)

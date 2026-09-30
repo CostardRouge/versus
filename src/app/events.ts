@@ -1,4 +1,4 @@
-import { locale, plural, t } from '../i18n';
+import { locale, t } from '../i18n';
 import {
   boardAddItem,
   boardAdminLink,
@@ -22,10 +22,10 @@ import {
   setFinaleWho,
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
-import { $, closeModal, doc, narrow, toast, toastAct } from './dom';
+import { $, closeModal, doc, narrow, toastAct } from './dom';
 import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
 import { changeTheme } from './header';
-import { addColor, addFiles, addLabels, removeItem, renameItem } from './items';
+import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
 import { forgetJoined, keepJoinedCopy } from './joined';
 import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
@@ -312,14 +312,15 @@ function onPaste(e: ClipboardEvent): void {
     void addFiles(r, files);
     return;
   }
-  if (tg.id === 'add-input') {
-    const txt = e.clipboardData.getData('text/plain') || '';
-    if (/\n/.test(txt.trim())) {
-      e.preventDefault();
-      const n = addLabels(r, txt.split(/\r?\n/));
-      if (n) toast(t('itemsAdded', { items: plural(n, 'item'), n }));
-    }
-  }
+  // A list adds all its items at once; anything else goes into the field.
+  if (tg.id === 'add-input' && addList(r, e.clipboardData.getData('text/plain'))) e.preventDefault();
+}
+
+/** A list dropped on the add field, or inserted by a phone keyboard's clipboard, comes without a paste event. */
+function onBeforeInput(e: InputEvent): void {
+  if (!e.cancelable || (e.target as HTMLElement).id !== 'add-input') return;
+  const r = cur();
+  if (r && addList(r, e.data ?? e.dataTransfer?.getData('text/plain') ?? '')) e.preventDefault();
 }
 
 const hasFiles = (e: DragEvent): boolean => [...(e.dataTransfer?.types ?? [])].includes('Files');
@@ -330,6 +331,7 @@ export function bindEvents(): void {
   doc.addEventListener('change', onChange);
   doc.addEventListener('keydown', onKeydown);
   doc.addEventListener('paste', onPaste);
+  doc.addEventListener('beforeinput', onBeforeInput);
   doc.addEventListener('submit', (e) => {
     if ((e.target as HTMLElement).id === 'b-add-form') {
       e.preventDefault();
@@ -341,7 +343,7 @@ export function bindEvents(): void {
     const r = cur();
     const input = $<HTMLInputElement>('#add-input');
     if (!r || !input) return;
-    if (addLabels(r, [input.value])) input.value = '';
+    if (addTyped(r, input.value)) input.value = '';
     input.focus();
   });
   doc.addEventListener('focusin', (e) => {

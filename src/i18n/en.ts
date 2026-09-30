@@ -1,6 +1,6 @@
 export type Vars = Record<string, string | number>;
 export type Entry = string | ((v: Vars) => string);
-export type PluralKey = 'item' | 'duel' | 'image' | 'vote' | 'voter' | 'pair';
+export type PluralKey = 'item' | 'duel' | 'image' | 'vote' | 'voter' | 'pair' | 'duplicate';
 
 export const en = {
   tagline: 'Rank anything, two at a time',
@@ -73,7 +73,7 @@ export const en = {
   forget: 'Forget',
   forgetAria: 'Forget {title}',
   forgotten: '“{title}” forgotten.',
-  undoForget: 'Undo',
+  undoToast: 'Undo',
   keepCopy: 'Keep a copy',
   keepCopyTitle: 'Make it a ranking of your own, with your votes',
   copyKept: 'Copy kept in your rankings, with your votes',
@@ -113,7 +113,8 @@ export const en = {
   color2Aria: 'Second gradient color',
   gradient: 'Gradient',
   addColor: 'Add color',
-  asideFoot: 'Paste a list to add several lines at once; #hex codes become colors. The list reorders after each duel.',
+  asideFoot:
+    'Paste a list, plain or Markdown, to add all its lines at once; #hex codes become colors. The list reorders after each duel.',
   emptyList: 'No items yet. Type a name above, paste a list or drop images.',
   renameAria: 'Rename {label}',
   removeAria: 'Remove {label}',
@@ -197,6 +198,8 @@ export const en = {
   onlyImages: 'Only images are accepted',
   imagesAdded: (v: Vars) => `${v.images} added`,
   itemsAdded: (v: Vars) => `${v.items} added`,
+  itemsAddedDupes: (v: Vars) => `${v.items} added · ${v.dupes} skipped`,
+  allDupes: 'All already in the list',
   cantRead: 'Couldn’t read these images',
   imagesRankTitle: 'Images · {date}',
   cpTitle: 'Edit color',
@@ -367,4 +370,5 @@ export const enPlurals: Record<PluralKey, [string, string]> = {
   vote: ['vote', 'votes'],
   voter: ['voter', 'voters'],
   pair: ['pair', 'pairs'],
+  duplicate: ['duplicate', 'duplicates'],
 };

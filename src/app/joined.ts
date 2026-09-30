@@ -99,7 +99,7 @@ export function forgetJoined(alias: string | undefined): void {
   persist();
   render();
   toast(t('forgotten', { title: j.title }), {
-    label: t('undoForget'),
+    label: t('undoToast'),
     run: () => {
       if (joinedOf(j.alias)) return;
       S.joined = [...S.joined.slice(0, i), j, ...S.joined.slice(i)];
