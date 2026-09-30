@@ -1,3 +1,4 @@
+import { LINKS } from '../src/app/about.ts';
 import { en } from '../src/i18n/en.ts';
 
 /**
@@ -6,19 +7,22 @@ import { en } from '../src/i18n/en.ts';
  * the app, change its description or a color here and every output follows.
  */
 
-/** Canonical address of the app, trailing slash included. `VITE_SITE_URL` overrides it at build time. */
-export const DEFAULT_SITE_URL = 'https://costardrouge.github.io/versus/';
+/**
+ * Canonical address of the app, trailing slash included: the Worker's domain, which the GitHub Pages copy
+ * points to as well. `VITE_SITE_URL` overrides it at build time.
+ */
+export const DEFAULT_SITE_URL = 'https://versus.steevepommier.com/';
 
 export const NAME = 'Versus';
 
-/** Tab title and social title; the app localizes it at runtime (header.ts) from the same tagline. */
-export const TITLE = `${NAME} — ${en.tagline}`;
+/** Tab title and social title, 50 to 60 characters (tests check it); the app shows it in the current language. */
+export const TITLE = en.pageTitle;
 
 /** Search snippet and social description: keep it within ~155 characters (tests check it). */
 export const DESCRIPTION =
   'Rank anything by pairwise comparison: pick the better of two, duel after duel, and the ranking builds itself. Text, images or colors. Free, no account.';
 
-/** What the app does, one line each: JSON-LD featureList, the <noscript> fallback and llms.txt. */
+/** What the app does, one line each: JSON-LD featureList and llms.txt. */
 export const FEATURES = [
   'Duels with buttons, arrow keys or swipe, with undo, skip and ties',
   'Items of any kind: text, images, solid colors and gradients',
@@ -96,7 +100,7 @@ export const OG_IMAGE = {
   alt: 'Versus: “Rank anything, two at a time” beside a duel between two cards, Kyoto (A) and Lisbon (B).',
 } as const;
 
-export const REPOSITORY = 'https://github.com/CostardRouge/versus';
+export const REPOSITORY = LINKS.source;
 export const LICENSE_URL = `${REPOSITORY}/blob/main/LICENSE`;
 
 /**
@@ -105,8 +109,8 @@ export const LICENSE_URL = `${REPOSITORY}/blob/main/LICENSE`;
  */
 export const AUTHOR = {
   id: 'https://steevepommier.com/#person',
-  name: 'Steeve Pommier',
-  url: 'https://steevepommier.com/',
+  name: LINKS.author.name,
+  url: LINKS.author.url,
   sameAs: ['https://github.com/costardrouge'],
   twitter: '@BlousonRouge',
 } as const;

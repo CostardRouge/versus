@@ -1,3 +1,5 @@
+import { aboutHTML } from '../src/app/about.ts';
+import { en } from '../src/i18n/en.ts';
 import {
   ALTERNATE_LOCALES,
   AUTHOR,
@@ -178,18 +180,19 @@ export function headTags(url: string): string[] {
   ];
 }
 
-/** What a browser without JavaScript, or a crawler that doesn't run it, gets instead of the app. */
+/**
+ * The page text in static HTML (at <!-- seo:about -->, inside <main>): what a crawler that doesn't run
+ * JavaScript reads, with the page's only h1. The app hides it before the first paint and replaces it with the
+ * gallery, which shows the same section in the visitor's language (src/app/about.ts). `publish`: the build
+ * has the published boards API (Worker build).
+ */
+export function aboutStatic(publish: boolean): string {
+  return aboutHTML((key) => String(en[key]), { h1: true, publish });
+}
+
+/** What a browser without JavaScript gets on top of the page text. No heading: the page text has the h1. */
 export function noscriptHtml(): string {
-  return [
-    '<noscript>',
-    '<section class="noscript">',
-    `<h1>${esc(TITLE)}</h1>`,
-    `<p>${esc(DESCRIPTION)}</p>`,
-    `<ul>${FEATURES.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>`,
-    `<p>${esc(NAME)} runs in your browser: turn on JavaScript to start ranking.</p>`,
-    '</section>',
-    '</noscript>',
-  ].join('\n    ');
+  return `<noscript><p class="noscript">${esc(NAME)} runs in your browser: turn on JavaScript to start ranking.</p></noscript>`;
 }
 
 /**

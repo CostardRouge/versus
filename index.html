@@ -7,7 +7,9 @@
     <meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)" />
     <script>
-      // Apply a saved light/dark choice before the first paint to avoid a flash of the wrong theme.
+      // Mark JavaScript as running: the static page text inside <main> (for crawlers without it) stays hidden
+      // until the app replaces it. Then apply a saved light/dark choice before the first paint.
+      document.documentElement.classList.add('js');
       try {
         const theme = JSON.parse(localStorage.getItem('versus-prefs') || '{}').theme;
         if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
@@ -33,7 +35,7 @@
           </fieldset>
         </div>
       </header>
-      <main id="view"></main>
+      <main id="view"><!-- seo:noscript --><!-- seo:about --></main>
     </div>
     <div class="drop-overlay" aria-hidden="true"><div id="drop-text"></div></div>
     <div id="cpop" class="cpop" role="dialog" hidden></div>
@@ -49,7 +51,6 @@
         </div>
       </div>
     </div>
-    <!-- seo:noscript -->
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

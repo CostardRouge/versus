@@ -10,7 +10,7 @@ export function applyStatic(): void {
   const lang = getLang();
   doc.documentElement.lang = lang;
   // Same title as the static head (build/site.ts), in the current language.
-  doc.title = `Versus — ${t('tagline')}`;
+  doc.title = t('pageTitle');
   $('.brand')?.setAttribute('aria-label', t('brandAria'));
   const note = $('#top-note');
   if (note) note.textContent = t('tagline');

@@ -11,7 +11,7 @@ Last updated 2026-09-30.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (229 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (233 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
 - Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
@@ -23,6 +23,7 @@ Last updated 2026-09-30.
 - SEO pass, ported from steevepommier.com (`docs/seo.md`): head generated from `build/site.ts` (canonical, robots, Open Graph, X card, JSON-LD graph), 1200×630 social card, favicons for Google, iOS and Android (ico, SVG, 96/192/512, maskable, apple-touch), web app manifest, robots.txt, sitemap, llms.txt, `<noscript>` fallback, Cloudflare headers; fonts self-hosted and preloaded.
 - Installable, offline app (PWA, `docs/pwa.md`): hand-written service worker precaching the app at build time, new versions offered with Reload / Later, install button when the browser offers one, persistent storage for the installed app.
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
+- SEO audit fixes (SEOptimer, Seobility): canonical on versus.steevepommier.com, a 55-character title, and the page text (how it works, the four methods, privacy, links) in the static HTML with a single h1, shown under the gallery in the visitor's language.
 - Your votes: published boards a visitor voted on get a card in their gallery (own section, first for someone with no ranking of their own), refreshed in one request, with what changed since their last visit; forget with undo, keep a copy of a withdrawn board (`docs/published-boards.md#your-votes-the-voters-gallery`).
 
 ## Next (suggested order)
@@ -38,7 +39,8 @@ Last updated 2026-09-30.
 - Export / import a ranking as JSON; share a results image.
 - Glicko as an extra method, if ever needed.
 - Native shell (Capacitor) around the web app, only if store presence is ever wanted (D75).
-- Search Console once the domain is settled: verify, submit the sitemap, set the `SITE_URL` variable.
+- Search Console for versus.steevepommier.com: verify, submit the sitemap, request indexing.
+- Content pages (one per scoring method, a pairwise ranking guide): internal links and long-tail queries a single page can't reach.
 - Per-board social cards: a `/b/<alias>` path served by the Worker with the board's title and its own card (fragments never reach a server).
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.

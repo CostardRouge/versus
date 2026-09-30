@@ -30,10 +30,19 @@ describe('app', () => {
     expect(document.querySelectorAll('.rcard')).toHaveLength(3);
   });
 
+  it('replaces the static page text with the gallery, keeping one h1', () => {
+    expect(document.querySelectorAll('h1')).toHaveLength(1);
+    expect(document.querySelectorAll('#view > .about')).toHaveLength(0);
+    expect($('.gallery .about h2')?.textContent).toBe('Rank anything by comparing two items at a time');
+    expect(document.title).toBe('Versus — Rank anything by comparing two items at a time');
+  });
+
   it('switches to French and back', () => {
     click('[data-action="lang"][data-l="fr"]');
     expect(getLang()).toBe('fr');
     expect($('h1')?.textContent).toBe('Tes classements');
+    expect($('.gallery .about h2')?.textContent).toBe('Classe tout en comparant deux éléments à la fois');
+    expect(document.title).toBe('Versus — Classe tout en comparant deux éléments à la fois');
     expect(document.documentElement.lang).toBe('fr');
     expect(document.body.textContent).toContain('Prochaine destination');
     click('[data-action="lang"][data-l="en"]');

@@ -3157,18 +3157,84 @@ svg[data-slope-svg] path {
   animation: fin-swap 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-/* Without JavaScript (build/seo.ts): what Versus is, for people and crawlers that don't run the app. */
+/* What Versus is (src/app/about.ts), under the gallery. index.html carries a static copy for crawlers that
+   don't run JavaScript: hidden as soon as scripts run (the .js class, set in the head), then replaced. */
+.js #view > .about {
+  display: none;
+}
+#view > .about {
+  margin-top: 24px;
+  padding-top: 0;
+  border-top: 0;
+}
+.about {
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+.about h1,
+.about h2#about-title {
+  margin: 0;
+  font: 700 clamp(24px, 3vw, 32px) / 1.05 var(--f-display);
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.about-lead {
+  margin: 12px 0 0;
+  max-width: 70ch;
+  color: var(--muted);
+}
+.about-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 8px 32px;
+  margin-top: 8px;
+}
+.about-cols h2,
+.about-cols h3 {
+  margin: 24px 0 8px;
+  font: 700 17px / 1.2 var(--f-display);
+  letter-spacing: -0.01em;
+}
+.about-cols p,
+.about-steps,
+.about-methods {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.about-steps {
+  padding-left: 20px;
+}
+.about-steps li + li {
+  margin-top: 6px;
+}
+.about-methods div + div {
+  margin-top: 10px;
+}
+.about-methods dt {
+  color: var(--ink);
+  font-weight: 600;
+}
+.about-methods dt .mono {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.about-methods dd {
+  margin: 2px 0 0;
+}
+.about-foot {
+  margin: 24px 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.about-foot a {
+  color: inherit;
+}
 .noscript {
-  max-width: 640px;
-  margin: 40px auto;
-  padding: 0 20px;
-}
-.noscript h1 {
-  font: 800 clamp(32px, 5vw, 48px) / 1.02 var(--f-display);
-  letter-spacing: -0.02em;
-}
-.noscript p,
-.noscript li {
+  margin: 24px 0 0;
   color: var(--muted);
 }
 

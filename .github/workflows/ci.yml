@@ -41,7 +41,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # Canonical address in the head, sitemap and llms.txt; unset, it is the GitHub Pages address.
+          # Canonical address in the head, sitemap and llms.txt; unset, it is versus.steevepommier.com (build/site.ts).
           VITE_SITE_URL: ${{ vars.SITE_URL }}
 
       - name: Upload coverage report
