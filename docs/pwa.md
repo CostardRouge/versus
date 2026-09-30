@@ -4,7 +4,7 @@ Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable 
 
 ## What is in place
 
-- **Manifest**: generated from `build/site.ts` (name, colors, icons, `minimal-ui`; see `docs/seo.md` for why not `standalone` yet). It opens the app (`start_url: ./app/`); its `id` stays `./`, what it was before the home page, so installed copies remain the same app (D85).
+- **Manifest**: generated from `build/site.ts` (name, colors, icons, `minimal-ui`; see `docs/seo.md` for why not `standalone` yet). It opens the app (`start_url: ./app/`); its `id` stays `./`, what it was before the home page, so installed copies remain the same app (D87).
 - **Service worker** (`src/sw/sw.ts`, about 90 lines, 0.9 kB gzip), built as `sw.js` at the site's root by `build/pwa-plugin.ts`; its scope is the whole site, the app registering it from `app/` with `../sw.js`:
   - **Install**: stores the three pages (the app and the two home pages), their scripts and styles, the three latin fonts of the first render, the manifest and the SVG icon (about 500 kB before compression). Each page is stored under its folder's address (`./app/`, `./`, `./fr/`), which GitHub Pages and Cloudflare both serve directly. Requests use `cache: 'reload'` so the HTTP cache can't hand back the previous deploy.
   - **Fetch**: a navigation to the app (`app/`) gets the stored page; a navigation to a home page goes to the network first, so it is always current, and falls back to the stored copy offline; stored files and anything under `assets/` are served from the cache first, and font subsets for other scripts are stored on first use (hashed names never change). Everything else goes to the network untouched: `/api/`, WebSockets, other origins, non-GET requests, `robots.txt`, `llms.txt`, the social card and PNG icons.
@@ -18,7 +18,7 @@ Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable 
 
 ## The move to app/ (2026-09-30)
 
-The app lived at the site's root until the home page took it (D82). What keeps working:
+The app lived at the site's root until the home page took it (D84). What keeps working:
 
 - **Installed apps** open their stored start address, the root: the home page's first script sees the app's display mode (`minimal-ui`, `standalone`) and sends it to `app/` before the first paint, offline too (the home page is stored). Browsers update the manifest by its unchanged `id`, and new installs open `app/` directly.
 - **Old links** whose route is in the fragment (`/#/b/<alias>`) are sent to `app/` with their fragment, on arrival and on a fragment change.

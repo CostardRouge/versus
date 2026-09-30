@@ -41,7 +41,7 @@ Why each piece:
 
 ## Implementation (`worker/`)
 
-- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`, items) and `/api/admin` (list, totals, inspect, close, remove an item, take down, with `Authorization: Bearer <ADMIN_TOKEN>`); the route list is at the top of the file.
+- `worker/src/index.ts`: routes `/api/boards` (publish, public view, WebSocket, owner actions with `Authorization: Bearer <owner token>`, items), `/api/summaries` (the cards of a voter's "Your votes", as that voter may see each board) and `/api/admin` (list, totals, inspect, close, remove an item, take down, with `Authorization: Bearer <ADMIN_TOKEN>`); the route list is at the top of the file.
 - `worker/src/registry.ts` + `worker/migrations/`: the D1 registry. Each board writes its row on publication, status and item changes, and at most once a day for votes; the row goes when the board does.
 - Limits: the `PUBLISH_LIMIT` (5 publications per minute) and `API_LIMIT` (120 requests per minute, WebSocket connections included) rate limiting bindings, keyed by client IP; votes and skips are limited per connection (150 ms), item suggestions per connection (5 s).
 - `worker/src/turnstile.ts`: with `TURNSTILE_SECRET` set, publishing requires a Turnstile token (the app shows the widget when `VITE_TURNSTILE_SITE_KEY` is set).

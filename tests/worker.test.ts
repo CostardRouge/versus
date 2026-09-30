@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { ACTION_INTERVAL_MS, ALIAS_RE } from '../src/core/board';
-import type { BoardView, ClientMessage, ServerMessage } from '../src/core/protocol';
+import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
 import type { BoardSettings, Ranking } from '../src/core/types';
 
@@ -243,6 +243,44 @@ describe('voting', () => {
     expect((await voter.next('pairs')).mine).toBe(2);
     expect((await view(alias)).body.counts.votes).toBe(2);
     voter.close();
+  });
+});
+
+describe('your votes', () => {
+  it('summarizes boards as this voter may see them, gone boards as null', async () => {
+    const { alias, owner } = await publish({ visibility: 'blind' });
+    const other = await publish();
+    const voter = await Client.open(alias, 'voter-one-1');
+    const [a, b] = (await voter.next('state')).pairs[0] as [string, string];
+    voter.send({ t: 'vote', a, b, s: 1 });
+    expect((await voter.next('pairs')).mine).toBe(1);
+    voter.close();
+
+    const ask = (aliases: unknown, voterId = 'voter-one-1', path = '') =>
+      api(path, { method: 'POST', root: '/api/summaries', body: { voter: voterId, aliases } });
+    const read = async (aliases: string[]) =>
+      (await (await ask(aliases)).json()) as Record<string, BoardSummary | null>;
+
+    const first = await read([alias, other.alias, '1111111115']);
+    expect(first[alias]).toMatchObject({ title: 'Pizzas', status: 'open', mine: 1, counts: { votes: 1, voters: 1 } });
+    // Blind: the crowd order stays on the server, as on the board page.
+    expect(first[alias]?.order).toBeNull();
+    expect(first[other.alias]).toMatchObject({ mine: 0 });
+    expect(first[other.alias]?.order).toHaveLength(items.length);
+    expect(first['1111111115']).toBeNull();
+
+    await api(`/${alias}/close`, { method: 'POST', token: owner });
+    const closed = await read([alias]);
+    expect(closed[alias]?.status).toBe('closed');
+    expect(closed[alias]?.order).toHaveLength(items.length);
+
+    await api(`/${other.alias}`, { method: 'DELETE', token: other.owner });
+    expect(await read([other.alias])).toEqual({ [other.alias]: null });
+
+    expect((await ask([])).status).toBe(400);
+    expect((await ask([alias], 'x')).status).toBe(400);
+    expect((await ask([alias], 'voter-one-1', '/more')).status).toBe(404);
+    expect((await api('', { root: '/api/summaries' })).status).toBe(404);
   });
 });
 

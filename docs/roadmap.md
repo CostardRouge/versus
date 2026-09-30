@@ -24,7 +24,8 @@ Last updated 2026-09-30.
 - Installable, offline app (PWA, `docs/pwa.md`): hand-written service worker precaching the app at build time, new versions offered with Reload / Later, install button when the browser offers one, persistent storage for the installed app.
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
 - SEO audit fixes (SEOptimer, Seobility): canonical on versus.steevepommier.com, a 55-character title, and the page text (how it works, the four methods, privacy, links) in the static HTML with a single h1, shown under the gallery in the visitor's language.
-- Home page (D82 to D88): a showcase at `/` in English and `/fr/` in French, pre-rendered for search engines (hreflang, bilingual sitemap, a social card per language), with a hero demo played by a virtual pointer, the use cases, how it works, a playable demo on six topics, the four methods on the same duels, the crowd (Worker build) and the chocolatine question. The app moved to `/app/` (`noindex`); installed apps and old links follow.
+- Your votes: published boards a visitor voted on get a card in their gallery (own section, first for someone with no ranking of their own), refreshed in one request, with what changed since their last visit; forget with undo, keep a copy of a withdrawn board (`docs/published-boards.md#your-votes-the-voters-gallery`).
+- Home page (D84 to D90): a showcase at `/` in English and `/fr/` in French, pre-rendered for search engines (hreflang, bilingual sitemap, a social card per language), with a hero demo played by a virtual pointer, the use cases, how it works, a playable demo on six topics, the four methods on the same duels, the crowd (Worker build) and the chocolatine question. The app moved to `/app/` (`noindex`); installed apps and old links follow.
 
 ## Next (suggested order)
 
@@ -45,7 +46,6 @@ Last updated 2026-09-30.
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
 - Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
 - Images on published boards (R2), once reporting and takedown exist.
-- Boards a visitor voted on listed in their gallery ("Joined").
 - Crowd ranking by aggregating each voter's own ranking (Borda, Kemeny) as an alternative to pooled votes.
 - Publish presets ("Open", "Blind contest") if the publish modal still feels heavy.
 - Admin page behind Cloudflare Access (the admin API exists), with usage against free-tier limits.
@@ -59,5 +59,4 @@ None of these blocks the backend spike; all must be settled before a public laun
 - **Anti-abuse**: rate limits per connection and IP, Turnstile at publication; an author option to require Turnstile per voter?
 - **Moderation**: even text-only public boards need reporting, takedown and an admin view; a legal and safety requirement, stronger once images open.
 - **Cleanup**: TTL of inactive published boards (proposal: 60 days without a vote), warning the author before deletion.
-- **Voter gallery**: do boards a visitor voted on appear in their gallery ("Joined")?
 - **Accounts**: none at first; magic link or OAuth (GitHub/Google) later?
