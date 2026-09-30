@@ -1,5 +1,6 @@
 import { getLang, t } from '../i18n';
 import { $, $$, doc } from './dom';
+import { renderPwa } from './pwa';
 import { S } from './state';
 import { isTheme, savePrefs, type Theme } from './storage';
 
@@ -24,6 +25,7 @@ export function applyStatic(): void {
     b.setAttribute('aria-label', label);
     b.title = label;
   }
+  renderPwa();
   applyTheme();
 }
 

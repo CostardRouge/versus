@@ -26,6 +26,7 @@ export const FEATURES = [
   'Results with a podium, a ± margin per item and a comparison of the methods',
   'English and French, light and dark themes',
   'Local-first: rankings stay in the browser, no account needed',
+  'Installable as an app that works offline',
 ] as const;
 
 /** The four scoring methods, as the app names them (llms.txt). */

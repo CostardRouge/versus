@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { offerUpdate } from '../src/app/pwa';
 import { mount } from '../src/app/ui';
 import { getLang } from '../src/i18n';
 
@@ -124,5 +125,40 @@ describe('app', () => {
     vi.advanceTimersByTime(4100);
     expect($('.tab[data-tab="results"]')?.getAttribute('aria-selected')).toBe('true');
     expect($('.res-enter')).not.toBeNull();
+  });
+});
+
+describe('installable app', () => {
+  it('shows the install button only when the browser offers installation', async () => {
+    const install = $('#install');
+    expect(install?.hidden).toBe(true);
+    const prompt = vi.fn(async () => {});
+    const offer = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), { prompt });
+    window.dispatchEvent(offer);
+    expect(offer.defaultPrevented).toBe(true);
+    expect(install?.hidden).toBe(false);
+    expect(install?.textContent).toBe('Install');
+    click('[data-action="lang"][data-l="fr"]');
+    expect(install?.textContent).toBe('Installer');
+    click('[data-action="lang"][data-l="en"]');
+    click('#install');
+    expect(prompt).toHaveBeenCalledOnce();
+    expect(install?.hidden).toBe(true);
+    window.dispatchEvent(new Event('appinstalled'));
+    expect($('#toast')?.textContent).toBe('Versus is installed');
+  });
+
+  it('offers a new version and lets the user choose when to reload', () => {
+    const bar = $('#update');
+    expect(bar?.textContent).toBe('');
+    const worker = { state: 'installed', postMessage: vi.fn() } as unknown as ServiceWorker;
+    offerUpdate(worker);
+    expect(bar?.textContent).toContain('A new version of Versus is ready.');
+    click('[data-action="update-later"]');
+    expect(bar?.textContent).toBe('');
+    expect(worker.postMessage).not.toHaveBeenCalled();
+    offerUpdate(worker);
+    click('[data-action="update"]');
+    expect(worker.postMessage).toHaveBeenCalledWith('skip-waiting');
   });
 });

@@ -11,7 +11,7 @@ Last updated 2026-09-30.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (219 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (229 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
 - Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
@@ -21,20 +21,22 @@ Last updated 2026-09-30.
 - End of a local ranking: an announcement (confetti, a bar that empties) after the duel that completes the exact sort or first reaches full stability, then the Ranking tab by itself; the Ranking tab switches between the podium and lines comparing two methods.
 - End-of-vote page: once a voter has voted every pair, their result on a page of its own with a reveal, as a podium or as their ranking facing the crowd's (toggle, remembered); blind boards keep the crowd for the closing. "After N votes" now also reveals at every pair.
 - SEO pass, ported from steevepommier.com (`docs/seo.md`): head generated from `build/site.ts` (canonical, robots, Open Graph, X card, JSON-LD graph), 1200×630 social card, favicons for Google, iOS and Android (ico, SVG, 96/192/512, maskable, apple-touch), web app manifest, robots.txt, sitemap, llms.txt, `<noscript>` fallback, Cloudflare headers; fonts self-hosted and preloaded.
+- Installable, offline app (PWA, `docs/pwa.md`): hand-written service worker precaching the app at build time, new versions offered with Reload / Later, install button when the browser offers one, persistent storage for the installed app.
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
 
 ## Next (suggested order)
 
-1. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
-2. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
-3. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point.
+1. **PWA, next steps** (web first, D75): export/import then `standalone`, images in IndexedDB, share target, native share sheet; list and order in `docs/pwa.md`.
+2. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
+3. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
+4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point, and so is the offline and update scenario in `docs/pwa.md`.
 
 ## Later / ideas
 
 - More languages (ES, PT-BR, DE), driven by traffic.
 - Export / import a ranking as JSON; share a results image.
 - Glicko as an extra method, if ever needed.
-- Offline-first (service worker); then `display: standalone` in the manifest (see `docs/seo.md` for why it is `minimal-ui` today).
+- Native shell (Capacitor) around the web app, only if store presence is ever wanted (D75).
 - Search Console once the domain is settled: verify, submit the sitemap, set the `SITE_URL` variable.
 - Per-board social cards: a `/b/<alias>` path served by the Worker with the board's title and its own card (fragments never reach a server).
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
