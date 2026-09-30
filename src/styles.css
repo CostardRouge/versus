@@ -28,8 +28,8 @@ img {
   --good: #16855a;
   --bad: #c23e28;
   --shadow: 0 1px 0 rgba(19, 21, 27, 0.04), 0 12px 30px -14px rgba(19, 21, 27, 0.22);
-  --f-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
-  --f-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body: "Figtree Variable", "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --r-lg: 20px;
   --r-md: 14px;
@@ -3002,4 +3002,19 @@ body.dropping .drop-overlay {
 }
 .fin.swap .fin-body {
   animation: fin-swap 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Without JavaScript (build/seo.ts): what Versus is, for people and crawlers that don't run the app. */
+.noscript {
+  max-width: 640px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+.noscript h1 {
+  font: 800 clamp(32px, 5vw, 48px) / 1.02 var(--f-display);
+  letter-spacing: -0.02em;
+}
+.noscript p,
+.noscript li {
+  color: var(--muted);
 }

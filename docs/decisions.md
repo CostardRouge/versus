@@ -110,3 +110,15 @@ See `docs/published-boards.md`.
 | D63 | The author can change a color item's color after publishing; its votes are dropped and it starts again from zero | Decided | Refines D44: the color is the item, so its votes were cast on the old one. No confirmation when it has no votes (a mistake seen right after publishing). With no votes, pair assignment serves it first. Items with the same color are flagged in the author panel and the color editor. |
 | D64 | Once a voter has voted every pair, the result gets a page of its own, in two views (podium, you vs the crowd) switched by a discreet toggle | Decided | Opens by itself after the last vote with a reveal; switching views only fades. The chosen view is remembered in this browser (`resultView` pref), podium first. |
 | D65 | "After N votes" reveals the crowd at N votes or at every pair, whichever comes first | Decided | A 6-item board has 15 pairs: with N = 20 a voter who voted everything would never have seen the crowd before closing. |
+
+## SEO and sharing
+
+| # | Decision | Status | Notes |
+| --- | --- | --- | --- |
+| D66 | Every SEO fact in `build/site.ts`; head, manifest, robots.txt, sitemap and llms.txt generated from it by a Vite plugin | Decided | The steevepommier.com pattern: one source, nothing hand-copied, invariants tested (`tests/seo.test.ts`). |
+| D67 | Canonical address from `VITE_SITE_URL` (CI variable `SITE_URL`), GitHub Pages by default, for both builds | Decided | One canonical while the Worker's domain isn't settled; setting the variable moves both. |
+| D68 | Icons and social card drawn by a script (satori + resvg) and committed; new file names when the drawing changes | Decided | Glyphs as paths, identical on any machine; search engines and unfurlers cache images by URL. |
+| D69 | Web app manifest with `display: minimal-ui` | Decided | iOS gives standalone home-screen apps their own storage, which would hide localStorage rankings; revisit with offline support. |
+| D70 | Fonts self-hosted with Fontsource, first-render fonts preloaded | Decided | No third-party request on the critical path, no visitor IP sent to Google; screenshots pixel-identical to Google Fonts. |
+| D71 | robots.txt allows every crawler, AI included, except `/api/`; llms.txt describes the app | Decided | Same policy as steevepommier.com. |
+| D72 | JSON-LD author = `https://steevepommier.com/#person` | Decided | The same `@id` on both sites joins them into one entity; the full profile stays there. |
