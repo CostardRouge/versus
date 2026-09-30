@@ -1,8 +1,21 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { generatedFiles, graph, headTags, jsonLd, llmsTxt, manifest, noscriptHtml, siteUrl } from '../build/seo';
+import {
+  aboutStatic,
+  generatedFiles,
+  graph,
+  headTags,
+  jsonLd,
+  llmsTxt,
+  manifest,
+  noscriptHtml,
+  siteUrl,
+} from '../build/seo';
 import { DEFAULT_SITE_URL, DESCRIPTION, ICONS, METHODS, NAME, OG_IMAGE, pngIcon, TITLE } from '../build/site';
+import { aboutHTML } from '../src/app/about';
+import { en } from '../src/i18n/en';
+import { fr } from '../src/i18n/fr';
 
 const URL_ = 'https://versus.example.com/';
 const head = headTags(URL_).join('\n');
@@ -37,7 +50,9 @@ describe('siteUrl', () => {
 
 describe('head', () => {
   it('keeps the title and description within what results display', () => {
+    expect(TITLE.length).toBeGreaterThanOrEqual(50);
     expect(TITLE.length).toBeLessThanOrEqual(60);
+    expect(String(fr.pageTitle).length).toBeLessThanOrEqual(60);
     expect(DESCRIPTION.length).toBeGreaterThanOrEqual(70);
     expect(DESCRIPTION.length).toBeLessThanOrEqual(155);
     expect(head).toContain(`<title>${TITLE}</title>`);
@@ -95,11 +110,41 @@ describe('head', () => {
     for (const ref of refs) expect(ids.has(ref), ref).toBe(true);
   });
 
-  it('gives crawlers without JavaScript a heading and the description', () => {
+  it('keeps the <noscript> line free of headings (the page text has the h1)', () => {
     const html = noscriptHtml();
     expect(html).toMatch(/^<noscript>[\s\S]*<\/noscript>$/);
-    expect(html).toContain('<h1>');
-    expect(html).toContain(DESCRIPTION);
+    expect(html).not.toMatch(/<h\d/);
+  });
+});
+
+describe('page text', () => {
+  const words = (html: string) =>
+    html
+      .replace(/<[^>]+>/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean).length;
+  const levels = (html: string) => [...html.matchAll(/<h(\d)/g)].map((m) => Number(m[1]));
+
+  it('gives crawlers without JavaScript one h1, the title words and at least 250 words', () => {
+    const html = aboutStatic(false);
+    expect(levels(html).filter((l) => l === 1)).toHaveLength(1);
+    expect(html).toContain(`<h1 id="about-title">${en.aboutTitle}</h1>`);
+    expect(TITLE).toContain(en.aboutTitle);
+    expect(words(html)).toBeGreaterThanOrEqual(250);
+    expect(html).toContain('href="https://steevepommier.com/"');
+  });
+
+  it('never skips a heading level, static or in the gallery', () => {
+    for (const h1 of [true, false]) {
+      const found = levels(aboutHTML((k) => String(en[k]), { h1, publish: true }));
+      expect(found[0]).toBe(h1 ? 1 : 2);
+      for (const l of found) expect(l - (found[0] ?? 0)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('mentions publishing only in builds that have the API', () => {
+    expect(aboutStatic(true)).toContain(en.aboutPublishTitle);
+    expect(aboutStatic(false)).not.toContain(en.aboutPublishTitle);
   });
 });
 

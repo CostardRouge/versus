@@ -7,8 +7,8 @@ Project memory for Claude Code. Read this first, then `docs/` for the full histo
 A web app to **rank anything by comparing two items at a time** (pairwise comparison). Users create rankings, add items (text, images, colors), then play duels A vs B (buttons, keyboard or swipe). A scoring method turns the duels into a ranking.
 
 - Owner: Steeve Pommier (GitHub `CostardRouge`). He usually writes in **French**: answer in French unless asked otherwise. He prefers concise answers and doesn't want implementation walkthroughs before they're needed.
-- Live: https://costardrouge.github.io/versus/ (GitHub Pages, deployed by CI from `main`).
-- Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D75). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app. Not deployed yet: CI deploys it once the repository has the Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
+- Live: https://versus.steevepommier.com/ (the Worker: app + API; the canonical address) and https://costardrouge.github.io/versus/ (GitHub Pages, without publishing), both deployed by CI from `main`.
+- Status: local-first; the live app is client-only and stores everything in `localStorage`. It is an installable, offline PWA (`docs/pwa.md`); the web comes first and stays light (D75). Published boards (share a ranking, a crowd votes in real time) are built end to end: backend in `worker/` (Cloudflare Worker + Durable Objects + D1 registry), UI in `src/app/board.ts` and `publish.ts`. The Worker also serves the app; CI deploys it with the repository's Cloudflare token and account ID (steps in `docs/online-architecture.md#deploying`); the GitHub Pages build hides publishing (no `VITE_API_URL`).
 - The project was named "Elo Rank" (heard as "Hello Rank") during prototyping, then renamed **Versus**. Don't reintroduce "Elo" in the product name or UI chrome; "Elo" only names one scoring method.
 
 ## How this project is built
@@ -37,7 +37,7 @@ Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAcce
 
 ```
 index.html            static shell (header, overlays, modal) + inline script applying the saved theme before first paint;
-                      <!-- seo:head --> and <!-- seo:noscript --> are filled at build time
+                      <!-- seo:head -->, <!-- seo:noscript --> and <!-- seo:about --> are filled at build time
 build/                build-time only (never shipped): site.ts = every sitewide SEO fact (name, title, description, colors,
                       icons, social card, author); seo.ts = head tags, JSON-LD, manifest, robots, sitemap, llms.txt, _headers;
                       seo-plugin.ts = the Vite plugin wiring them in; pwa.ts + pwa-plugin.ts = build the service worker
@@ -62,6 +62,8 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
   rankings.ts         render() (gallery or workspace) and ranking-level actions (new, open, reset, duplicate, delete, language)
   gallery.ts          gallery cards
+  about.ts            the page text closing the gallery (what Versus is, how it works, methods); its static English copy
+                      with the page's h1 is in index.html for crawlers without JavaScript (build/seo.ts)
   workspace.ts        workspace shell, tabs, method menu, renderMain() (duel or results)
   items.ts            side list (live-sorted, FLIP) and item edits (add text/colors/images, rename, remove)
   duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
@@ -94,7 +96,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
 - **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias). Changing the stored shape requires a migration in `storage.ts`.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
-- **SEO lives in `build/site.ts`**, never hand-written in `index.html` or `public/`: the head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address comes from `VITE_SITE_URL` (CI variable `SITE_URL`). A redesigned icon or social card gets new file names (caches key on the URL). Details in `docs/seo.md`.
+- **SEO lives in `build/site.ts`**, never hand-written in `index.html` or `public/`: the head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The page keeps one h1 and real text in its static HTML (`src/app/about.ts`). A redesigned icon or social card gets new file names (caches key on the URL). Details in `docs/seo.md`.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
 
 ## Key domain rules
