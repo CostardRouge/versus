@@ -2,7 +2,7 @@
 
 Rank anything by comparing two items at a time. Add text, images or colors, pick your favorite in each duel (buttons, keyboard or swipe), and let the ranking emerge.
 
-**Live:** https://versus.steevepommier.com/ (also on https://costardrouge.github.io/versus/, without publishing)
+**Live:** https://versus.steevepommier.com/ ([en français](https://versus.steevepommier.com/fr/); the app itself is at [/app/](https://versus.steevepommier.com/app/)), also on https://costardrouge.github.io/versus/, without publishing
 
 ## Features
 
@@ -18,11 +18,12 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Method comparison** on the results page, to see where the ranking is still fragile.
 - **Demos** built from fixed data (same items and duels for everyone), resettable and translatable.
 - **English and French**, detected from the browser and switchable.
-- **Search and share ready:** Open Graph card, structured data, favicons for every platform, sitemap and `llms.txt`, all generated from one file (see [`docs/seo.md`](docs/seo.md)).
+- **A home page in English and French** with live demos: a virtual pointer plays the app, six topics to try, the four methods on the same duels.
+- **Search and share ready:** a head per page with hreflang, Open Graph cards in both languages, structured data, favicons for every platform, a bilingual sitemap and `llms.txt`, all generated from one file (see [`docs/seo.md`](docs/seo.md)).
 - **Light and dark themes** that follow the system setting or can be pinned from the header; the choice is applied before the first paint.
 - **Installable and offline:** a service worker keeps the app on the device, so it opens without a network; new versions are offered, never forced (see [`docs/pwa.md`](docs/pwa.md)).
 - Data stays in the browser (`localStorage`); nothing is sent anywhere.
-- **Published boards** (in development, not deployed): publish a ranking, share the link, and let a crowd vote in real time. See [`docs/published-boards.md`](docs/published-boards.md).
+- **Published boards**: publish a ranking, share the link, and let a crowd vote in real time (on versus.steevepommier.com; the GitHub Pages copy has no backend). See [`docs/published-boards.md`](docs/published-boards.md).
 
 ## Development
 
@@ -57,7 +58,8 @@ src/
     demos.ts     demo data and deterministic simulation
     board.ts     published boards: votes, visibility, pair assignment
     protocol.ts  messages and views shared by the app and the Worker
-  i18n/        en.ts (source of keys), fr.ts (type-checked against en), helpers
+  i18n/        en.ts (source of keys), fr.ts (type-checked against en), helpers; landing-*.ts for the home page
+  landing/     the home page, rendered at build time in each language, then animated
   app/
     ui.ts        mount(): the entry point
     gallery.ts, workspace.ts, items.ts, duel.ts, results.ts, color.ts   one module per view

@@ -1,29 +1,33 @@
 import { aboutHTML } from '../src/app/about.ts';
 import { en } from '../src/i18n/en.ts';
 import {
-  ALTERNATE_LOCALES,
   AUTHOR,
   COLORS,
   DEFAULT_SITE_URL,
   DESCRIPTION,
+  DESCRIPTIONS,
   FEATURES,
+  HOMES,
   ICONS,
   LANGUAGES,
   LICENSE_URL,
-  LOCALE,
+  LOCALES,
   METHODS,
   NAME,
-  OG_IMAGE,
+  OG_IMAGES,
+  PAGES,
+  type PageKey,
   pngIcon,
   REPOSITORY,
-  TITLE,
+  type SiteLang,
+  TITLES,
   VERIFICATION,
 } from './site.ts';
 
 /**
- * Build-time SEO: the head tags, the JSON-LD graph and the generated files (manifest, robots.txt, sitemap,
- * llms.txt, Cloudflare headers), all derived from build/site.ts. Pure functions of the site URL, so the
- * Vite plugin (build/seo-plugin.ts) and the tests call the same code.
+ * Build-time SEO: the head tags of each page, the JSON-LD graph and the generated files (manifest, robots.txt,
+ * sitemap, llms.txt, Cloudflare headers), all derived from build/site.ts. Pure functions of the site URL, so
+ * the Vite plugin (build/seo-plugin.ts) and the tests call the same code.
  */
 
 /** HTML escaping for text and attribute values (a local copy: vite.config.ts loads this file, keep it self-contained). */
@@ -49,8 +53,22 @@ export function siteUrl(raw?: string): string {
 /** index.html is served at the site URL itself, so its canonical form is the URL with its trailing slash. */
 const abs = (url: string, path: string): string => new URL(path, url).href;
 
+/** A page's canonical address: the site URL plus its folder (index.html files are served at their folder). */
+export const pageUrl = (url: string, page: PageKey): string => abs(url, PAGES[page].path);
+
+/** From a page back to the site's root, for relative links that work under any base (github.io/versus/). */
+export const rootFrom = (page: PageKey): string =>
+  '../'.repeat(PAGES[page].path.split('/').filter(Boolean).length) || './';
+
+const isHome = (page: PageKey): boolean => page !== 'app';
+
 /** Max snippet and a large image preview in results; the rest states the default posture explicitly. */
 export const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+/**
+ * The app itself stays out of the index: it renders with JavaScript, switches language on one URL and would
+ * compete with the home pages, which carry the text. `follow` keeps its links counting.
+ */
+export const ROBOTS_APP = 'noindex, follow';
 
 const meta = (attr: 'name' | 'property', key: string, content: string): string =>
   `<meta ${attr}="${key}" content="${esc(content)}" />`;
@@ -59,37 +77,42 @@ const link = (attrs: Record<string, string>): string =>
     .map(([k, v]) => `${k}="${esc(v)}"`)
     .join(' ')} />`;
 
-/** One schema.org @graph for the page, nodes referenced by stable @id rather than repeated. */
-export function graph(url: string): Record<string, unknown>[] {
+/**
+ * One schema.org @graph for a home page, nodes referenced by stable @id rather than repeated. The site, the app,
+ * its source and its author have one @id across both languages; the page and its card are the language's own.
+ */
+export function graph(url: string, lang: SiteLang = 'en'): Record<string, unknown>[] {
   const id = (fragment: string) => `${url}#${fragment}`;
+  const page = pageUrl(url, HOMES[lang]);
   const person = { '@id': AUTHOR.id };
+  const image = OG_IMAGES[lang];
   return [
     {
       '@type': 'WebSite',
       '@id': id('website'),
       url,
       name: NAME,
-      description: DESCRIPTION,
+      description: DESCRIPTIONS[lang],
       inLanguage: [...LANGUAGES],
       publisher: person,
     },
     {
       '@type': 'WebPage',
-      '@id': id('webpage'),
-      url,
-      name: TITLE,
-      description: DESCRIPTION,
+      '@id': `${page}#webpage`,
+      url: page,
+      name: TITLES[lang],
+      description: DESCRIPTIONS[lang],
       isPartOf: { '@id': id('website') },
       mainEntity: { '@id': id('app') },
-      primaryImageOfPage: { '@id': id('image') },
-      inLanguage: 'en',
+      primaryImageOfPage: { '@id': `${page}#image` },
+      inLanguage: lang,
     },
     {
       '@type': 'WebApplication',
       '@id': id('app'),
       name: NAME,
-      url,
-      description: DESCRIPTION,
+      url: pageUrl(url, 'app'),
+      description: DESCRIPTIONS[lang],
       applicationCategory: 'UtilitiesApplication',
       operatingSystem: 'Any',
       browserRequirements: 'Requires JavaScript',
@@ -97,17 +120,18 @@ export function graph(url: string): Record<string, unknown>[] {
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
       featureList: [...FEATURES],
       inLanguage: [...LANGUAGES],
-      image: { '@id': id('image') },
+      image: { '@id': `${page}#image` },
       author: person,
     },
     {
       '@type': 'ImageObject',
-      '@id': id('image'),
-      url: abs(url, OG_IMAGE.path),
-      contentUrl: abs(url, OG_IMAGE.path),
-      width: OG_IMAGE.width,
-      height: OG_IMAGE.height,
-      caption: OG_IMAGE.alt,
+      '@id': `${page}#image`,
+      url: abs(url, image.path),
+      contentUrl: abs(url, image.path),
+      width: image.width,
+      height: image.height,
+      caption: image.alt,
+      inLanguage: lang,
     },
     {
       '@type': 'SoftwareSourceCode',
@@ -130,53 +154,69 @@ export function graph(url: string): Record<string, unknown>[] {
 }
 
 /** JSON-LD safe inside <script>: no "</script>" or "<!--" can come out of it. */
-export const jsonLd = (url: string): string =>
-  JSON.stringify({ '@context': 'https://schema.org', '@graph': graph(url) }).replace(/</g, '\\u003c');
+export const jsonLd = (url: string, lang: SiteLang = 'en'): string =>
+  JSON.stringify({ '@context': 'https://schema.org', '@graph': graph(url, lang) }).replace(/</g, '\\u003c');
 
-/** Every tag describing the page, in the order they appear in <head> (replaces <!-- seo:head --> in index.html). */
-export function headTags(url: string): string[] {
-  const image = abs(url, OG_IMAGE.path);
+/**
+ * Every tag describing a page, in the order they appear in <head> (replaces <!-- seo:head -->). Home pages get
+ * hreflang links to each other (x-default: English) and the JSON-LD graph; the app gets `noindex`.
+ */
+export function headTags(url: string, page: PageKey = 'home'): string[] {
+  const { lang } = PAGES[page];
+  const canonical = pageUrl(url, page);
+  const card = OG_IMAGES[lang];
+  const image = abs(url, card.path);
+  const root = rootFrom(page);
+  const home = isHome(page);
   return [
-    `<title>${esc(TITLE)}</title>`,
-    meta('name', 'description', DESCRIPTION),
-    link({ rel: 'canonical', href: url }),
-    meta('name', 'robots', ROBOTS),
+    `<title>${esc(TITLES[lang])}</title>`,
+    meta('name', 'description', DESCRIPTIONS[lang]),
+    link({ rel: 'canonical', href: canonical }),
+    ...(home
+      ? [
+          ...LANGUAGES.map((l) => link({ rel: 'alternate', hreflang: l, href: pageUrl(url, HOMES[l]) })),
+          link({ rel: 'alternate', hreflang: 'x-default', href: pageUrl(url, HOMES.en) }),
+        ]
+      : []),
+    meta('name', 'robots', home ? ROBOTS : ROBOTS_APP),
     meta('name', 'author', AUTHOR.name),
     meta('name', 'application-name', NAME),
     meta('name', 'apple-mobile-web-app-title', NAME),
     ...(VERIFICATION.google ? [meta('name', 'google-site-verification', VERIFICATION.google)] : []),
     ...(VERIFICATION.bing ? [meta('name', 'msvalidate.01', VERIFICATION.bing)] : []),
     // Icons: .ico for the probes that ignore the head, SVG for current browsers, PNG multiples of 48 for Google.
-    link({ rel: 'icon', href: `./${ICONS.ico}`, sizes: '48x48' }),
-    link({ rel: 'icon', href: `./${ICONS.svg}`, type: 'image/svg+xml', sizes: 'any' }),
+    link({ rel: 'icon', href: `${root}${ICONS.ico}`, sizes: '48x48' }),
+    link({ rel: 'icon', href: `${root}${ICONS.svg}`, type: 'image/svg+xml', sizes: 'any' }),
     ...ICONS.png
       .filter((size) => size % 48 === 0)
-      .map((size) => link({ rel: 'icon', href: `./${pngIcon(size)}`, type: 'image/png', sizes: `${size}x${size}` })),
-    link({ rel: 'apple-touch-icon', href: `./${ICONS.apple}` }),
-    link({ rel: 'manifest', href: './manifest.webmanifest' }),
-    link({ rel: 'sitemap', type: 'application/xml', href: './sitemap.xml' }),
-    link({ rel: 'alternate', type: 'text/markdown', href: './llms.txt', title: `${NAME} in Markdown` }),
+      .map((size) =>
+        link({ rel: 'icon', href: `${root}${pngIcon(size)}`, type: 'image/png', sizes: `${size}x${size}` }),
+      ),
+    link({ rel: 'apple-touch-icon', href: `${root}${ICONS.apple}` }),
+    link({ rel: 'manifest', href: `${root}manifest.webmanifest` }),
+    link({ rel: 'sitemap', type: 'application/xml', href: `${root}sitemap.xml` }),
+    link({ rel: 'alternate', type: 'text/markdown', href: `${root}llms.txt`, title: `${NAME} in Markdown` }),
     // Open Graph
     meta('property', 'og:type', 'website'),
     meta('property', 'og:site_name', NAME),
-    meta('property', 'og:title', TITLE),
-    meta('property', 'og:description', DESCRIPTION),
-    meta('property', 'og:url', url),
-    meta('property', 'og:locale', LOCALE),
-    ...ALTERNATE_LOCALES.map((l) => meta('property', 'og:locale:alternate', l)),
+    meta('property', 'og:title', TITLES[lang]),
+    meta('property', 'og:description', DESCRIPTIONS[lang]),
+    meta('property', 'og:url', canonical),
+    meta('property', 'og:locale', LOCALES[lang]),
+    ...LANGUAGES.filter((l) => l !== lang).map((l) => meta('property', 'og:locale:alternate', LOCALES[l])),
     meta('property', 'og:image', image),
-    meta('property', 'og:image:type', OG_IMAGE.type),
-    meta('property', 'og:image:width', String(OG_IMAGE.width)),
-    meta('property', 'og:image:height', String(OG_IMAGE.height)),
-    meta('property', 'og:image:alt', OG_IMAGE.alt),
+    meta('property', 'og:image:type', card.type),
+    meta('property', 'og:image:width', String(card.width)),
+    meta('property', 'og:image:height', String(card.height)),
+    meta('property', 'og:image:alt', card.alt),
     // X
     meta('name', 'twitter:card', 'summary_large_image'),
     meta('name', 'twitter:creator', AUTHOR.twitter),
-    meta('name', 'twitter:title', TITLE),
-    meta('name', 'twitter:description', DESCRIPTION),
+    meta('name', 'twitter:title', TITLES[lang]),
+    meta('name', 'twitter:description', DESCRIPTIONS[lang]),
     meta('name', 'twitter:image', image),
-    meta('name', 'twitter:image:alt', OG_IMAGE.alt),
-    `<script type="application/ld+json">${jsonLd(url)}</script>`,
+    meta('name', 'twitter:image:alt', card.alt),
+    ...(home ? [`<script type="application/ld+json">${jsonLd(url, lang)}</script>`] : []),
   ];
 }
 
@@ -196,7 +236,7 @@ export function noscriptHtml(): string {
 }
 
 /**
- * Web app manifest. `minimal-ui` rather than `standalone`: rankings live in localStorage, and iOS gives a
+ * Web app manifest. The installed app opens the app (app/), not the home page. `minimal-ui` rather than `standalone`: rankings live in localStorage, and iOS gives a
  * standalone home-screen app its own storage, so a ranking made in Safari would vanish once installed.
  * Browsers without minimal-ui (iOS) open the site in the browser; Android gets a window with a back button.
  * Colors are the light palette: the manifest is read once at install and cannot follow the theme.
@@ -208,8 +248,9 @@ export function manifest(): Record<string, unknown> {
     description: DESCRIPTION,
     lang: 'en',
     dir: 'ltr',
+    // The id stays the site's root, as before the app moved to app/: installed copies keep their identity.
     id: './',
-    start_url: './',
+    start_url: './app/',
     scope: './',
     display: 'minimal-ui',
     orientation: 'any',
@@ -239,12 +280,24 @@ export function robotsTxt(url: string): string {
   return ['User-agent: *', 'Allow: /', 'Disallow: /api/', '', `Sitemap: ${abs(url, 'sitemap.xml')}`, ''].join('\n');
 }
 
-/** One URL: the app is a single page (rankings and boards live in the URL fragment, which crawlers ignore). */
+/**
+ * The home page of each language, with its hreflang alternates (x-default: English). The app is left out: it
+ * is `noindex`, and its rankings and boards live in the URL fragment, which crawlers ignore.
+ */
 export function sitemapXml(url: string, lastmod: string): string {
+  const alternates = [
+    ...LANGUAGES.map((l) => [l, pageUrl(url, HOMES[l])] as const),
+    ['x-default', pageUrl(url, HOMES.en)] as const,
+  ]
+    .map(([l, href]) => `    <xhtml:link rel="alternate" hreflang="${l}" href="${esc(href)}"/>`)
+    .join('\n');
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    `  <url><loc>${esc(url)}</loc><lastmod>${esc(lastmod)}</lastmod></url>`,
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
+    ...LANGUAGES.map(
+      (l) =>
+        `  <url>\n    <loc>${esc(pageUrl(url, HOMES[l]))}</loc>\n    <lastmod>${esc(lastmod)}</lastmod>\n${alternates}\n  </url>`,
+    ),
     '</urlset>',
     '',
   ].join('\n');
@@ -271,7 +324,9 @@ export function llmsTxt(url: string): string {
     '',
     '## Links',
     '',
-    `- [${NAME}](${url}): the app`,
+    `- [${NAME}](${url}): home page, in English`,
+    `- [${NAME} en français](${pageUrl(url, HOMES.fr)}): home page, in French`,
+    `- [The app](${pageUrl(url, 'app')}): start ranking (English or French)`,
     `- [Source code](${REPOSITORY}): TypeScript, MIT license`,
     `- [${AUTHOR.name}](${AUTHOR.url}): author`,
     '',
@@ -289,11 +344,12 @@ export function headersFile(): string {
     '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
     '  X-Content-Type-Options: nosniff',
     '',
-    '/',
-    '  Content-Type: text/html; charset=utf-8',
-    '',
-    '/index.html',
-    '  Content-Type: text/html; charset=utf-8',
+    ...Object.values(PAGES)
+      .flatMap((p) => [`/${p.path}`, `/${p.file}`])
+      .flatMap((path) => [path, '  Content-Type: text/html; charset=utf-8', '']),
+    // The meta tag says the same; the header also covers anything else under app/.
+    '/app/*',
+    '  X-Robots-Tag: noindex',
     '',
     '/assets/*',
     '  Cache-Control: public, max-age=31536000, immutable',

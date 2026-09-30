@@ -42,7 +42,8 @@ export function initPwa(): void {
 
 async function register(sw: ServiceWorkerContainer): Promise<void> {
   try {
-    const reg = await sw.register('./sw.js');
+    // The worker sits at the site's root (the app is in app/) and covers the home pages too.
+    const reg = await sw.register('../sw.js', { scope: '../' });
     // The first install has no controller to replace: nothing to offer.
     if (reg.waiting && sw.controller) offerUpdate(reg.waiting);
     reg.addEventListener('updatefound', () => {

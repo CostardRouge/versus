@@ -1,6 +1,6 @@
-import type { MethodKey } from '../core/types';
-import { en, enPlurals, type Messages, type MsgKey, type PluralKey, type Vars } from './en';
-import { fr, frPlurals } from './fr';
+import type { MethodKey } from '../core/types.ts';
+import { en, enPlurals, type Messages, type MsgKey, type PluralKey, type Vars } from './en.ts';
+import { fr, frPlurals } from './fr.ts';
 
 export type Lang = 'en' | 'fr';
 export const LANGS: readonly Lang[] = ['en', 'fr'];

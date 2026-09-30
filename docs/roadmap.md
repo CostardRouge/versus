@@ -24,6 +24,7 @@ Last updated 2026-09-30.
 - Installable, offline app (PWA, `docs/pwa.md`): hand-written service worker precaching the app at build time, new versions offered with Reload / Later, install button when the browser offers one, persistent storage for the installed app.
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
 - SEO audit fixes (SEOptimer, Seobility): canonical on versus.steevepommier.com, a 55-character title, and the page text (how it works, the four methods, privacy, links) in the static HTML with a single h1, shown under the gallery in the visitor's language.
+- Home page (D82 to D88): a showcase at `/` in English and `/fr/` in French, pre-rendered for search engines (hreflang, bilingual sitemap, a social card per language), with a hero demo played by a virtual pointer, the use cases, how it works, a playable demo on six topics, the four methods on the same duels, the crowd (Worker build) and the chocolatine question. The app moved to `/app/` (`noindex`); installed apps and old links follow.
 
 ## Next (suggested order)
 
@@ -38,7 +39,7 @@ Last updated 2026-09-30.
 - Export / import a ranking as JSON; share a results image.
 - Glicko as an extra method, if ever needed.
 - Native shell (Capacitor) around the web app, only if store presence is ever wanted (D75).
-- Search Console for versus.steevepommier.com: verify, submit the sitemap, request indexing.
+- Search Console for versus.steevepommier.com: verify, submit the sitemap, request indexing of `/` and `/fr/`.
 - Content pages (one per scoring method, a pairwise ranking guide): internal links and long-tail queries a single page can't reach.
 - Per-board social cards: a `/b/<alias>` path served by the Worker with the board's title and its own card (fragments never reach a server).
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.

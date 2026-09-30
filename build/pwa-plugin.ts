@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Plugin, ResolvedConfig } from 'vite';
-import { cacheVersion, injectPrecache, precacheList, SW_FILE } from './pwa.ts';
+import { cacheVersion, injectPrecache, pageAddress, precacheList, SW_FILE } from './pwa.ts';
 
 const SW_SOURCE = 'src/sw/sw.ts';
 
@@ -38,7 +38,10 @@ export function pwa(): Plugin {
         const sw = bundle[SW_FILE];
         if (sw?.type !== 'chunk') return this.error(`${SW_FILE} is missing from the bundle`);
         const list = precacheList(files.keys());
-        const body = (f: string) => files.get(f === './' ? 'index.html' : f) ?? '';
+        const pages = new Map(
+          [...files.keys()].filter((f) => f.endsWith('index.html')).map((f) => [pageAddress(f), f]),
+        );
+        const body = (f: string) => files.get(pages.get(f) ?? f) ?? '';
         sw.code = injectPrecache(sw.code, list, cacheVersion(list.map((f) => [f, body(f)] as const)));
       },
     },

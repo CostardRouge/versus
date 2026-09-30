@@ -1,8 +1,8 @@
-import type { Lang } from '../i18n';
-import { mkRank } from './model';
-import { methodOf, nextPair, pushDuel } from './scoring';
-import type { Fill, MethodKey, Ranking, Rng } from './types';
-import { hueOf, mulberry32 } from './util';
+import type { Lang } from '../i18n/index.ts';
+import { mkRank } from './model.ts';
+import { methodOf, nextPair, pushDuel } from './scoring.ts';
+import type { Fill, MethodKey, Ranking, Rng } from './types.ts';
+import { hueOf, mulberry32 } from './util.ts';
 
 type Label = Record<Lang, string>;
 interface DemoItem {
