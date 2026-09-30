@@ -4,6 +4,7 @@ export type PluralKey = 'item' | 'duel' | 'image' | 'vote' | 'voter' | 'pair';
 
 export const en = {
   tagline: 'Rank anything, two at a time',
+  pageTitle: 'Versus — Rank anything by comparing two items at a time',
   brandAria: 'Versus, all rankings',
   dropOverlay: 'Drop your images to add them',
   cancel: 'Cancel',
@@ -32,6 +33,26 @@ export const en = {
   demos: 'Demos',
   demosIntro:
     'Ready-made rankings to explore how Versus works. Your duels stay on this device, and Reset puts a demo back to its original state.',
+  aboutTitle: 'Rank anything by comparing two items at a time',
+  aboutLead:
+    'Versus turns a list into a ranking through quick duels. Add your items, then pick the better of two, again and again: each answer is a duel, and a scoring method turns the duels into a ranking, with a gauge that shows when it is settled. It works for places, photos, products, names, colors, anything you can compare.',
+  aboutHowTitle: 'How it works',
+  aboutStep1: 'Add your items: type or paste a list, drop photos, or pick colors and gradients.',
+  aboutStep2:
+    'Pick the better of two in each duel, with a tap, the arrow keys or a swipe. Call a tie, skip a pair or undo.',
+  aboutStep3:
+    'Read the ranking: a podium, a margin for each item and a comparison of the scoring methods show how solid it is.',
+  aboutMethodsTitle: 'Four scoring methods',
+  aboutMethodsIntro:
+    'Every method is recomputed from the same duels, so you can switch at any time without losing one.',
+  aboutPrivateTitle: 'Private by default',
+  aboutPrivate:
+    'Your rankings stay in your browser: no account, no sign-up, and it keeps working offline once installed. Versus is free and open source.',
+  aboutPublishTitle: 'Let a crowd vote',
+  aboutPublish:
+    'Publish a ranking and share its link: everyone votes on the pairs they are given, and the crowd’s ranking updates live.',
+  aboutBy: 'Made by',
+  aboutSource: 'Source code on GitHub',
   showDemos: 'Show demos',
   hideDemos: 'Hide demos',
   demoChip: 'Demo',

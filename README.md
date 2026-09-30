@@ -2,7 +2,7 @@
 
 Rank anything by comparing two items at a time. Add text, images or colors, pick your favorite in each duel (buttons, keyboard or swipe), and let the ranking emerge.
 
-**Live:** https://costardrouge.github.io/versus/
+**Live:** https://versus.steevepommier.com/ (also on https://costardrouge.github.io/versus/, without publishing)
 
 ## Features
 

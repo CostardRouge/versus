@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import type { Plugin } from 'vite';
-import { generatedFiles, headTags, noscriptHtml, siteUrl } from './seo.ts';
+import { aboutStatic, generatedFiles, headTags, noscriptHtml, siteUrl } from './seo.ts';
 
 /** Placeholders in index.html, replaced at dev and build time. */
 export const HEAD_MARK = '<!-- seo:head -->';
 export const NOSCRIPT_MARK = '<!-- seo:noscript -->';
+export const ABOUT_MARK = '<!-- seo:about -->';
 
 /**
  * Self-hosted fonts the first render needs (body and display, latin subset): preloaded so they download
@@ -22,20 +23,22 @@ function lastmod(): string {
 }
 
 /**
- * Head tags, <noscript> fallback and generated files (manifest, robots.txt, sitemap, llms.txt, and the
- * Cloudflare _headers in the Worker build) from build/site.ts. The canonical address comes from
- * `VITE_SITE_URL`, defaulting to the GitHub Pages address.
+ * Head tags, the static page text, the <noscript> line and generated files (manifest, robots.txt, sitemap,
+ * llms.txt, and the Cloudflare _headers in the Worker build) from build/site.ts. The canonical address comes
+ * from `VITE_SITE_URL`, defaulting to versus.steevepommier.com.
  */
 export function seo(): Plugin {
   let url = siteUrl();
   let base = './';
   let worker = false;
+  let publish = false;
   return {
     name: 'versus-seo',
     configResolved(config) {
       url = siteUrl(config.env.VITE_SITE_URL);
       base = config.base;
       worker = config.mode === 'worker';
+      publish = config.env.VITE_API_URL !== undefined;
     },
     transformIndexHtml: {
       order: 'post',
@@ -44,10 +47,13 @@ export function seo(): Plugin {
           .filter((file) => PRELOAD_FONTS.some((re) => re.test(file)))
           .map((file) => `<link rel="preload" href="${base}${file}" as="font" type="font/woff2" crossorigin />`);
         const head = [...headTags(url), ...fonts].join('\n    ');
-        if (!html.includes(HEAD_MARK) || !html.includes(NOSCRIPT_MARK)) {
-          throw new Error(`index.html needs both ${HEAD_MARK} and ${NOSCRIPT_MARK}`);
+        for (const mark of [HEAD_MARK, NOSCRIPT_MARK, ABOUT_MARK]) {
+          if (!html.includes(mark)) throw new Error(`index.html needs ${mark}`);
         }
-        return html.replace(HEAD_MARK, head).replace(NOSCRIPT_MARK, noscriptHtml());
+        return html
+          .replace(HEAD_MARK, head)
+          .replace(NOSCRIPT_MARK, noscriptHtml())
+          .replace(ABOUT_MARK, aboutStatic(publish));
       },
     },
     configureServer(server) {

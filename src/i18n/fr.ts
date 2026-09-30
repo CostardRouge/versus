@@ -2,6 +2,7 @@ import type { Messages, PluralKey, Vars } from './en';
 
 export const fr: Messages = {
   tagline: 'Classer en comparant deux par deux',
+  pageTitle: 'Versus — Classe tout en comparant deux éléments à la fois',
   brandAria: 'Versus, tous les classements',
   dropOverlay: 'Dépose tes images pour les ajouter',
   cancel: 'Annuler',
@@ -30,6 +31,27 @@ export const fr: Messages = {
   demos: 'Démos',
   demosIntro:
     'Des classements prêts à explorer pour comprendre Versus. Tes duels y restent sur cet appareil, et « Réinitialiser » les remet dans leur état d’origine.',
+  aboutTitle: 'Classe tout en comparant deux éléments à la fois',
+  aboutLead:
+    'Versus transforme une liste en classement grâce à des duels rapides. Ajoute tes éléments, puis choisis le meilleur des deux, encore et encore : chaque réponse est un duel, et une méthode de score transforme les duels en classement, avec une jauge qui montre quand il est stable. Ça marche pour des lieux, des photos, des produits, des prénoms, des couleurs, tout ce qui se compare.',
+  aboutHowTitle: 'Comment ça marche',
+  aboutStep1:
+    'Ajoute tes éléments : tape ou colle une liste, dépose des photos, ou choisis des couleurs et des dégradés.',
+  aboutStep2:
+    'Choisis le meilleur des deux à chaque duel, d’un tap, avec les flèches du clavier ou d’un glissement. Déclare une égalité, passe une paire ou annule.',
+  aboutStep3:
+    'Lis le classement : un podium, une marge pour chaque élément et une comparaison des méthodes de score montrent sa solidité.',
+  aboutMethodsTitle: 'Quatre méthodes de score',
+  aboutMethodsIntro:
+    'Chaque méthode est recalculée à partir des mêmes duels : tu peux en changer à tout moment sans en perdre un seul.',
+  aboutPrivateTitle: 'Privé par défaut',
+  aboutPrivate:
+    'Tes classements restent dans ton navigateur : pas de compte, pas d’inscription, et ça fonctionne hors ligne une fois installé. Versus est gratuit et open source.',
+  aboutPublishTitle: 'Fais voter la foule',
+  aboutPublish:
+    'Publie un classement et partage son lien : chacun vote sur les paires qui lui sont proposées, et le classement de la foule se met à jour en direct.',
+  aboutBy: 'Fait par',
+  aboutSource: 'Code source sur GitHub',
   showDemos: 'Afficher les démos',
   hideDemos: 'Masquer les démos',
   demoChip: 'Démo',
