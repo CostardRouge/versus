@@ -1,13 +1,28 @@
-import { fillCode, fillCSS, fillInk, harmonies, hexToHsl, hslToHex, isHex, normHex, PRESETS } from '../core/colors';
+import {
+  colorTwin,
+  fillCode,
+  fillCSS,
+  fillInk,
+  harmonies,
+  hexToHsl,
+  hslToHex,
+  isHex,
+  normHex,
+  PRESETS,
+} from '../core/colors';
 import { getItem } from '../core/model';
 import type { Fill, Item } from '../core/types';
+import { esc } from '../core/util';
 import { t } from '../i18n';
 import { $, $$, doc, narrow } from './dom';
 import { cardHTML } from './duel';
 import { cur, save } from './state';
 import { effTab, renderMain, toggleMethodMenu } from './workspace';
 
-/** Color editor popover for color items: solid or gradient, stops, hex fields, harmonies and presets. */
+/**
+ * Color editor popover for color items: solid or gradient, stops, hex fields, harmonies and presets.
+ * Local items change live. A published board's item is edited as a draft, sent only when validated.
+ */
 
 export const cp: { id: string | null; active: number; follow: boolean; anchor: HTMLElement | null } = {
   id: null,
@@ -16,9 +31,23 @@ export const cp: { id: string | null; active: number; follow: boolean; anchor: H
   anchor: null,
 };
 
+/** A published board's item being recolored: the draft, the board's other items, and what validating does. */
+interface BoardEdit {
+  draft: Item;
+  others: readonly Item[];
+  commit: (fill: Fill) => void;
+}
+let boardEdit: BoardEdit | null = null;
+
 const cpItem = (): Item | undefined => {
+  if (boardEdit) return boardEdit.draft;
   const r = cur();
   return r && cp.id ? getItem(r, cp.id) : undefined;
+};
+const others = (): readonly Item[] => boardEdit?.others ?? cur()?.items ?? [];
+const twinText = (it: Item): string => {
+  const twin = it.fill ? colorTwin(others(), it.id, it.fill) : undefined;
+  return twin ? t('sameColor', { label: twin.label }) : '';
 };
 const swatchesHTML = (hex: string): string =>
   harmonies(hex)
@@ -28,7 +57,7 @@ const swatchesHTML = (hex: string): string =>
         `<button class="cp-sw" type="button" style="background:${c}" data-action="cp-swatch" data-c="${c}" aria-label="${c.toUpperCase()}" title="${c.toUpperCase()}"></button>`,
     )
     .join('');
-function cpHTML(f: Fill): string {
+function cpHTML(it: Item, f: Fill): string {
   const isG = f.type === 'gradient';
   const act = f.colors[Math.min(cp.active, f.colors.length - 1)] ?? '#000000';
   const stops = f.colors
@@ -48,24 +77,45 @@ function cpHTML(f: Fill): string {
     </div>
     <div class="cp-stops">${stops}${isG && f.colors.length < 3 ? `<button class="link" type="button" data-action="cp-add">${t('addStop')}</button>` : ''}</div>
     <p class="cp-err" id="cp-err" hidden>${t('invalidHex')}</p>
+    <p class="cp-err" id="cp-twin" ${twinText(it) ? '' : 'hidden'}>${esc(twinText(it))}</p>
     <p class="cp-label">${t('suggestions')}</p>
     <div class="cp-swatches" id="cp-swatches">${swatchesHTML(act)}</div>
-    <div class="cp-foot"><button class="btn sm primary" type="button" data-action="cp-done">${t('done')}</button></div>`;
+    <div class="cp-foot">${
+      boardEdit
+        ? `<button class="btn sm ghost" type="button" data-action="cp-cancel">${t('cancel')}</button><button class="btn sm primary" type="button" data-action="cp-ok">${t('apply')}</button>`
+        : `<button class="btn sm primary" type="button" data-action="cp-done">${t('done')}</button>`
+    }</div>`;
+}
+function show(it: Item, anchor: HTMLElement): void {
+  const pop = $('#cpop');
+  if (!it.fill || !pop) return;
+  toggleMethodMenu(false);
+  cp.id = it.id;
+  cp.active = 0;
+  cp.follow = it.label.toUpperCase() === fillCode(it.fill);
+  cp.anchor = anchor;
+  pop.innerHTML = cpHTML(it, it.fill);
+  pop.hidden = false;
+  placeColor();
+  if (!narrow.matches) $('.cp-hex', pop)?.focus();
 }
 export function openColor(id: string, anchor: HTMLElement): void {
   const r = cur();
   const it = r ? getItem(r, id) : undefined;
-  const pop = $('#cpop');
-  if (!it?.fill || !pop) return;
-  toggleMethodMenu(false);
-  cp.id = id;
-  cp.active = 0;
-  cp.follow = it.label.toUpperCase() === fillCode(it.fill);
-  cp.anchor = anchor;
-  pop.innerHTML = cpHTML(it.fill);
-  pop.hidden = false;
-  placeColor();
-  if (!narrow.matches) $('.cp-hex', pop)?.focus();
+  if (!it) return;
+  boardEdit = null;
+  show(it, anchor);
+}
+/** Recolors an item of a published board: nothing changes until `commit` is called with the validated fill. */
+export function openBoardColor(
+  it: Item,
+  boardItems: readonly Item[],
+  anchor: HTMLElement,
+  commit: (fill: Fill) => void,
+): void {
+  if (!it.fill) return;
+  boardEdit = { draft: structuredClone(it), others: boardItems, commit };
+  show(boardEdit.draft, anchor);
 }
 export function placeColor(): void {
   const pop = $('#cpop');
@@ -91,7 +141,9 @@ export function closeColor(): void {
   const anchorId = cp.id;
   cp.id = null;
   const r = cur();
-  if (r) {
+  // A board draft that wasn't validated is dropped.
+  if (boardEdit) boardEdit = null;
+  else if (r) {
     save();
     if (effTab() === 'results') renderMain(r);
   }
@@ -101,14 +153,13 @@ function redrawColor(): void {
   const it = cpItem();
   const pop = $('#cpop');
   if (it?.fill && pop) {
-    pop.innerHTML = cpHTML(it.fill);
+    pop.innerHTML = cpHTML(it, it.fill);
     placeColor();
   }
 }
 function applyFill(commit: boolean): void {
-  const r = cur();
   const it = cpItem();
-  if (!r || !it?.fill) return;
+  if (!it?.fill) return;
   if (cp.follow) it.label = fillCode(it.fill);
   const css = fillCSS(it.fill);
   const pv = $('#cp-preview');
@@ -118,6 +169,13 @@ function applyFill(commit: boolean): void {
     const span = pv.firstElementChild;
     if (span) span.textContent = fillCode(it.fill);
   }
+  const twin = $('#cp-twin');
+  if (twin) {
+    twin.textContent = twinText(it);
+    twin.hidden = !twin.textContent;
+  }
+  const r = cur();
+  if (boardEdit || !r) return;
   const row = $(`#item-list li[data-id="${it.id}"]`);
   if (row) {
     const th = $('.thumb-btn', row);
@@ -188,7 +246,12 @@ export function cpAction(action: string, el: HTMLElement): void {
     redrawColor();
   } else if (action === 'cp-swatch') {
     if (el.dataset.c) setStop(Math.min(cp.active, f.colors.length - 1), el.dataset.c, true);
-  } else if (action === 'cp-done') closeColor();
+  } else if (action === 'cp-done' || action === 'cp-cancel') closeColor();
+  else if (action === 'cp-ok') {
+    const edit = boardEdit;
+    closeColor();
+    if (edit?.draft.fill) edit.commit(edit.draft.fill);
+  }
 }
 
 /** Live edits in the popover fields (input events). Returns true when the field belongs to the popover. */

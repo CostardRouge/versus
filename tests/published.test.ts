@@ -6,8 +6,10 @@ import {
   adminHash,
   agreement,
   boardHash,
+  crowdCheck,
   lastDuelPerPair,
   neckAndNeck,
+  ownRanking,
   parseBoardHash,
   publishBlock,
   publishMethod,
@@ -120,6 +122,44 @@ describe('the voter and the crowd', () => {
     expect(agreement(mine, crowd)).toBeCloseTo(2 / 3);
     expect(agreement(mine.slice(0, 2), crowd)).toBeNull();
     expect(agreement(mine.slice(0, 2), crowd, 2)).toBe(1);
+  });
+
+  it('lists the picks the crowd contradicts, widest gap first', () => {
+    const four = view('bt', [
+      ['a', 1700, 40],
+      ['b', 1600, 40],
+      ['c', 1500, 40],
+      ['d', 1400, 40],
+    ]);
+    const mine = [
+      { a: 'b', b: 'a', s: 1 as const },
+      { a: 'a', b: 'd', s: 0 as const },
+      { a: 'a', b: 'c', s: 1 as const },
+      { a: 'b', b: 'c', s: 0.5 as const },
+    ];
+    expect(crowdCheck(mine, four)).toEqual({
+      total: 3,
+      against: [
+        ['d', 'a'],
+        ['b', 'a'],
+      ],
+    });
+  });
+
+  it('ranks a voter from their own votes', () => {
+    const items = ['x', 'y', 'z'].map((l) => mkItem(l));
+    const [x, y, z] = items.map((i) => i.id) as [string, string, string];
+    const own = ownRanking(
+      items,
+      [
+        { a: z, b: x, s: 1 },
+        { a: z, b: y, s: 1 },
+        { a: y, b: x, s: 1 },
+      ],
+      'bt',
+    );
+    expect(own.order.map((i) => i.label)).toEqual(['z', 'y', 'x']);
+    expect(own.st[z]).toMatchObject({ w: 2, l: 0 });
   });
 
   it('flags items too close to the one above', () => {

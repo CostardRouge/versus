@@ -1,3 +1,4 @@
+import type { ItemScore } from '../core/protocol';
 import type { ItemStats, MethodKey } from '../core/types';
 import { fmtDelta } from '../core/util';
 import { pct, t } from '../i18n';
@@ -6,6 +7,12 @@ export function fmtScore(m: MethodKey, s: ItemStats): string {
   if (m === 'win') return pct(Math.round(s.score * 100));
   if (m === 'sort') return s.placed ? t('placed') : t('toPlace');
   return String(Math.round(s.score));
+}
+/** A crowd score, with its margin (as HTML) for Balanced. */
+export function fmtCrowd(m: MethodKey, x: ItemScore): string {
+  if (m === 'win') return pct(Math.round(x.score * 100));
+  const se = m === 'bt' && x.se !== null ? `<small>±${Math.round(x.se)}</small>` : '';
+  return `${Math.round(x.score)}${se}`;
 }
 export const fmtRecord = (s: ItemStats, withTies: boolean): string =>
   `${s.w}${t('recW')} ${s.l}${t('recL')}${withTies ? ` ${s.d}${t('recD')}` : ''}`;

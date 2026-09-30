@@ -488,9 +488,13 @@ kbd {
   gap: 2px;
 }
 .tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
   border: 0;
   background: transparent;
-  padding: 8px 16px;
+  padding: 0 16px;
   border-radius: 999px;
   font-weight: 600;
   font-size: 14px;
@@ -1280,10 +1284,11 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 44px;
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 0 14px;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -1510,6 +1515,85 @@ kbd {
 }
 .ws-head .chip {
   align-self: center;
+}
+
+/* Publish: the header's one colored control, in the A → B gradient. Every header control is 44 px tall. */
+.pub-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  background: linear-gradient(100deg, var(--a), color-mix(in oklab, var(--a) 50%, var(--b)) 50%, var(--b));
+  background-size: 160% 100%;
+  background-position: 0% 50%;
+  box-shadow:
+    0 8px 20px -10px color-mix(in oklab, var(--a) 70%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition:
+    background-position 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.pub-btn:hover {
+  background-position: 100% 50%;
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 24px -10px color-mix(in oklab, var(--b) 70%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.pub-btn:active {
+  transform: none;
+}
+.pub-btn svg {
+  flex: none;
+}
+/* Forces the header's controls onto their own line (medium widths only). */
+.ws-break {
+  display: none;
+  flex-basis: 100%;
+  height: 0;
+}
+@media (max-width: 859px) {
+  .pub-btn {
+    margin-left: auto;
+  }
+}
+@media (min-width: 860px) {
+  .pub-btn {
+    order: 1;
+  }
+}
+/* Wide: one line, Publish after a divider. */
+@media (min-width: 1024px) {
+  .pub-btn {
+    position: relative;
+    margin-left: 16px;
+  }
+  .pub-btn::before {
+    content: "";
+    position: absolute;
+    left: -16.5px;
+    top: 9px;
+    bottom: 9px;
+    width: 1px;
+    background: var(--line);
+  }
+}
+/* Medium: title on the first line, score and tabs on the second, Publish at its right end. */
+@media (min-width: 860px) and (max-width: 1023px) {
+  .ws-break {
+    display: block;
+  }
+  .pub-btn {
+    margin-left: auto;
+  }
 }
 
 /* Language switch + color editor */
@@ -1807,7 +1891,7 @@ body.dropping .drop-overlay {
     padding-inline: 8px;
   }
   .tab-items {
-    display: inline-block;
+    display: inline-flex;
   }
   .ws-body {
     display: block;
@@ -2139,6 +2223,17 @@ body.dropping .drop-overlay {
   width: 28px;
   height: 28px;
 }
+.b-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.b-twin {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bad);
+}
 .b-suggest {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -2153,4 +2248,758 @@ body.dropping .drop-overlay {
 .pub-captcha {
   margin-top: 14px;
   min-height: 65px;
+}
+
+/* End-of-vote page: a page of its own once every pair is voted. Podium or "you vs the crowd", one reveal. */
+.fin {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-block: 4px 12px;
+}
+/* Soft A and B lights behind the page, the only place they appear. */
+.fin::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 560px;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(55% 70% at 0% 0%, color-mix(in oklab, var(--a) 13%, transparent), transparent 70%),
+    radial-gradient(55% 70% at 100% 0%, color-mix(in oklab, var(--b) 13%, transparent), transparent 70%);
+}
+.fin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.fin-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.fin-meta {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+}
+.fin-board {
+  font: 700 15px var(--f-display);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.fin-counts {
+  color: var(--muted);
+}
+/* The view switch: two icons, quiet until pointed at. */
+.fin-views {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface) 60%, transparent);
+}
+.fin-views button {
+  width: 32px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.fin-views button:hover {
+  color: var(--ink);
+}
+.fin-views button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.fin-bar {
+  display: block;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.fin-bar i {
+  display: block;
+  height: 100%;
+  width: var(--w);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--a), var(--b));
+}
+.fin-h {
+  margin: 0;
+  font: 700 clamp(28px, 4.2vw, 48px) / 1.02 var(--f-display);
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.fin-sub {
+  margin: 8px 0 0;
+  color: var(--muted);
+  max-width: 56ch;
+}
+.fin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.fin-grid-duo {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+}
+.fin-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.fin-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+.fin-lbl {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.fin-nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fin-sc {
+  color: var(--muted);
+  font-size: 12px;
+}
+.fin-sc small,
+.fin-pd-meta small {
+  margin-left: 3px;
+  color: var(--muted);
+}
+.fin-neck {
+  font-weight: 700;
+}
+.fin-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fin-cta {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.fin-locked {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.fin-locked svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.fin-locked b {
+  display: block;
+  font: 700 16px / 1.2 var(--f-display);
+  letter-spacing: -0.015em;
+  margin-bottom: 4px;
+}
+.fin-locked span {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+/* Podium */
+.fin-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px 30px;
+  align-items: end;
+}
+.fin-count {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fin-num {
+  font: 800 clamp(64px, 9vw, 116px) / 0.82 var(--f-display);
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+.fin-num small {
+  font-size: 0.42em;
+  color: var(--muted);
+  letter-spacing: -0.02em;
+  margin-left: 2px;
+}
+.fin-cap {
+  font: 500 11.5px var(--f-mono);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.fin-pod-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 16px 16px 0;
+  overflow: hidden;
+}
+.fin-pod-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.fin-pod-head h2 {
+  margin: 0;
+  font: 700 18px / 1.2 var(--f-display);
+  letter-spacing: -0.02em;
+}
+.fin-who {
+  display: inline-flex;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+.fin-who button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--muted);
+}
+.fin-who button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.fin-pod {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.fin-pd {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.fin-pd-2 {
+  order: 1;
+}
+.fin-pd-1 {
+  order: 2;
+}
+.fin-pd-3 {
+  order: 3;
+}
+.fin-tile {
+  position: relative;
+  aspect-ratio: 5 / 4;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--surface) 72%, hsl(var(--h) 72% 56%));
+  display: flex;
+  align-items: flex-end;
+  padding: 12px;
+}
+.fin-pd-1 .fin-tile {
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px color-mix(in oklab, var(--a) 50%, var(--b));
+}
+.fin-tile-name {
+  font: 700 clamp(15px, 2vw, 24px) / 1 var(--f-display);
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.fin-pd-meta {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  min-height: 19px;
+}
+.fin-step {
+  display: grid;
+  place-items: start center;
+  padding-top: 8px;
+  border-radius: 12px 12px 0 0;
+  background: var(--surface-2);
+  transform-origin: bottom;
+}
+.fin-step span {
+  font: 800 clamp(26px, 3.4vw, 42px) / 1 var(--f-display);
+  letter-spacing: -0.04em;
+  color: var(--muted);
+}
+.fin-pd-1 .fin-step {
+  height: clamp(70px, 10vw, 132px);
+  background: linear-gradient(160deg, var(--a), var(--b));
+}
+.fin-pd-1 .fin-step span {
+  color: var(--on-accent);
+}
+.fin-pd-2 .fin-step {
+  height: clamp(50px, 7vw, 94px);
+}
+.fin-pd-3 .fin-step {
+  height: clamp(36px, 5vw, 64px);
+}
+.fin-agree {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.fin-ring {
+  flex: none;
+  width: 84px;
+  height: 84px;
+  transform: rotate(-90deg);
+}
+.fin-ring circle {
+  fill: none;
+  stroke-width: 9;
+}
+.fin-ring-bg {
+  stroke: var(--surface-2);
+}
+.fin-ring-fg {
+  stroke: var(--a);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--p));
+}
+.fin-agree b {
+  display: block;
+  font: 800 34px / 1 var(--f-display);
+  letter-spacing: -0.04em;
+}
+.fin-agree div > span {
+  display: block;
+  font-weight: 600;
+}
+.fin-agree small,
+.fin-agree-big small {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.fin-rest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow: auto;
+}
+.fin-rest li {
+  display: grid;
+  grid-template-columns: 20px 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.fin-rest li:first-child {
+  border-top: 0;
+}
+.fin-rest .thumb,
+.fin-duo .thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.fin-confetti {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.fin-confetti i {
+  position: absolute;
+  width: 7px;
+  height: 11px;
+  border-radius: 2px;
+  opacity: 0;
+}
+.fin-ca {
+  background: var(--a);
+}
+.fin-cb {
+  background: var(--b);
+}
+
+/* You vs the crowd */
+.fin-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.fin-eyebrow .fin-bar {
+  flex: none;
+  width: 120px;
+}
+.fin-eyebrow .mono {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fin-win {
+  display: inline-block;
+  padding: 0 0.22em 0.06em;
+  border-radius: 0.2em;
+  background: color-mix(in oklab, var(--surface) 62%, hsl(var(--h) 72% 56%));
+}
+.fin-duo {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px 16px 10px;
+}
+.fin-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(46px, 9vw, 120px) minmax(0, 1fr);
+}
+.fin-duo-h {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.fin-mine .fin-duo-h {
+  justify-content: flex-end;
+}
+.fin-dot-a,
+.fin-dot-b {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.fin-dot-a {
+  background: var(--a);
+}
+.fin-dot-b {
+  background: var(--b);
+}
+.fin-later {
+  font: 500 11px var(--f-mono);
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.fin-duo ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.fin-duo li {
+  height: 46px;
+  display: grid;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+}
+.fin-mine li {
+  grid-template-columns: auto minmax(0, 1fr) 30px 18px;
+  padding-left: 6px;
+}
+.fin-mine .fin-nm {
+  text-align: right;
+}
+.fin-theirs li {
+  grid-template-columns: 18px 30px minmax(0, 1fr) auto;
+  padding-right: 6px;
+}
+.fin-duo .pos {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.fin-duo .fin-nm {
+  font-weight: 500;
+}
+.fin-duo li.hl {
+  background: var(--bg);
+}
+.fin-duo.hovering li:not(.hl) {
+  opacity: 0.4;
+}
+.fin-mid {
+  position: relative;
+  margin-top: 28px;
+}
+.fin-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.fin-lines path {
+  fill: none;
+  stroke-linecap: round;
+  transition: opacity 0.2s;
+}
+.fin-same {
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.fin-moved {
+  stroke: url(#fin-ab);
+  stroke-width: 3;
+}
+.fin-ea {
+  fill: var(--a);
+}
+.fin-eb {
+  fill: var(--b);
+}
+.fin-duo.hovering .fin-lines :is(path, circle):not(.hl) {
+  opacity: 0.15;
+}
+.fin-theirs li.fin-ph {
+  grid-template-columns: 18px minmax(0, 1fr);
+}
+.fin-ph-bar {
+  height: 12px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, transparent 6px 10px);
+}
+.fin-duo-foot {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+}
+.fin-agree-big b {
+  display: block;
+  font: 800 clamp(52px, 6vw, 76px) / 0.9 var(--f-display);
+  letter-spacing: -0.05em;
+}
+.fin-agree-big > span {
+  display: block;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.fin-against {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fin-against li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.fin-against .thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 9.5px;
+}
+.fin-over {
+  color: var(--muted);
+  font-size: 13px;
+}
+.fin-more {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 859px) {
+  .fin-views {
+    margin-left: auto;
+  }
+  .fin-meta {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+  .fin-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .fin-count {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+  .fin-count .fin-bar {
+    flex: 1;
+  }
+  .fin-grid,
+  .fin-grid-duo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fin-tile {
+    padding: 8px;
+    border-radius: 14px;
+  }
+  .fin-duo {
+    padding: 12px 10px 8px;
+  }
+  .fin-mine li {
+    grid-template-columns: minmax(0, 1fr) 26px 16px;
+    padding-left: 0;
+  }
+  .fin-theirs li {
+    grid-template-columns: 16px 26px minmax(0, 1fr);
+    padding-right: 0;
+  }
+  .fin-duo .fin-sc,
+  .fin-later {
+    display: none;
+  }
+  .fin-duo .thumb {
+    width: 26px;
+    height: 26px;
+  }
+  .fin-duo .fin-nm {
+    font-size: 13.5px;
+  }
+  .fin-eyebrow .fin-bar {
+    width: 70px;
+  }
+}
+
+/* The reveal runs while .play is set; everything rests visible without it. */
+@keyframes fin-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes fin-fill {
+  from {
+    width: var(--w0);
+  }
+}
+@keyframes fin-rise {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes fin-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-26px) scale(0.94);
+  }
+}
+@keyframes fin-ring {
+  from {
+    stroke-dashoffset: 100;
+  }
+}
+@keyframes fin-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+@keyframes fin-pop {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+}
+@keyframes fin-burst {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.5);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r)) scale(1);
+  }
+}
+@keyframes fin-swap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.fin.play .rv {
+  animation: fin-up 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0s);
+}
+.fin.play .fin-bar i {
+  animation: fin-fill 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.35s both;
+}
+.fin.play .fin-step {
+  animation: fin-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d);
+}
+.fin.play .fin-tile,
+.fin.play .fin-pd-meta {
+  animation: fin-drop 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+  animation-delay: calc(var(--d) + 0.3s);
+}
+.fin.play .fin-ring-fg {
+  animation: fin-ring 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 2.6s both;
+}
+.fin.play .fin-duo li {
+  animation: fin-up 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0s);
+}
+.fin.play .fin-lines path {
+  animation: fin-draw 0.8s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: var(--d, 0s);
+}
+.fin.play .fin-lines circle {
+  animation: fin-pop 0.3s ease-out both;
+  animation-delay: var(--d, 0s);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.fin.play .fin-confetti i {
+  animation: fin-burst 1.2s cubic-bezier(0.15, 0.7, 0.3, 1) 2.25s both;
+}
+.fin.swap .fin-body {
+  animation: fin-swap 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }

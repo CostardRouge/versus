@@ -22,11 +22,13 @@ import {
   parseNewItem,
   parsePublish,
   patchSettings,
+  recolorItem,
   refill,
   removeItem,
   restoreBoard,
   retractAll,
   retractVote,
+  revealAt,
   sessionAdd,
   sessionReset,
   sessionSkip,
@@ -366,6 +368,19 @@ describe('visibility', () => {
     setStatus(b, 'closed', T0);
     expect(canSeeRanking(b, null, false)).toBe(true);
   });
+
+  it('reveals "after N votes" boards to whoever voted every pair, even when there are fewer than N', () => {
+    expect(revealAt(10, 4)).toBe(6);
+    expect(revealAt(3, 4)).toBe(3);
+    expect(revealAt(10, 0)).toBe(1);
+    const b = board(3);
+    updateSettings(b, { visibility: 'after', revealAfter: 10 }, T0);
+    value(castVote(b, V2, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i0', 'i2', 1, T0));
+    expect(canSeeRanking(b, V2, false)).toBe(false);
+    value(castVote(b, V2, 'i1', 'i2', 1, T0));
+    expect(canSeeRanking(b, V2, false)).toBe(true);
+  });
 });
 
 describe('crowd ranking', () => {
@@ -486,6 +501,45 @@ describe('items after publication', () => {
     expect(errorOf(removeItem(b, 'i0', T0))).toBe('not_found');
     value(removeItem(b, 'i1', T0));
     expect(errorOf(removeItem(b, 'i2', T0))).toBe('too_few');
+  });
+
+  it('recolors a color item, dropping its votes, and the label follows a color code', () => {
+    const b = board(4);
+    const solid = (c: string) => ({ type: 'solid' as const, colors: [c] });
+    b.items[0] = { ...(b.items[0] as Item), label: 'Ocre', fill: solid('#3e4c5e') };
+    b.items[1] = { ...(b.items[1] as Item), label: '#3E4C5E', fill: solid('#3e4c5e') };
+    value(castVote(b, V1, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i0', 'i2', 0, T0));
+    value(castVote(b, V2, 'i2', 'i3', 1, T0));
+    const r = value(recolorItem(b, 'i0', solid('#d9a441'), T0 + 7));
+    expect(r.removed).toHaveLength(2);
+    expect(r.item).toMatchObject({ id: 'i0', label: 'Ocre', fill: solid('#d9a441') });
+    expect(b.items[0]).toBe(r.item);
+    expect(b.votes.size).toBe(1);
+    expect(b.voters.has(V1)).toBe(false);
+    expect(lastActivity(b)).toBe(T0 + 7);
+    // Same color again: nothing to drop.
+    value(castVote(b, V2, 'i0', 'i3', 1, T0));
+    expect(value(recolorItem(b, 'i0', solid('#D9A441'), T0)).removed).toEqual([]);
+    expect(b.votes.size).toBe(2);
+    // A label that was the code follows the new one.
+    const coded = value(recolorItem(b, 'i1', { type: 'gradient', colors: ['#111111', '#222222'] }, T0)).item;
+    expect(coded.label).toBe('#111111 → #222222');
+    expect(coded.h).toBe(hueOf(coded.label));
+  });
+
+  it('refuses to recolor text items, unknown items, bad fills, taken labels and closed boards', () => {
+    const b = board(3);
+    const solid = (c: string) => ({ type: 'solid' as const, colors: [c] });
+    b.items[0] = { ...(b.items[0] as Item), label: '#AA0000', fill: solid('#aa0000') };
+    b.items[1] = { ...(b.items[1] as Item), label: '#BB0000' };
+    expect(errorOf(recolorItem(b, 'i2', solid('#123456'), T0))).toBe('bad_request');
+    expect(errorOf(recolorItem(b, 'nope', solid('#123456'), T0))).toBe('not_found');
+    expect(errorOf(recolorItem(b, 'i0', { type: 'solid', colors: ['red'] }, T0))).toBe('bad_request');
+    expect(errorOf(recolorItem(b, 'i0', null, T0))).toBe('bad_request');
+    expect(errorOf(recolorItem(b, 'i0', solid('#bb0000'), T0))).toBe('exists');
+    setStatus(b, 'closed', T0);
+    expect(errorOf(recolorItem(b, 'i0', solid('#123456'), T0))).toBe('closed');
   });
 
   it('lets visitors add only when allowed, a few seconds apart; the author always', () => {

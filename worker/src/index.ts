@@ -15,6 +15,7 @@ export { BoardObject } from './board-object';
  *   PATCH  /api/boards/:alias                   settings                         (owner)
  *   POST   /api/boards/:alias/close | reopen    freeze votes and reveal / reopen (owner)
  *   POST   /api/boards/:alias/items             add an item                      (owner)
+ *   PATCH  /api/boards/:alias/items/:id         recolor a color item ({ fill }); its votes are dropped (owner)
  *   DELETE /api/boards/:alias/items/:id         remove an item and its votes     (owner)
  *   DELETE /api/boards/:alias                   withdraw; returns the local copy (owner)
  *
@@ -120,6 +121,11 @@ async function board(req: Request, env: Env, alias: string, rest: string[]): Pro
     if (m === 'POST' && id === undefined) {
       const item = await readJson(req);
       return item === null ? error('too_large') : reply(await stub.addItem(bearer(req), item));
+    }
+    if (m === 'PATCH' && id !== undefined) {
+      const body = await readJson(req);
+      if (body === null) return error('too_large');
+      return reply(await stub.recolorItem(bearer(req), id, isRecord(body) ? body.fill : undefined));
     }
     if (m === 'DELETE' && id !== undefined) return reply(await stub.removeItem(bearer(req), id));
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  colorTwin,
   fillCode,
   fillCSS,
   fillInk,
@@ -9,7 +10,9 @@ import {
   isHex,
   luminance,
   normHex,
+  sameFill,
 } from '../src/core/colors';
+import type { Item } from '../src/core/types';
 
 describe('hex parsing', () => {
   it('accepts #rgb and #rrggbb only', () => {
@@ -71,5 +74,15 @@ describe('fills', () => {
 
   it('describes a fill by its codes', () => {
     expect(fillCode({ type: 'gradient', colors: ['#abc', '#2743f5'] })).toBe('#AABBCC → #2743F5');
+  });
+
+  it('finds another item with the same fill', () => {
+    const item = (id: string, fill: Item['fill']): Item => ({ id, label: id, img: null, fill, h: 0 });
+    const blue = { type: 'solid' as const, colors: ['#3e4c5e'] };
+    const items = [item('a', blue), item('b', { type: 'solid', colors: ['#3E4C5E'] }), item('c', null)];
+    expect(sameFill(blue, { type: 'gradient', colors: ['#3e4c5e', '#3e4c5e'] })).toBe(false);
+    expect(colorTwin(items, 'a', blue)?.id).toBe('b');
+    expect(colorTwin(items, 'b', blue)?.id).toBe('a');
+    expect(colorTwin(items, 'a', { type: 'solid', colors: ['#d9a441'] })).toBeUndefined();
   });
 });

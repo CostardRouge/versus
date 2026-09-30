@@ -31,7 +31,7 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - **Anonymity**: nobody, the author included, sees who voted what. Only aggregates leave the server.
 - **Changing one's vote** (author setting, on by default): a voter can delete one vote or all of theirs, and vote again. When off, votes are final, except undoing the very last vote for a few seconds (mis-taps).
   - Not a weighting risk: under one voice per pair, changing a vote never adds weight. The setting guards against strategic changes (see the results, then adjust) and suits "final vote" contests. The real abuse vector is multiplying identities (see `docs/online-architecture.md`, main risks).
-- **Items are locked once published**: renaming "Pizza" to "Sushi" after 200 votes would betray those votes. The author can still remove an item (its votes are dropped, after a confirmation) and add items from the author panel; visitors can suggest items when the author allows it (one every 5 seconds per connection). Same label twice is refused, a board keeps at least 2 items and at most 100. New items get priority in pair assignment.
+- **Items are locked once published**: renaming "Pizza" to "Sushi" after 200 votes would betray those votes. The author can still remove an item (its votes are dropped, after a confirmation) and add items from the author panel. A color item's color can change, from its swatch in the author panel, with the same logic: its votes were cast on the old color, so they are dropped (after a confirmation when there are some) and the item starts again from zero, keeping its name and place. Items with the same color are flagged there. Visitors can suggest items when the author allows it (one every 5 seconds per connection). Same label twice is refused, a board keeps at least 2 items and at most 100. New items get priority in pair assignment.
 - **Scoring**: the author picks Balanced, Dynamic or Simple, and can switch later (everything is recomputed from the same votes).
   - Balanced (Bradley-Terry) is the recommended default. On pooled votes it estimates the probability that a random voter prefers A to B, and absorbs crowd contradictions (A > B, B > C, C > A among different people).
   - Dynamic becomes a "recent trend": it replays votes in arrival order (a changed vote takes its new time). Simple is biased by uneven opponents.
@@ -53,7 +53,7 @@ The board's Durable Object assigns pairs, not the browser:
 | Mode | Voters see the crowd ranking | Suits |
 | --- | --- | --- |
 | **Always** (default) | Live, while voting | Casual, social boards |
-| **After N votes** | Once they have cast N votes (author picks N, default 10) | Less anchoring, still some feedback |
+| **After N votes** | Once they have cast N votes (author picks N, default 10), or voted every pair when the board has fewer | Less anchoring, still some feedback |
 | **Blind** | Only when the author closes the vote | Contests, unbiased results |
 
 - In every mode, duel cards never show the crowd's score or rank: the duel itself stays blind.
@@ -70,6 +70,18 @@ The board's Durable Object assigns pairs, not the browser:
 - Off: the ranking stays frozen and a badge shows "37 new votes · Refresh".
 - Items whose error margins overlap are shown as neck and neck rather than in a falsely precise order, so close items don't flicker.
 - Stability no longer applies (a crowd ranking never ends). Show "you voted 14 duels" to the voter and "412 votes · 38 voters" for the board.
+
+## End of the vote
+
+When a voter has voted on every pair (n(n−1)/2), their result gets a page of its own, on the same link:
+
+- It opens by itself right after the last vote, with a reveal (the count reaches its total, then the result appears; no animation under `prefers-reduced-motion`). Later, the board shows "You voted on every pair" with a "See your result" button.
+- Two views of the same data, switched by two small icons at the top right (remembered in this browser, podium first):
+  - **Podium**: the crowd's top 3 (the winner revealed last), a switch to the voter's own podium, the agreement with the crowd and the rest of the ranking.
+  - **You vs the crowd**: the voter's ranking (computed in the browser from their votes) facing the crowd's, each item linked by a line; crossing lines are where they disagree. The heading names the crowd's winner; a list shows the voter's picks the crowd contradicts.
+- Visibility still applies: on a blind board the crowd's side waits for the closing and the voter sees their own ranking.
+- The crowd's side follows live updates (a new order re-renders it), or waits for "Refresh" when they are off.
+- If the author adds items, the page says how many new pairs there are and its main button goes back to voting.
 
 ## Author settings
 
