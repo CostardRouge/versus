@@ -1,5 +1,5 @@
-import type { Fill, Item, MethodKey, Ranking } from './types';
-import { hueOf, uid } from './util';
+import type { Fill, Item, MethodKey, Ranking } from './types.ts';
+import { hueOf, uid } from './util.ts';
 
 export function mkItem(label: string, img: string | null = null, fill: Fill | null = null): Item {
   return { id: uid(), label, img, fill, h: hueOf(label) };

@@ -6,8 +6,9 @@
  * worker waits until the page asks it to take over (src/app/pwa.ts), which the user decides: a deploy never
  * reloads the app in the middle of a duel.
  *
- * Only the app's own files go through here. The published boards API, other origins and anything but GET
- * reach the network untouched.
+ * Only the site's own files go through here. The published boards API, other origins and anything but GET
+ * reach the network untouched. The app (app/) opens from the cache; the home pages (the root, fr/) come from
+ * the network when there is one, so they are always current, and from the cache offline.
  */
 
 declare const self: ServiceWorkerGlobalScope;
@@ -19,8 +20,15 @@ const CACHE = `${PREFIX}${__VERSION__}`;
 const scope = new URL(self.registration.scope);
 const at = (path: string): string => new URL(path, scope).href;
 const PRECACHED = new Set(__PRECACHE__.map(at));
-/** The page, stored under the scope's address (see precacheList in build/pwa.ts). */
-const SHELL = at('./');
+/** The app's page, stored under its folder's address (see precacheList in build/pwa.ts). */
+const SHELL = at('./app/');
+/** The home pages, by path relative to the scope; `index.html` is the same page as its folder. */
+const HOMES: Record<string, string> = {
+  '': at('./'),
+  'index.html': at('./'),
+  'fr/': at('./fr/'),
+  'fr/index.html': at('./fr/'),
+};
 
 self.addEventListener('install', (event) => {
   // `reload` skips the HTTP cache, which could still hold the previous deploy's page.
@@ -53,7 +61,8 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') {
     // The app is one page (its routes live in the fragment); anything else opened directly (robots.txt,
     // llms.txt…) goes to the network. Path routes such as /b/<alias> would need absolute asset URLs first.
-    if (path === '' || path === 'index.html') event.respondWith(page(req));
+    if (path === 'app/' || path === 'app/index.html') event.respondWith(page(req));
+    else if (path in HOMES) event.respondWith(home(req, HOMES[path] as string));
     return;
   }
   if (PRECACHED.has(url.origin + url.pathname) || path.startsWith('assets/')) event.respondWith(file(req, event));
@@ -63,6 +72,17 @@ self.addEventListener('fetch', (event) => {
 async function page(req: Request): Promise<Response> {
   const cache = await caches.open(CACHE);
   return (await cache.match(SHELL)) ?? fetch(req);
+}
+
+/** A home page: the network first, so it is always current; the stored copy offline. */
+async function home(req: Request, stored: string): Promise<Response> {
+  try {
+    return await fetch(req);
+  } catch (err) {
+    const hit = await (await caches.open(CACHE)).match(stored);
+    if (hit) return hit;
+    throw err;
+  }
 }
 
 /** Stored files first. Files under assets/ have hashed names and never change: keep the ones fetched later. */

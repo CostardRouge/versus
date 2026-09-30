@@ -1,4 +1,4 @@
-import type { Rng } from './types';
+import type { Rng } from './types.ts';
 
 export const uid = (): string => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 

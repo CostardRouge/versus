@@ -1,4 +1,4 @@
-import type { Messages, PluralKey, Vars } from './en';
+import type { Messages, PluralKey, Vars } from './en.ts';
 
 export const fr: Messages = {
   tagline: 'Classer en comparant deux par deux',

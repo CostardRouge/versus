@@ -1,7 +1,7 @@
 /**
  * Draws every icon and the social card into public/ from build/site.ts: `npm run icons`, then commit the
  * files. Run it again after changing the mark, the colors or the card, and rename the files (ICONS and
- * OG_IMAGE in build/site.ts) when the drawing changes: search engines and unfurlers cache images by URL.
+ * OG_IMAGES in build/site.ts) when the drawing changes: search engines and unfurlers cache images by URL.
  *
  * Text goes through satori, which takes the font as bytes and outputs glyphs as paths: the result is the same
  * on any machine, where a renderer that looks fonts up by name draws blank text wherever they are missing.
@@ -13,9 +13,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { Resvg } from '@resvg/resvg-js';
 import satori from 'satori';
-import { COLORS, ICONS, NAME, OG_IMAGE, pngIcon } from '../build/site.ts';
+import { CARD_COPY, COLORS, ICONS, LANGUAGES, NAME, OG_IMAGES, pngIcon, type SiteLang } from '../build/site.ts';
 import { hueOf } from '../src/core/util.ts';
-import { en } from '../src/i18n/en.ts';
 
 const require = createRequire(import.meta.url);
 const out = new URL('../public/', import.meta.url);
@@ -130,7 +129,7 @@ function cardTint(label: string): string {
 }
 
 /** One duel card as in the app: 4:5, side tag in the corner, the label in the display face. */
-const duelCard = (label: string, side: 'A' | 'B', rotate: number): Node =>
+const duelCard = (label: string, side: 'A' | 'B', rotate: number, tint = label): Node =>
   h(
     'div',
     {
@@ -138,7 +137,7 @@ const duelCard = (label: string, side: 'A' | 'B', rotate: number): Node =>
       width: 206,
       height: 258,
       borderRadius: 26,
-      background: cardTint(label),
+      background: cardTint(tint),
       border: `2px solid ${COLORS.line}`,
       alignItems: 'flex-end',
       padding: '22px 24px',
@@ -164,7 +163,18 @@ const duelCard = (label: string, side: 'A' | 'B', rotate: number): Node =>
       },
       side,
     ),
-    h('div', { color: COLORS.ink, fontFamily: 'Bricolage', fontWeight: 700, fontSize: 44, letterSpacing: -1.5 }, label),
+    h(
+      'div',
+      // Longer labels get a smaller size so they stay inside the card (Lisbonne on the French card).
+      {
+        color: COLORS.ink,
+        fontFamily: 'Bricolage',
+        fontWeight: 700,
+        fontSize: label.length > 6 ? 38 : 44,
+        letterSpacing: -1.5,
+      },
+      label,
+    ),
   );
 
 /** A right arrow drawn as a path: the latin subset of Figtree has no U+2192. */
@@ -189,10 +199,11 @@ const arrow = (color: string): Node => ({
   },
 });
 
-/** 1200×630 social card: the brand, the promise, and a duel as the app shows it. */
-async function socialCard(markSvg: string): Promise<string> {
+/** 1200×630 social card in one language: the brand, the promise, and a duel as the app shows it. */
+async function socialCard(markSvg: string, lang: SiteLang): Promise<string> {
   const markUri = `data:image/svg+xml;base64,${Buffer.from(markSvg).toString('base64')}`;
-  const [line1, line2] = en.tagline.split(', ');
+  const copy = CARD_COPY[lang];
+  const OG_IMAGE = OG_IMAGES[lang];
   return render(
     h(
       'div',
@@ -226,13 +237,13 @@ async function socialCard(markSvg: string): Promise<string> {
               letterSpacing: -3,
               color: COLORS.ink,
             },
-            h('div', {}, `${line1},`),
-            h('div', {}, line2 ?? ''),
+            h('div', {}, copy.lines[0]),
+            h('div', {}, copy.lines[1]),
           ),
           h(
             'div',
             { marginTop: 26, fontSize: 30, fontWeight: 500, lineHeight: 1.35, color: COLORS.muted, width: 560 },
-            'Text, images or colors. Pick a winner, duel after duel, and the ranking builds itself.',
+            copy.body,
           ),
         ),
         h(
@@ -249,17 +260,17 @@ async function socialCard(markSvg: string): Promise<string> {
               fontSize: 26,
               fontWeight: 700,
             },
-            'Start ranking',
+            copy.cta,
             arrow(COLORS.bg),
           ),
-          h('div', { marginLeft: 24, fontSize: 24, fontWeight: 500, color: COLORS.muted }, 'Free · No account'),
+          h('div', { marginLeft: 24, fontSize: 24, fontWeight: 500, color: COLORS.muted }, copy.note),
         ),
       ),
       h(
         'div',
         { position: 'relative', flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
-        h('div', { position: 'absolute', left: 4, top: 128 }, duelCard('Kyoto', 'A', -5)),
-        h('div', { position: 'absolute', left: 246, top: 128 }, duelCard('Lisbon', 'B', 5)),
+        h('div', { position: 'absolute', left: 4, top: 128 }, duelCard(copy.duel[0], 'A', -5, CARD_COPY.en.duel[0])),
+        h('div', { position: 'absolute', left: 246, top: 128 }, duelCard(copy.duel[1], 'B', 5, CARD_COPY.en.duel[1])),
         h(
           'div',
           {
@@ -294,4 +305,4 @@ for (const size of ICONS.png) write(pngIcon(size), png(markSvg, size));
 write(ICONS.maskable, png(await tile(0.8), 512));
 write(ICONS.apple, png(await tile(1), ICONS.appleSize));
 write(ICONS.ico, ico(ICONS.icoSizes.map((size) => ({ size, data: png(markSvg, size) }))));
-write(OG_IMAGE.path, png(await socialCard(markSvg), OG_IMAGE.width));
+for (const lang of LANGUAGES) write(OG_IMAGES[lang].path, png(await socialCard(markSvg, lang), OG_IMAGES[lang].width));

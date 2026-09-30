@@ -1,5 +1,5 @@
-import { getItem } from './model';
-import type { Computed, Duel, ExactState, Item, ItemStats, MethodKey, Outcome, Ranking, Rng } from './types';
+import { getItem } from './model.ts';
+import type { Computed, Duel, ExactState, Item, ItemStats, MethodKey, Outcome, Ranking, Rng } from './types.ts';
 
 export const METHOD_KEYS: readonly MethodKey[] = ['bt', 'elo', 'win', 'sort'];
 

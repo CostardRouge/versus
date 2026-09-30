@@ -52,7 +52,7 @@ type Call = { method: string; url: string; body: unknown; auth: string | null };
 const calls: Call[] = [];
 let respond: (c: Call) => { status: number; body: unknown } = () => ({ status: 404, body: { error: 'not_found' } });
 
-const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+const html = readFileSync(resolve(process.cwd(), 'app/index.html'), 'utf8');
 const body = (html.match(/<body>([\s\S]*)<\/body>/)?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel);
 const click = (sel: string) => {

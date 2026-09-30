@@ -10,9 +10,27 @@ import {
   llmsTxt,
   manifest,
   noscriptHtml,
+  pageUrl,
+  ROBOTS_APP,
+  rootFrom,
   siteUrl,
 } from '../build/seo';
-import { DEFAULT_SITE_URL, DESCRIPTION, ICONS, METHODS, NAME, OG_IMAGE, pngIcon, TITLE } from '../build/site';
+import {
+  DEFAULT_SITE_URL,
+  DESCRIPTION,
+  DESCRIPTIONS,
+  ICONS,
+  LANGUAGES,
+  METHODS,
+  NAME,
+  OG_IMAGE,
+  OG_IMAGES,
+  PAGES,
+  type PageKey,
+  pngIcon,
+  TITLE,
+  TITLES,
+} from '../build/site';
 import { aboutHTML } from '../src/app/about';
 import { en } from '../src/i18n/en';
 import { fr } from '../src/i18n/fr';
@@ -34,7 +52,7 @@ const metaContent = (key: string) =>
   attr(head.split('\n').find((tag) => tag.includes(`"${key}"`)) ?? '', 'content')?.replace(/&amp;/g, '&');
 
 describe('siteUrl', () => {
-  it('falls back to the GitHub Pages address', () => {
+  it('falls back to the default address', () => {
     expect(siteUrl()).toBe(DEFAULT_SITE_URL);
     expect(siteUrl('  ')).toBe(DEFAULT_SITE_URL);
     expect(siteUrl('not a url')).toBe(DEFAULT_SITE_URL);
@@ -49,12 +67,15 @@ describe('siteUrl', () => {
 });
 
 describe('head', () => {
-  it('keeps the title and description within what results display', () => {
-    expect(TITLE.length).toBeGreaterThanOrEqual(50);
-    expect(TITLE.length).toBeLessThanOrEqual(60);
-    expect(String(fr.pageTitle).length).toBeLessThanOrEqual(60);
-    expect(DESCRIPTION.length).toBeGreaterThanOrEqual(70);
-    expect(DESCRIPTION.length).toBeLessThanOrEqual(155);
+  it('keeps the titles and descriptions within what results display, in both languages', () => {
+    for (const lang of LANGUAGES) {
+      expect(TITLES[lang].length, lang).toBeGreaterThanOrEqual(50);
+      expect(TITLES[lang].length, lang).toBeLessThanOrEqual(60);
+      expect(DESCRIPTIONS[lang].length, lang).toBeGreaterThanOrEqual(70);
+      expect(DESCRIPTIONS[lang].length, lang).toBeLessThanOrEqual(155);
+    }
+    expect(TITLES.fr).toBe(fr.pageTitle);
+    expect(DESCRIPTION).toBe(DESCRIPTIONS.en);
     expect(head).toContain(`<title>${TITLE}</title>`);
   });
 
@@ -76,10 +97,16 @@ describe('head', () => {
     expect(metaContent('og:image:alt')).toBeTruthy();
   });
 
-  it('only links files that exist in public/ or are generated', () => {
-    const hrefs = [...head.matchAll(/href="\.\/([^"]+)"/g)].map((m) => m[1] ?? '');
-    expect(hrefs.length).toBeGreaterThan(5);
-    for (const href of hrefs) expect(existsSync(publicFile(href)) || href in files, href).toBe(true);
+  it('only links files that exist in public/ or are generated, from every page', () => {
+    for (const page of Object.keys(PAGES) as PageKey[]) {
+      const tags = headTags(URL_, page).join('\n');
+      const hrefs = [...tags.matchAll(/href="(\.\.?\/)+([^"]+)"/g)].map((m) => m[0]);
+      expect(hrefs.length).toBeGreaterThan(5);
+      for (const [, prefix, file] of tags.matchAll(/href="((?:\.\.?\/)+)([^"]+)"/g)) {
+        expect(prefix, page).toBe(rootFrom(page));
+        expect(existsSync(publicFile(file ?? '')) || (file ?? '') in files, file).toBe(true);
+      }
+    }
   });
 
   it('declares raster favicons in multiples of 48 px only (what Google accepts)', () => {
@@ -114,6 +141,57 @@ describe('head', () => {
     const html = noscriptHtml();
     expect(html).toMatch(/^<noscript>[\s\S]*<\/noscript>$/);
     expect(html).not.toMatch(/<h\d/);
+  });
+});
+
+describe('pages', () => {
+  const tags = (page: PageKey) => headTags(URL_, page).join('\n');
+
+  it('gives each page its own address and a way back to the root', () => {
+    expect(pageUrl(URL_, 'home')).toBe(URL_);
+    expect(pageUrl(URL_, 'homeFr')).toBe(`${URL_}fr/`);
+    expect(pageUrl(URL_, 'app')).toBe(`${URL_}app/`);
+    expect(rootFrom('home')).toBe('./');
+    expect(rootFrom('homeFr')).toBe('../');
+    expect(rootFrom('app')).toBe('../');
+  });
+
+  it('links the two home pages to each other with hreflang, English by default', () => {
+    for (const page of ['home', 'homeFr'] as const) {
+      const html = tags(page);
+      expect(html).toContain(`<link rel="canonical" href="${pageUrl(URL_, page)}" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="en" href="${URL_}" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="fr" href="${URL_}fr/" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="x-default" href="${URL_}" />`);
+    }
+  });
+
+  it('describes the French home page in French, with its own card', () => {
+    const html = tags('homeFr');
+    expect(html).toContain(`<title>${TITLES.fr}</title>`);
+    expect(html).toContain('<meta property="og:locale" content="fr_FR" />');
+    expect(html).toContain('<meta property="og:locale:alternate" content="en_US" />');
+    expect(html).toContain(`<meta property="og:image" content="${URL_}${OG_IMAGES.fr.path}" />`);
+    expect(html).toContain(`<meta property="og:url" content="${URL_}fr/" />`);
+    expect(pngFile(OG_IMAGES.fr.path)).toEqual([OG_IMAGES.fr.width, OG_IMAGES.fr.height]);
+  });
+
+  it('keeps the app out of the index, without hreflang or JSON-LD', () => {
+    const html = tags('app');
+    expect(html).toContain(`<meta name="robots" content="${ROBOTS_APP}" />`);
+    expect(html).toContain(`<link rel="canonical" href="${URL_}app/" />`);
+    expect(html).not.toContain('hreflang');
+    expect(html).not.toContain('application/ld+json');
+  });
+
+  it('resolves the French graph: page ids of its own, entity ids shared', () => {
+    const nodes = graph(URL_, 'fr');
+    const ids = new Set(nodes.map((n) => n['@id']));
+    expect(ids.has(`${URL_}fr/#webpage`)).toBe(true);
+    expect(ids.has(`${URL_}#app`)).toBe(true);
+    const page = nodes.find((n) => n['@type'] === 'WebPage');
+    expect(page?.inLanguage).toBe('fr');
+    expect(page?.primaryImageOfPage).toEqual({ '@id': `${URL_}fr/#image` });
   });
 });
 
@@ -190,7 +268,9 @@ describe('generated files', () => {
   it('writes a manifest that parses and names the app', () => {
     const m = JSON.parse(files['manifest.webmanifest']?.body ?? '');
     expect(m.name).toBe(NAME);
-    expect(m.start_url).toBe('./');
+    // The installed app opens the app; its id stays the root it had before the home page existed.
+    expect(m.start_url).toBe('./app/');
+    expect(m.id).toBe('./');
   });
 
   it('points robots.txt at the sitemap and keeps the API out', () => {
@@ -199,10 +279,14 @@ describe('generated files', () => {
     expect(robots).toContain('Disallow: /api/');
   });
 
-  it('lists the canonical address in the sitemap, with its last change', () => {
+  it('lists both home pages in the sitemap, with their alternates and last change, not the app', () => {
     const sitemap = files['sitemap.xml']?.body ?? '';
     expect(sitemap).toContain(`<loc>${URL_}</loc>`);
+    expect(sitemap).toContain(`<loc>${URL_}fr/</loc>`);
+    expect(sitemap).not.toContain(`${URL_}app/`);
     expect(sitemap).toContain('<lastmod>2026-09-30</lastmod>');
+    expect(sitemap.match(/hreflang="x-default"/g)).toHaveLength(2);
+    expect(sitemap).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"');
   });
 
   it('describes the app and every scoring method in llms.txt', () => {
@@ -210,6 +294,8 @@ describe('generated files', () => {
     expect(llms.startsWith(`# ${NAME}\n\n> ${DESCRIPTION}`)).toBe(true);
     for (const method of METHODS) expect(llms).toContain(method.name);
     expect(llms).toContain(`(${URL_})`);
+    expect(llms).toContain(`(${URL_}fr/)`);
+    expect(llms).toContain(`(${URL_}app/)`);
   });
 
   it('adds the Cloudflare headers to the Worker build only', () => {
@@ -217,5 +303,7 @@ describe('generated files', () => {
     const worker = generatedFiles(URL_, { lastmod: '2026-09-30', worker: true });
     expect(worker._headers?.body).toContain('Content-Type: text/html; charset=utf-8');
     expect(worker._headers?.body).toContain('Content-Type: application/manifest+json');
+    for (const path of ['/\n', '/fr/\n', '/app/\n']) expect(worker._headers?.body).toContain(path);
+    expect(worker._headers?.body).toContain('/app/*\n  X-Robots-Tag: noindex');
   });
 });

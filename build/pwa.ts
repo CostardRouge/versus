@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { ICONS } from './site.ts';
 
-/** The service worker's file name, at the root of the build next to index.html (its scope is the app). */
+/** The service worker's file name, at the root of the build next to index.html (its scope is the whole site). */
 export const SW_FILE = 'sw.js';
 
 /** Placeholders in src/sw/sw.ts, replaced in the built worker. */
@@ -9,27 +9,31 @@ export const PRECACHE_MARK = '__PRECACHE__';
 export const VERSION_MARK = '__VERSION__';
 
 /**
- * What the service worker stores at install: the page, its script and styles, the latin fonts of the first
+ * What the service worker stores at install: the pages (the app and the two home pages, so an app installed
+ * before the home page existed still opens offline), their scripts and styles, the latin fonts of the first
  * render, the manifest and the SVG icon. Other files under assets/ (font subsets for other scripts) are stored
- * on first use; the social card, PNG icons and crawler files are never needed offline.
+ * on first use; the social cards, PNG icons and crawler files are never needed offline.
  */
 const PRECACHE = [
-  /^index\.html$/,
+  /^(?:(?:fr|app)\/)?index\.html$/,
   /^assets\/[^/]+\.(?:js|css)$/,
   /^assets\/[^/]+-latin-(?!ext-)[^/]*\.woff2$/,
   /^manifest\.webmanifest$/,
   new RegExp(`^${ICONS.svg.replace(/\./g, '\\.')}$`),
 ];
 
+/** A page's address from its file: `app/index.html` is stored as `./app/`. */
+export const pageAddress = (file: string): string => `./${file.replace(/index\.html$/, '')}`;
+
 /**
- * Files to precache, relative to the worker's scope. The page is stored under the scope itself (`./`), the
- * address every host serves directly: Cloudflare redirects `/index.html` to `/`, and a navigation can't be
- * answered with a redirected response.
+ * Files to precache, relative to the worker's scope. Pages are stored under their folder's address (`./`,
+ * `./fr/`, `./app/`), the one every host serves directly: Cloudflare redirects `/index.html` to `/`, and a
+ * navigation can't be answered with a redirected response.
  */
 export function precacheList(files: Iterable<string>): string[] {
   return [...files]
     .filter((f) => PRECACHE.some((re) => re.test(f)))
-    .map((f) => (f === 'index.html' ? './' : f))
+    .map((f) => (f.endsWith('index.html') ? pageAddress(f) : f))
     .sort();
 }
 

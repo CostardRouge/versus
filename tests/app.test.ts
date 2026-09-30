@@ -6,7 +6,7 @@ import { offerUpdate } from '../src/app/pwa';
 import { mount } from '../src/app/ui';
 import { getLang } from '../src/i18n';
 
-const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+const html = readFileSync(resolve(process.cwd(), 'app/index.html'), 'utf8');
 const body = (html.match(/<body>([\s\S]*)<\/body>/)?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
 
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel);

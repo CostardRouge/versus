@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { cacheVersion, injectPrecache, PRECACHE_MARK, precacheList, VERSION_MARK } from '../build/pwa';
+import { cacheVersion, injectPrecache, PRECACHE_MARK, pageAddress, precacheList, VERSION_MARK } from '../build/pwa';
 import { ICONS } from '../build/site';
 
 const BUILD = [
   'index.html',
+  'fr/index.html',
+  'app/index.html',
+  'assets/main-Hp-_VIKh.js',
+  'assets/main-BCOQ7pW3.css',
   'assets/index-CWzlMAkk.js',
   'assets/index-CWzlMAkk.js.map',
   'assets/index-Dw_WARWv.css',
@@ -28,9 +32,12 @@ const BUILD = [
 describe('precacheList', () => {
   const list = precacheList(BUILD);
 
-  it('stores the page under the scope, with its script, styles, manifest and icon', () => {
+  it('stores each page under its folder, with the scripts, styles, manifest and icon', () => {
     expect(list).toContain('./');
-    expect(list).not.toContain('index.html');
+    expect(list).toContain('./fr/');
+    expect(list).toContain('./app/');
+    for (const f of list) expect(f.endsWith('index.html'), f).toBe(false);
+    expect(list).toContain('assets/main-Hp-_VIKh.js');
     expect(list).toContain('assets/index-CWzlMAkk.js');
     expect(list).toContain('assets/index-Dw_WARWv.css');
     expect(list).toContain('manifest.webmanifest');
@@ -53,6 +60,14 @@ describe('precacheList', () => {
   it('is sorted, whatever the bundle order', () => {
     expect(precacheList([...BUILD].reverse())).toEqual(list);
     expect([...list].sort()).toEqual(list);
+  });
+});
+
+describe('pageAddress', () => {
+  it('maps a page file to the address the hosts serve it at', () => {
+    expect(pageAddress('index.html')).toBe('./');
+    expect(pageAddress('fr/index.html')).toBe('./fr/');
+    expect(pageAddress('app/index.html')).toBe('./app/');
   });
 });
 

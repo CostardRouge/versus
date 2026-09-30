@@ -1,0 +1,53 @@
+/* Design tokens shared by the app (styles.css) and the home page (src/landing/landing.css): light values on
+   :root, dark values under prefers-color-scheme and [data-theme]. */
+:root {
+  --bg: #eceef2;
+  --surface: #fafbfd;
+  --surface-2: #e1e4eb;
+  --ink: #13151b;
+  --muted: #5a6072;
+  --line: #d2d6df;
+  --a: #2743f5;
+  --b: #e4492a;
+  --on-accent: #ffffff;
+  --good: #16855a;
+  --bad: #c23e28;
+  --shadow: 0 1px 0 rgba(19, 21, 27, 0.04), 0 12px 30px -14px rgba(19, 21, 27, 0.22);
+  --f-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body: "Figtree Variable", "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r-lg: 20px;
+  --r-md: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1015;
+    --surface: #161920;
+    --surface-2: #1f232c;
+    --ink: #eceef3;
+    --muted: #9298a8;
+    --line: #2a2f3a;
+    --a: #7089ff;
+    --b: #ff7a58;
+    --on-accent: #0e1015;
+    --good: #4cc98e;
+    --bad: #ff6b52;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 14px 34px -14px rgba(0, 0, 0, 0.7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1015;
+  --surface: #161920;
+  --surface-2: #1f232c;
+  --ink: #eceef3;
+  --muted: #9298a8;
+  --line: #2a2f3a;
+  --a: #7089ff;
+  --b: #ff7a58;
+  --on-accent: #0e1015;
+  --good: #4cc98e;
+  --bad: #ff6b52;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 14px 34px -14px rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}

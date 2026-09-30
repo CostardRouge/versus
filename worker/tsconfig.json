@@ -12,7 +12,9 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    // Shared src/core modules import each other with their extension (build/ loads them natively).
+    "allowImportingTsExtensions": true
   },
   "include": ["src"]
 }

@@ -1,4 +1,4 @@
-import type { Fill, Item } from './types';
+import type { Fill, Item } from './types.ts';
 
 /** True for #rgb or #rrggbb. */
 export const isHex = (s: string): boolean => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s.trim());

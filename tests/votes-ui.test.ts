@@ -9,7 +9,7 @@ import type { Item, Joined, Ranking } from '../src/core/types';
 /** "Your votes" for someone who came through shared links and made nothing yet, against a fake API. */
 
 const ALIAS = 'Ab3dEf7hJk';
-const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
+const html = readFileSync(resolve(process.cwd(), 'app/index.html'), 'utf8');
 const body = (html.match(/<body>([\s\S]*)<\/body>/)?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel);
 const click = (sel: string) => {
