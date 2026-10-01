@@ -88,6 +88,8 @@ const HEX_RE = /^#[0-9a-f]{6}$/i;
 const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 export const ALIAS_LENGTH = 10;
 export const ALIAS_RE = /^[1-9A-HJ-NP-Za-km-z]{10}$/;
+/** An owner token: 32 random bytes in hex, shown once to the author (the board keeps only its hash). */
+export const TOKEN_RE = /^[0-9a-f]{64}$/;
 
 const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 const fail = <T>(error: ErrorCode): Result<T> => ({ ok: false, error });
@@ -110,7 +112,8 @@ export function makeAlias(randomBytes: (n: number) => Uint8Array): string {
 
 // ─── Validation of untrusted input ──────────────────────────────────────────
 
-function parseFill(x: unknown): Fill | null | undefined {
+/** A fill from untrusted input: null when absent, undefined when malformed. */
+export function parseFill(x: unknown): Fill | null | undefined {
   if (x === null || x === undefined) return null;
   if (!isRecord(x) || (x.type !== 'solid' && x.type !== 'gradient') || !Array.isArray(x.colors)) return undefined;
   const [min, max] = x.type === 'solid' ? [1, 1] : [2, 3];

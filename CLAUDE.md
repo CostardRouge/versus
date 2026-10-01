@@ -63,7 +63,7 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   board.ts            published boards: publish validation, one voice per pair, visibility, pair assignment, sessions,
                       moderation (reports, hidden and featured flags), the site's own boards (official templates)
   protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker, the admin list and view, Popular
-  templates.ts        the official templates (D106): fixed EN/FR lists, their slugs and pages, what the Worker publishes
+  templates.ts        the official templates (D110): fixed EN/FR lists, their slugs and pages, what the Worker publishes
   route.ts            the app's addresses (D92): demo/<slug>, r/<id>, b/<alias>, tab; parse and write, author fragment;
                       trackedPath() = the address audience measurement records (ids and aliases replaced)
   published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
@@ -72,6 +72,7 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   joined.ts           "Your votes": cards of boards voted on (snapshot, what's new since the last visit, order, copy)
   list.ts             a list typed or pasted in the add field as labels (lines, `\n`, Markdown and bulleted lists, tabs,
                       JSON array); duplicates of what the ranking has
+  backup.ts           export and import (D97–D101): the file format, strict validation of a file, merge that never replaces
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
                       landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules);
@@ -101,6 +102,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   router.ts           the address bar follows the view (push, replace), app folder from the page's <base>; counts each view
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
+  backup.ts           export (share sheet on phones, download elsewhere) and import (file picked or dropped)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
   storage.ts          guarded localStorage access, prefs, migration from prototype keys
 src/landing/          the home page: markup.ts renders it at build time (pure strings, like frame.ts: the demo frames'
@@ -110,7 +112,7 @@ src/landing/          the home page: markup.ts renders it at build time (pure st
                       pause), sections.ts (title word, vignettes, try it, methods, crowd, languages), landing.css
 src/legal/            the legal notice (publisher, hosting, privacy, measurement, licence): markup.ts renders it at build time with
                       the home page's header and footer; main.ts + mount.ts count the view and run the measurement switch; legal.css
-src/admin/            the moderation page (/admin/, D103): page.ts renders it and calls /api/admin with the token typed on it (kept in
+src/admin/            the moderation page (/admin/, D107): page.ts renders it and calls /api/admin with the token typed on it (kept in
                       sessionStorage), admin.ts is the entry (its bundle is named admin-*, kept out of the precache), admin.css; no measurement
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
                       cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), pictures.ts (items' pictures: sent for review to R2,
@@ -125,6 +127,7 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       + seo.test.ts (heads per page, hreflang, JSON-LD, icons and generated files stay consistent) + pwa.test.ts (precache
                       list, version) + landing.test.ts (home page markup and texts) + landing-ui.test.ts (jsdom smoke test)
                       + audience.test.ts (measurement settings, loading rules, clean payloads) + legal.test.ts (legal pages, switch)
+                      + backup-ui.test.ts (export, import, drop, the iOS home-screen note)
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 
@@ -133,10 +136,10 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **All user-facing text goes through `t()`** (`src/i18n`). Add every key to both `en.ts` and `fr.ts` (typecheck enforces parity; tests check placeholders match). Plurals via `plural(n, key)`, percentages via `pct()`. The home page's texts go in `landing-en.ts` and `landing-fr.ts` (same rules); it renders at build time, so its script gets texts as JSON and never imports a dictionary.
 - **Business logic lives in `src/core`**, never in `src/app/` or `worker/`. It is shared with the Cloudflare Worker, so keep it free of DOM, browser and Workers APIs; `worker/` only adapts it (storage, sockets, alarms).
 - **Addresses:** every view has a path under `app/` (D92, `core/route.ts`): open views through `open()` / `openBoard()` / `goBack()` / `setTab()`, which keep the address bar in step, never with `history` directly. Links the app builds come from `routeURL()`; an author's token only ever goes in the fragment. A duel link adds `?duel=<a>.<b>` (`core/share.ts`), read once and dropped from the address.
-- **Sharing (D98 to D102):** images are drawn in the browser (`app/share.ts`), never on the Worker; a board's link preview card is the landscape one, sent with `putCard()` and served by `worker/src/cards.ts`. New share entry points build a `CardSpec` in `core/share.ts` and call `openShare()`.
-- **Official templates and public lists (D106 to D108):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
-- **Pictures (D109, D110, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author panel does (text until approved).
-- **Moderation (D103 to D105, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
+- **Sharing (D102 to D106):** images are drawn in the browser (`app/share.ts`), never on the Worker; a board's link preview card is the landscape one, sent with `putCard()` and served by `worker/src/cards.ts`. New share entry points build a `CardSpec` in `core/share.ts` and call `openShare()`.
+- **Official templates and public lists (D110 to D112):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
+- **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author panel does (text until approved).
+- **Moderation (D107 to D109, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).

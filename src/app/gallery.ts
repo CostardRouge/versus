@@ -1,3 +1,4 @@
+import { hasBackup } from '../core/backup';
 import { revealAt } from '../core/board';
 import { fillCSS } from '../core/colors';
 import { DEMOS } from '../core/demos';
@@ -11,8 +12,9 @@ import { aboutHTML } from './about';
 import { trashSvg } from './dom';
 import { ago, fmtScore } from './format';
 import { popularBoards } from './popular';
+import { iosHomeScreen } from './pwa';
 import { online } from './remote';
-import { S, stat } from './state';
+import { localData, S, stat } from './state';
 
 function tileHTML(it: Item | undefined, i: number, ranked: boolean): string {
   const cls = `tile${i === 0 ? ' first' : ''}`;
@@ -144,6 +146,18 @@ function pcardHTML(b: PopularBoard): string {
   </article>`;
 }
 
+/** Where the rankings live, and the way to move them: export, import (docs/pwa.md). */
+function dataHTML(): string {
+  const exp = hasBackup(localData())
+    ? `<button class="link" type="button" data-action="export-all" title="${t('exportAllTitle')}">${t('exportAll')}</button>`
+    : '';
+  return `<p class="g-data"><span class="muted">${t('dataNote')}</span>${exp}<button class="link" type="button" data-action="import" title="${t('importTitle')}">${t('importBtn')}</button></p>`;
+}
+
+/** The iOS home-screen app starts empty: its storage is apart from Safari's. Shown until it holds something. */
+const iosNoteHTML = (): string =>
+  `<div class="g-note"><p><b>${t('iosNoteTitle')}</b> ${t('iosNoteBody')}</p><button class="btn sm" type="button" data-action="import">${t('importBtn')}</button></div>`;
+
 export function galleryHTML(): string {
   const mine = S.ranks.filter((r) => !r.demo).sort((a, b) => b.updated - a.updated);
   const joined = sortJoined(S.joined);
@@ -182,8 +196,10 @@ export function galleryHTML(): string {
     ${votesGrid}`
         : ''
     }`;
+  const note = iosHomeScreen() && !mine.length && !joined.length ? iosNoteHTML() : '';
   return `<section class="gallery">
-    ${top}
+    ${note}${top}
+    ${dataHTML()}
     ${popularSec}
     <div class="sec-head demo-head">
       <div><h2>${t('demos')}</h2><p class="muted">${t('demosIntro')}</p></div>

@@ -1,6 +1,6 @@
 export type Vars = Record<string, string | number>;
 export type Entry = string | ((v: Vars) => string);
-export type PluralKey = 'item' | 'duel' | 'image' | 'vote' | 'voter' | 'pair' | 'duplicate' | 'picture';
+export type PluralKey = 'item' | 'duel' | 'image' | 'vote' | 'voter' | 'pair' | 'duplicate' | 'ranking' | 'picture';
 
 export const en = {
   tagline: 'Rank anything, two at a time',
@@ -196,6 +196,26 @@ export const en = {
   resetDemoBody: 'Your duels and edits on this demo will be replaced by its original version.',
   demoReset: 'Demo reset',
   copySuffix: '(copy)',
+  dataNote: 'Stored in this browser only.',
+  exportAll: 'Export',
+  exportAllTitle: 'Save your rankings and votes in a file, to keep them or open them in another browser',
+  importBtn: 'Import',
+  importTitle: 'Add the rankings of a Versus file',
+  exportOne: 'Export',
+  exportOneTitle: 'Save this ranking in a file, to keep it or send it',
+  exported: 'Saved: {file}',
+  exportedKeys: 'Saved. The file holds the keys to your published boards: keep it to yourself.',
+  imported: 'Imported: {what}',
+  importedVotes: '{n} in Your votes',
+  importedSame: '{n} already here',
+  importNotVersus: 'This file isn’t a Versus export',
+  importNewer: 'This file comes from a newer version of Versus: reload the app and try again',
+  importEmpty: 'This file holds no ranking',
+  importNothingNew: 'Nothing new: everything in this file is already here',
+  importTooBig: 'Not enough room in this browser for this file',
+  iosNoteTitle: 'Your rankings from Safari aren’t here.',
+  iosNoteBody:
+    'The app on your home screen keeps its own storage. In Safari, open Versus and tap Export under your rankings, then import the file here.',
   copyCreated: 'Copy created, without the duels',
   deleteTitle: 'Delete this ranking?',
   deleteBody: '“{title}” and its {items} will be permanently deleted.',
@@ -424,5 +444,6 @@ export const enPlurals: Record<PluralKey, [string, string]> = {
   voter: ['voter', 'voters'],
   pair: ['pair', 'pairs'],
   duplicate: ['duplicate', 'duplicates'],
+  ranking: ['ranking', 'rankings'],
   picture: ['picture', 'pictures'],
 };

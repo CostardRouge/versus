@@ -295,9 +295,10 @@ export function noscriptHtml(): string {
 }
 
 /**
- * Web app manifest. The installed app opens the app (app/), not the home page. `minimal-ui` rather than `standalone`: rankings live in localStorage, and iOS gives a
- * standalone home-screen app its own storage, so a ranking made in Safari would vanish once installed.
- * Browsers without minimal-ui (iOS) open the site in the browser; Android gets a window with a back button.
+ * Web app manifest. The installed app opens the app (app/), not the home page, in a window of its own
+ * (`standalone`). On iOS that window keeps its own storage, apart from Safari's: rankings move in with an
+ * export and an import (src/core/backup.ts), and the empty app says how (D98). It was `minimal-ui` until then
+ * (D69), which iOS doesn't have: the icon opened Safari.
  * Colors are the light palette: the manifest is read once at install and cannot follow the theme.
  */
 export function manifest(): Record<string, unknown> {
@@ -311,7 +312,7 @@ export function manifest(): Record<string, unknown> {
     id: './',
     start_url: './app/',
     scope: './',
-    display: 'minimal-ui',
+    display: 'standalone',
     orientation: 'any',
     background_color: COLORS.bg,
     theme_color: COLORS.bg,

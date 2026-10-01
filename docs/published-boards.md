@@ -23,17 +23,17 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - **Links** are paths of the app (D92): `…/app/b/<alias>` to share, `…/app/b/<alias>#owner=<token>` as the admin link, the token in the fragment so it never reaches a server. Opening an admin link stores the token in this browser and removes it from the address bar. Links from before (`#/b/<alias>`, `?owner=`) still open and are rewritten to the path form.
 - If a board turns out to be gone (withdrawn elsewhere or expired), nothing is deleted automatically: the author's page offers to go back to the local version, which also forgets the owner token.
 - Text and color items; pictures only through review, when the server allows them (Images below). Otherwise a ranking containing images can't be published (the modal says why).
-- **Link previews** (D100): the board's page carries its title, a description in the board's language (stored at publication) and a card drawn by the app (title, podium or items, 1200×630), so the link pasted in a chat or a feed shows the board. A duel link (`?duel=a.b`) shows its two items as the app's cards. The card is sent when the board is published and each time someone shares from the app; the server keeps one per board and up to 40 per board's duels, and deletes them with the board.
+- **Link previews** (D104): the board's page carries its title, a description in the board's language (stored at publication) and a card drawn by the app (title, podium or items, 1200×630), so the link pasted in a chat or a feed shows the board. A duel link (`?duel=a.b`) shows its two items as the app's cards. The card is sent when the board is published and each time someone shares from the app; the server keeps one per board and up to 40 per board's duels, and deletes them with the board.
 
 ## Sharing
 
-- **Share as an image** (D98, D99), from three places: the board page (the crowd's standings as this viewer may see them, or the items when the crowd is hidden), the duel on screen (its two cards, with a link that opens the board on that duel, D101), and the end-of-vote page (the viewer's ranking facing the crowd's, with the agreement; their own ranking alone while the crowd stays hidden). Local rankings have it too, from the Ranking tab, with a link to the site.
+- **Share as an image** (D102, D103), from three places: the board page (the crowd's standings as this viewer may see them, or the items when the crowd is hidden), the duel on screen (its two cards, with a link that opens the board on that duel, D105), and the end-of-vote page (the viewer's ranking facing the crowd's, with the agreement; their own ranking alone while the crowd stays hidden). Local rankings have it too, from the Ranking tab, with a link to the site.
 - The panel shows the card in the format chosen (post 4:5, story 9:16, landscape), and offers the system share sheet with the image and a message that carries the link, or copying the message, copying the image, downloading it. The format chosen stays for the session.
-- **Make my own** (D102): on the board page and the end-of-vote page (not for the author), and on a card under Your votes, a button makes a ranking of this browser with the board's title and items, without votes, to change and publish.
+- **Make my own** (D106): on the board page and the end-of-vote page (not for the author), and on a card under Your votes, a button makes a ranking of this browser with the board's title and items, without votes, to change and publish.
 
 ## Moderation
 
-Decided on 2026-09-30 (D103 to D105), built in `worker/`, `src/admin/` and the board page.
+Decided on 2026-09-30 (D107 to D109), built in `worker/`, `src/admin/` and the board page.
 
 - **Report** (visitors, not the author): a link at the end of the board page opens a small form, a reason (spam or advertising; hateful, violent or sexual content; personal data or harassment; something else) and an optional note (300 characters). The report travels with the browser's anonymous voter id, so a browser counts once: a new report replaces its previous one. A board keeps 200 voters' reports at most. Reports are anonymous: nobody answers the reporter. Reporting isn't an activity for the inactivity TTL.
 - **The admin page**, `/admin/`, is the publisher's: the boards of the registry with their counts, flags and report counts, filters (all, reported, featured, hidden, open, closed), a title search, and per board the full view (ranking included, whatever its visibility), the reports with their reasons and notes, and the actions: close or reopen the vote, feature, hide, remove an item, mark the reports reviewed, take the board down. It asks for the Worker's `ADMIN_TOKEN` and keeps it in the tab only; wrong token, back to the form. English or French from the browser's language. Out of the index and of the offline cache.
@@ -43,7 +43,7 @@ Decided on 2026-09-30 (D103 to D105), built in `worker/`, `src/admin/` and the b
 
 ## Images
 
-Decided on 2026-09-30 (D109, D110), built in `worker/src/pictures.ts`, the publish flow and the moderation page.
+Decided on 2026-09-30 (D113, D114), built in `worker/src/pictures.ts`, the publish flow and the moderation page.
 
 - **Off by default.** The Worker's `IMAGES_UPLOAD` variable set to `review` turns pictures on; the app asks `GET /api/config` when a ranking with images is about to be published, and keeps refusing it (with the same message as before) while they are off.
 - **Announced, sent, reviewed.** When they are on, the publish modal says that the pictures will be sent to the moderator and show once approved. The request announces each picture (`pic: 'pending'` on the item, never the bytes); right after publishing, the app sends each picture (the 640 px JPEG it keeps, under 250 KB) with the author's token. Meanwhile the item shows as text to everyone; the author panel says "Picture awaiting review" next to it.
@@ -53,7 +53,7 @@ Decided on 2026-09-30 (D109, D110), built in `worker/src/pictures.ts`, the publi
 
 ## Official templates and the Popular section
 
-Decided on 2026-09-30 (D106 to D108), built in `src/core/templates.ts`, `worker/src/templates.ts` and `src/app/popular.ts`.
+Decided on 2026-09-30 (D110 to D112), built in `src/core/templates.ts`, `worker/src/templates.ts` and `src/app/popular.ts`.
 
 - **Official templates** are fixed lists on divisive topics (game consoles, video games, programming languages, phone brands, computers, cameras, Star Wars films, French pastries, pizzas, streaming services, social networks, superheroes, colors), in English and French. Each becomes a real published board per language, published by the Worker the first time its page or the Popular list asks for it, with the site as author (`official`: it never expires, the admin moderates it like any board), the Balanced method, results always visible, votes open to everyone, no item changes by visitors.
 - **Template pages** at `/t/<slug>/` (English) and `/fr/t/<slug>/` (French), linked to each other by hreflang: the template's title and intro, the crowd's ranking as text with each item's share of won duels, the vote and voter counts, "Vote now" and "Make my own version" (both open the board in the app), how the ranking is made, and the other templates. Rendered by the Worker into the legal page's shell (header, footer, fonts), with the board's card as link preview when someone shared it. `noindex` until the board has 30 voters, then indexed and listed in the sitemap, which the Worker completes.

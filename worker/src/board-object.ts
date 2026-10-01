@@ -33,6 +33,7 @@ import {
   sessionUndo,
   sessionVote,
   setStatus,
+  TOKEN_RE,
   TTL_DAYS,
   updateSettings,
   voteCount,
@@ -79,7 +80,6 @@ const BROADCAST_MS = 1000;
 const GONE = 4004;
 /** Up to this many voters, each new voter refreshes the registry row (then once a day). */
 const FRESH_VOTERS = 100;
-const TOKEN_RE = /^[0-9a-f]{64}$/;
 
 // One row per voter and pair: a vote is a single upsert, so one row write (no extra index).
 const SCHEMA = `
