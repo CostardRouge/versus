@@ -29,6 +29,7 @@ import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } fro
 import { changeTheme } from './header';
 import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
 import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
+import { makeMineFromPopular } from './popular';
 import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
@@ -171,6 +172,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'make-mine':
       makeMineFromCard(el.dataset.alias);
+      break;
+    case 'make-mine-popular':
+      void makeMineFromPopular(el.dataset.alias);
       break;
     case 'b-make-mine':
       boardMakeMine();

@@ -61,8 +61,9 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   colors.ts           hex/HSL, luminance, fillCSS (gradient rendering), harmonies
   demos.ts            demo data (EN/FR labels) + deterministic simulation (seeded PRNG)
   board.ts            published boards: publish validation, one voice per pair, visibility, pair assignment, sessions,
-                      moderation (reports, hidden and featured flags)
-  protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker, the admin list and view
+                      moderation (reports, hidden and featured flags), the site's own boards (official templates)
+  protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker, the admin list and view, Popular
+  templates.ts        the official templates (D106): fixed EN/FR lists, their slugs and pages, what the Worker publishes
   route.ts            the app's addresses (D92): demo/<slug>, r/<id>, b/<alias>, tab; parse and write, author fragment;
                       trackedPath() = the address audience measurement records (ids and aliases replaced)
   published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
@@ -79,8 +80,9 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   ui.ts               mount(): loads data, adds demos, binds events, first render
   state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
   rankings.ts         render() (gallery or workspace), routeFromURL() and ranking-level actions (new, open, reset, duplicate, delete, language)
-  gallery.ts          gallery cards: your rankings, your votes (boards voted on), demos
+  gallery.ts          gallery cards: your rankings, your votes (boards voted on), Popular (featured boards and templates), demos
   joined.ts           "Your votes": records a card at the first vote, refreshes cards from the server, forget, keep a copy
+  popular.ts          the Popular section's list (fetched at most every ten minutes, never stored) and "Make my own" from it
   about.ts            the page text closing the gallery (what Versus is, how it works, methods); its static English copy
                       with the page's h1 is in index.html for crawlers without JavaScript (build/seo.ts)
   workspace.ts        workspace shell, tabs, method menu, renderMain() (duel or results)
@@ -111,9 +113,10 @@ src/legal/            the legal notice (publisher, hosting, privacy, measurement
 src/admin/            the moderation page (/admin/, D103): page.ts renders it and calls /api/admin with the token typed on it (kept in
                       sessionStorage), admin.ts is the entry (its bundle is named admin-*, kept out of the precache), admin.css; no measurement
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
-                      cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), registry.ts + migrations/ (D1 registry: the admin
-                      list's rows, flags and report counts), turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET; bindings BOARDS,
-                      REGISTRY, IMAGES (R2 bucket versus-images)
+                      cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), templates.ts (official templates: publication on
+                      demand, the /t/<slug>/ pages in the legal shell, the sitemap completed), registry.ts + migrations/ (D1 registry: the admin
+                      list's rows, flags, report counts, template key, recent votes, top labels), random.ts, turnstile.ts; own tsconfig; secrets
+                      ADMIN_TOKEN, TURNSTILE_SECRET; bindings BOARDS, REGISTRY, IMAGES (R2 bucket versus-images); `run_worker_first` for /sitemap.xml
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + board-ui.test.ts, votes-ui.test.ts, share-ui.test.ts and
                       admin-ui.test.ts (published boards, "Your votes", the share panel and the moderation page against a fake API and a fake
                       canvas, tests/helpers/) + worker.test.ts (end to end in workerd via Wrangler's test harness)
@@ -129,6 +132,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Business logic lives in `src/core`**, never in `src/app/` or `worker/`. It is shared with the Cloudflare Worker, so keep it free of DOM, browser and Workers APIs; `worker/` only adapts it (storage, sockets, alarms).
 - **Addresses:** every view has a path under `app/` (D92, `core/route.ts`): open views through `open()` / `openBoard()` / `goBack()` / `setTab()`, which keep the address bar in step, never with `history` directly. Links the app builds come from `routeURL()`; an author's token only ever goes in the fragment. A duel link adds `?duel=<a>.<b>` (`core/share.ts`), read once and dropped from the address.
 - **Sharing (D98 to D102):** images are drawn in the browser (`app/share.ts`), never on the Worker; a board's link preview card is the landscape one, sent with `putCard()` and served by `worker/src/cards.ts`. New share entry points build a `CardSpec` in `core/share.ts` and call `openShare()`.
+- **Official templates and public lists (D106 to D108):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
 - **Moderation (D103 to D105, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.

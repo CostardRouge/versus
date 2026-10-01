@@ -1,4 +1,4 @@
-import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../core/protocol';
+import type { BoardSummary, BoardView, ClientMessage, PopularBoard, ServerMessage } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
 import { duelQuery } from '../core/share';
 import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking, ReportReason } from '../core/types';
@@ -58,6 +58,11 @@ export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DE
 /** Boards as this voter may see them, for "Your votes"; null for a board that no longer exists. */
 export const fetchSummaries = (voter: string, aliases: string[]) =>
   call<Record<string, BoardSummary | null>>('POST', '', { voter, aliases }, undefined, '/api/summaries');
+/** The Popular section of one language: featured boards and the official templates, the liveliest first. */
+export async function fetchPopular(lang: string): Promise<PopularBoard[]> {
+  const data = await call<{ boards?: unknown }>('GET', `?lang=${lang}`, undefined, undefined, '/api/popular');
+  return Array.isArray(data?.boards) ? (data.boards as PopularBoard[]) : [];
+}
 /** Reports a board to the moderator: a reason and a few words, with this browser's anonymous voter id. */
 export const reportBoard = (alias: string, report: { voter: string; reason: ReportReason; note: string }) =>
   call<true>('POST', `/${alias}/report`, report);

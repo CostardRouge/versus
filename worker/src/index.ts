@@ -1,10 +1,12 @@
-import { ALIAS_RE, isRecord, makeAlias, parsePublish } from '../../src/core/board';
+import { ALIAS_RE, isRecord, parsePublish } from '../../src/core/board';
 import { parseSummaryRequest } from '../../src/core/protocol';
 import { CARD_MAX_BYTES, parseDuelQuery } from '../../src/core/share';
-import type { ErrorCode, Result } from '../../src/core/types';
+import type { BoardLang, ErrorCode, Result } from '../../src/core/types';
 import { cardURL, preview, readCard, rewriteHead, storeCard } from './cards';
 import type { Env } from './env';
-import { isFilter, listBoards, totals } from './registry';
+import { newAlias, newOwnerToken } from './random';
+import { isFilter, listBoards, popularBoards, totals } from './registry';
+import { ensureTemplates, sitemap, templatePage } from './templates';
 import { verifyTurnstile } from './turnstile';
 
 export { BoardObject } from './board-object';
@@ -31,6 +33,12 @@ export { BoardObject } from './board-object';
  *
  *   POST   /api/summaries                       { voter, aliases } → { [alias]: summary, or null when gone }:
  *                                               the boards of a voter's "Your votes", as that voter may see them
+ *   GET    /api/popular?lang=en|fr              the Popular section: featured boards and the official templates
+ *                                               of that language, the liveliest first (never a hidden board)
+ *
+ *   GET    /t/:slug/, /fr/t/:slug/              an official template's page (the Worker publishes the board the
+ *                                               first time), indexable once it has a crowd
+ *   GET    /sitemap.xml                         the static sitemap plus the template pages that have a crowd
  *
  *   GET    /api/admin/stats                     totals from the registry         (admin)
  *   GET    /api/admin/boards?limit&offset&filter&q   boards, most recently active first; `filter` is one of
@@ -75,10 +83,6 @@ const bearer = (req: Request): string => req.headers.get('Authorization')?.repla
 
 const clientIp = (req: Request): string => req.headers.get('CF-Connecting-IP') ?? 'unknown';
 
-const toHex = (bytes: Uint8Array): string => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
-
-const randomBytes = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
-
 /** Parsed JSON body, `undefined` when invalid, `null` when too large. */
 async function readJson(req: Request): Promise<unknown> {
   if (Number(req.headers.get('Content-Length') ?? 0) > MAX_BODY) return null;
@@ -107,14 +111,24 @@ async function publish(req: Request, env: Env): Promise<Response> {
     const ip = req.headers.get('CF-Connecting-IP');
     if (!(await verifyTurnstile(token, ip, env.TURNSTILE_SECRET))) return error('captcha');
   }
-  const owner = toHex(randomBytes(32));
+  const owner = newOwnerToken();
   // 58^10 aliases: a collision is practically impossible, but the object refuses to be published twice.
   for (let attempt = 0; attempt < 3; attempt++) {
-    const alias = makeAlias(randomBytes);
+    const alias = newAlias();
     const board = env.BOARDS.getByName(alias);
     if ((await board.publish(input.value, owner, alias)) === 'ok') return json({ alias, owner }, 201);
   }
   return error('exists');
+}
+
+/** The Popular section of one language, from the registry; the templates are published first when missing. */
+async function popular(req: Request, env: Env): Promise<Response> {
+  const db = env.REGISTRY;
+  if (!db) return json({ boards: [] });
+  const lang: BoardLang = new URL(req.url).searchParams.get('lang') === 'fr' ? 'fr' : 'en';
+  await ensureTemplates(env, lang);
+  const boards = await popularBoards(db, lang, 16);
+  return Response.json({ boards }, { headers: { 'Cache-Control': 'public, max-age=300' } });
 }
 
 /** The cards under "Your votes": each board as this voter may see it (the voter id stays out of URLs). */
@@ -264,19 +278,30 @@ async function boardPage(req: Request, env: Env, assets: Fetcher, alias: string)
  */
 async function site(req: Request, env: Env, parts: string[]): Promise<Response> {
   const url = new URL(req.url);
-  if (!env.ASSETS || (req.method !== 'GET' && req.method !== 'HEAD')) return error('not_found');
+  const assets = env.ASSETS;
+  if (!assets || (req.method !== 'GET' && req.method !== 'HEAD')) return error('not_found');
+  // `/404`, not `/404.html`: the platform redirects .html addresses to their short form.
+  const notFound = async () => {
+    const page = await assets.fetch(new Request(new URL('/404', url), req));
+    return new Response(page.body, { status: 404, headers: page.headers });
+  };
   if (parts[0] === 'og') {
     const card = await readCard(env.IMAGES, parts);
-    return card ?? env.ASSETS.fetch(new Request(new URL('/og.png', url), req));
+    return card ?? assets.fetch(new Request(new URL('/og.png', url), req));
   }
   if (url.pathname.startsWith('/app/')) {
     const [, kind, alias, ...more] = parts;
-    if (kind === 'b' && alias && !more.length) return boardPage(req, env, env.ASSETS, alias);
-    return env.ASSETS.fetch(new Request(new URL('/app/', url), req));
+    if (kind === 'b' && alias && !more.length) return boardPage(req, env, assets, alias);
+    return assets.fetch(new Request(new URL('/app/', url), req));
   }
-  // `/404`, not `/404.html`: the platform redirects .html addresses to their short form.
-  const page = await env.ASSETS.fetch(new Request(new URL('/404', url), req));
-  return new Response(page.body, { status: 404, headers: page.headers });
+  if (parts.length === 1 && parts[0] === 'sitemap.xml') return sitemap(req, env, assets);
+  // The template pages: /t/<slug>/ in English, /fr/t/<slug>/ in French.
+  if (parts.length === 2 && parts[0] === 't' && parts[1])
+    return templatePage(req, env, assets, 'en', parts[1], notFound);
+  if (parts.length === 3 && parts[0] === 'fr' && parts[1] === 't' && parts[2]) {
+    return templatePage(req, env, assets, 'fr', parts[2], notFound);
+  }
+  return notFound();
 }
 
 export default {
@@ -289,6 +314,7 @@ export default {
     if (section === 'admin') return admin(req, env, rest);
     if (section === 'summaries')
       return req.method === 'POST' && !rest.length ? summaries(req, env) : error('not_found');
+    if (section === 'popular') return req.method === 'GET' && !rest.length ? popular(req, env) : error('not_found');
     if (section !== 'boards') return error('not_found');
     const [alias, ...more] = rest;
     if (alias === undefined) return req.method === 'POST' ? publish(req, env) : error('not_found');

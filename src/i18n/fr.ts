@@ -56,6 +56,13 @@ export const fr: Messages = {
   showDemos: 'Afficher les démos',
   hideDemos: 'Masquer les démos',
   yourVotes: 'Tes votes',
+  popular: 'Populaires',
+  popularIntro:
+    'Des classements où tout le monde vote : les modèles du site et les classements mis en avant. Vote, ou pars de l’un d’eux.',
+  officialChip: 'Officiel',
+  featuredChip: 'À la une',
+  vote: 'Voter',
+  noVotesYet: 'Pas encore de vote : sois le premier',
   yourVotesIntro: 'Les classements publiés sur lesquels tu as voté. Gardés sur cet appareil.',
   inviteBody: 'Crée le tien, avec des textes, des images ou des couleurs.',
   openChip: 'Ouvert',

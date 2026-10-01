@@ -16,6 +16,7 @@ import { galleryHTML } from './gallery';
 import { applyStatic } from './header';
 import { renderList } from './items';
 import { refreshJoined } from './joined';
+import { refreshPopular } from './popular';
 import { online } from './remote';
 import { appRoot, currentPath, routeURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
@@ -48,6 +49,7 @@ export function render(): void {
   } else {
     view.innerHTML = galleryHTML();
     void refreshJoined();
+    void refreshPopular();
   }
 }
 /** Opens a ranking; `replace` when the view it leaves shouldn't stay in the history (a withdrawn board). */
@@ -121,9 +123,9 @@ export function duplicateRank(id: string | undefined): void {
 }
 /**
  * "Make my own": a ranking of this browser with a board's title and items (copied, no votes), for someone who
- * voted on it and wants their version, to change and publish.
+ * voted on it and wants their version, to change and publish; `template` when it starts from a popular board.
  */
-export function makeOwn(title: string, items: readonly Item[], from: 'board' | 'card'): Ranking {
+export function makeOwn(title: string, items: readonly Item[], from: 'board' | 'card' | 'template'): Ranking {
   const r = mkRank(title);
   r.items = items.map((it) => ({ ...structuredClone(it), id: uid() }));
   S.ranks.push(r);

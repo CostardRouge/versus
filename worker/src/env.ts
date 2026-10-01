@@ -17,4 +17,6 @@ export interface Env {
   TURNSTILE_SECRET?: string;
   /** Inactivity TTL override, in seconds (tests use a few seconds). Defaults to TTL_DAYS. */
   BOARD_TTL_SECONDS?: string;
+  /** Voters a template page needs before it asks to be indexed (tests lower it). Defaults to TEMPLATE_INDEX_VOTERS. */
+  TEMPLATE_INDEX_VOTERS?: string;
 }

@@ -126,10 +126,36 @@ export interface AdminRow {
   reports: number;
   hidden: boolean;
   featured: boolean;
+  /** The key of the official template it was made from, or ''. */
+  template: string;
+  /** Votes in the last 7 days, as of the last write. */
+  recent: number;
+  /** The crowd's first three labels, as of the last write. */
+  top: string[];
   created: number;
   /** Last activity, refreshed at most once a day. */
   active: number;
 }
+
+/** A board of the Popular section (docs/published-boards.md#official-templates): a public row of the registry. */
+export type PopularBoard = Pick<
+  AdminRow,
+  'alias' | 'title' | 'status' | 'lang' | 'items' | 'votes' | 'voters' | 'featured' | 'template' | 'top' | 'active'
+>;
+
+export const popularOf = (row: AdminRow): PopularBoard => ({
+  alias: row.alias,
+  title: row.title,
+  status: row.status,
+  lang: row.lang,
+  items: row.items,
+  votes: row.votes,
+  voters: row.voters,
+  featured: row.featured,
+  template: row.template,
+  top: row.top,
+  active: row.active,
+});
 
 export interface AdminList {
   boards: AdminRow[];

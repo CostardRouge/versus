@@ -58,6 +58,13 @@ export const en = {
   hideDemos: 'Hide demos',
   yourVotes: 'Your votes',
   yourVotesIntro: 'Published rankings you voted on. Kept on this device.',
+  popular: 'Popular',
+  popularIntro:
+    'Rankings everyone votes on: the site’s templates and rankings put forward. Vote, or start yours from one.',
+  officialChip: 'Official',
+  featuredChip: 'Featured',
+  vote: 'Vote',
+  noVotesYet: 'No votes yet: be the first',
   inviteBody: 'Make your own, with text, images or colors.',
   openChip: 'Open',
   goneChip: 'Withdrawn',

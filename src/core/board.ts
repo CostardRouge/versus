@@ -232,8 +232,21 @@ export function restoreBoard(
   return board;
 }
 
-/** A new board; the author's duels become their votes, repeated pairs collapsing to the last duel. */
-export function createBoard(input: PublishInput, now: number): SharedBoard {
+/** What makes a board the site's own: an official template, which never expires. */
+export interface Origin {
+  official: boolean;
+  template: string;
+}
+
+/**
+ * A new board; the author's duels become their votes, repeated pairs collapsing to the last duel. `origin`
+ * marks the site's own boards (official templates).
+ */
+export function createBoard(
+  input: PublishInput,
+  now: number,
+  origin: Origin = { official: false, template: '' },
+): SharedBoard {
   const meta: BoardMeta = {
     title: input.title,
     settings: input.settings,
@@ -242,6 +255,8 @@ export function createBoard(input: PublishInput, now: number): SharedBoard {
     touched: now,
     lang: input.lang,
     mod: { ...DEFAULT_MODERATION },
+    official: origin.official,
+    template: origin.template,
   };
   return restoreBoard(
     meta,
@@ -250,7 +265,7 @@ export function createBoard(input: PublishInput, now: number): SharedBoard {
   );
 }
 
-export const boardMeta = ({ title, settings, status, created, touched, lang, mod }: SharedBoard): BoardMeta => ({
+export const boardMeta = ({
   title,
   settings,
   status,
@@ -258,7 +273,27 @@ export const boardMeta = ({ title, settings, status, created, touched, lang, mod
   touched,
   lang,
   mod,
+  official,
+  template,
+}: SharedBoard): BoardMeta => ({
+  title,
+  settings,
+  status,
+  created,
+  touched,
+  lang,
+  mod,
+  official,
+  template,
 });
+
+/** Votes cast in the last `days` days: how alive a board is, for the Popular section. */
+export function recentVotes(board: SharedBoard, now: number, days = 7): number {
+  const since = now - days * 86_400_000;
+  let n = 0;
+  for (const v of board.votes.values()) if (v.t >= since) n++;
+  return n;
+}
 
 // ─── Moderation ─────────────────────────────────────────────────────────────
 

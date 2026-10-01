@@ -227,7 +227,11 @@ export function mountAdmin(opts: AdminOpts): void {
 
   function rowHTML(b: AdminRow): string {
     const open = st.open === b.alias;
-    const flags = [b.featured ? tx('featured') : '', b.hidden ? tx('hidden') : ''].filter(Boolean);
+    const flags = [
+      b.template ? tx('official') : '',
+      b.featured ? tx('featured') : '',
+      b.hidden ? tx('hidden') : '',
+    ].filter(Boolean);
     return `<tr class="${b.reports ? 'ad-reported' : ''} ${open ? 'ad-open' : ''}" data-alias="${esc(b.alias)}">
       <td class="ad-title"><a href="${esc(opts.boardURL(b.alias))}" target="_blank" rel="noopener">${esc(b.title)}</a>
         <small class="mono">${esc(b.alias)} · ${b.lang}</small>${flags.length ? `<span class="ad-flags">${flags.map((f) => `<span class="ad-flag">${f}</span>`).join('')}</span>` : ''}</td>

@@ -105,6 +105,8 @@ beforeAll(async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
+      // The Popular section asks on its own; here it stays empty and out of the calls.
+      if (url.includes('/api/popular')) return Response.json({ boards: [] });
       const headers = (init.headers ?? {}) as Record<string, string>;
       const call = {
         method: init.method ?? 'GET',

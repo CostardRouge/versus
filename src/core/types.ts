@@ -125,6 +125,10 @@ export interface SharedBoard {
   touched: number;
   lang: BoardLang;
   mod: Moderation;
+  /** The site's own board (an official template, `core/templates.ts`): never expires, the admin is its author. */
+  official: boolean;
+  /** The template it was made from (its key), or '' (docs/published-boards.md#official-templates). */
+  template: string;
   /** Votes in arrival order, keyed by voter and pair. */
   votes: Map<string, Vote>;
   /** The same votes grouped by voter, each group in arrival order and keyed by pair. */
@@ -133,7 +137,10 @@ export interface SharedBoard {
   reports: Map<string, Report>;
 }
 
-export type BoardMeta = Pick<SharedBoard, 'title' | 'settings' | 'status' | 'created' | 'touched' | 'lang' | 'mod'>;
+export type BoardMeta = Pick<
+  SharedBoard,
+  'title' | 'settings' | 'status' | 'created' | 'touched' | 'lang' | 'mod' | 'official' | 'template'
+>;
 
 /**
  * A published board this browser voted on without managing it: a card under "Your votes" in the

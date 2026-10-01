@@ -18,6 +18,7 @@ Last updated 2026-09-30. Ported from steevepommier.com and vanessagedeon.com (th
 | `/app/demo/<slug>`, `…/ranking`, `…/items` | A demo and its tabs (same for everyone, so kept) |
 | `/app/r/:id`, `/app/r/:id/ranking`, `/app/r/:id/items` | A ranking of this browser: its id replaced |
 | `/app/b/:alias` | A published board: its alias replaced (whoever has it can vote) |
+| `/t/<slug>/`, `/fr/t/<slug>/` | An official template's page (a fixed set of pages, D106): counted by the legal page's script, whose shell they use |
 
 The moderation page (`/admin/`, the publisher's) carries no measurement settings and never reports.
 
@@ -27,7 +28,7 @@ Referrer: the other site the visitor came from (origin and path only), then, ins
 
 | Event | When | Data |
 | --- | --- | --- |
-| `ranking-created` | New ranking, a copy, or "Make my own" from a board or a card under Your votes | `from`: `new`, `copy`, `demo`, `board`, `card` |
+| `ranking-created` | New ranking, a copy, or "Make my own" from a board, a card under Your votes or a card of the Popular section | `from`: `new`, `copy`, `demo`, `board`, `card`, `template` |
 | `ranking-finished` | The end of a local ranking is announced (D73) | `method`, `end` (`sort` or `stable`), `demo`, `items` |
 | `board-published` | A ranking is published | `method`, `visibility`, `items`, `votes` (the author's duels carried over) |
 | `board-joined` | First vote on a board from this browser (its "Your votes" card appears) | none |

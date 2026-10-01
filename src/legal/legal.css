@@ -127,3 +127,68 @@
   margin-top: clamp(32px, 5vw, 48px);
   font-size: 14px;
 }
+
+/* The template pages (/t/<slug>/, worker/src/templates.ts) are rendered into this page's shell: the crowd's
+   ranking as a list, the way to the board, the other templates as chips. */
+.tp .lg-head {
+  gap: 18px;
+}
+.tp-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 6px 0 0;
+}
+.tp-counts {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.tp-list {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.tp-list li {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--line);
+}
+.tp-list li:first-child {
+  border-top: 0;
+}
+.tp-list li:first-child .pos {
+  color: var(--a);
+}
+.tp-list .pos {
+  color: var(--muted);
+  font-weight: 600;
+  text-align: right;
+}
+.tp-name {
+  font-weight: 600;
+  font-size: 15.5px;
+  overflow-wrap: anywhere;
+}
+.tp-share {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tp-share small {
+  color: var(--muted);
+  font-weight: 500;
+}
+.tp .lg-toc {
+  margin-top: 4px;
+}
+.tp .lg-toc a {
+  color: var(--ink);
+  font-size: 14px;
+}

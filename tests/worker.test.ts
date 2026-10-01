@@ -9,10 +9,12 @@ import type {
   BoardSummary,
   BoardView,
   ClientMessage,
+  PopularBoard,
   ServerMessage,
 } from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
 import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
+import { TEMPLATES } from '../src/core/templates';
 import type { BoardSettings, Ranking } from '../src/core/types';
 import { fakePng } from './helpers/png';
 
@@ -35,11 +37,40 @@ const APP_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><ti
 <meta name="twitter:image" content="https://versus.example.com/og.png" /><meta name="twitter:image:alt" content="Versus" />
 </head><body><main id="view"></main></body></html>`;
 
+/** The legal page's shell, as the build writes it: the template pages are rendered into it. */
+const legalPage = (lang: 'en' | 'fr', path: string) => `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
+<title>Legal notice · Versus</title><meta name="description" content="Who publishes Versus." />
+<link rel="canonical" href="https://versus.example.com/${path}" />
+<link rel="alternate" hreflang="en" href="https://versus.example.com/legal/" /><link rel="alternate" hreflang="fr" href="https://versus.example.com/fr/mentions-legales/" />
+<link rel="alternate" hreflang="x-default" href="https://versus.example.com/legal/" />
+<meta name="robots" content="index, follow" /><meta property="og:title" content="Legal" /><meta property="og:description" content="Legal" />
+<meta property="og:url" content="https://versus.example.com/${path}" /><meta property="og:image" content="https://versus.example.com/og.png" />
+<meta property="og:image:alt" content="Versus" /><meta name="twitter:title" content="Legal" /><meta name="twitter:description" content="Legal" />
+<meta name="twitter:image" content="https://versus.example.com/og.png" /><meta name="twitter:image:alt" content="Versus" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[]}</script>
+</head><body class="lg-page"><header class="nav"><nav class="langs"><a href="../legal/" data-lang="en">EN</a><a href="../fr/mentions-legales/" data-lang="fr">FR</a></nav></header>
+<main id="main" class="wrap lg"><h1>Legal notice</h1></main><footer class="foot"><nav class="foot-langs"><a href="../legal/" data-lang="en">English</a><a href="../fr/mentions-legales/" data-lang="fr">Français</a></nav></footer></body></html>`;
+
+const SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://versus.example.com/</loc><lastmod>2026-09-30</lastmod></url>
+  <url><loc>https://versus.example.com/fr/</loc><lastmod>2026-09-30</lastmod></url>
+</urlset>
+`;
+
 beforeAll(async () => {
   // The Worker serves the site from dist/; the tests run before any build, so a folder with the app's page
-  // (for link previews) and the site's card (the fallback under /og/) is enough. A real build is left as it is.
+  // (for link previews), the legal pages (the template pages' shells), the sitemap and the site's card (the
+  // fallback under /og/) is enough. A real build is left as it is.
   mkdirSync('dist/app', { recursive: true });
+  mkdirSync('dist/legal', { recursive: true });
+  mkdirSync('dist/fr/mentions-legales', { recursive: true });
   if (!existsSync('dist/app/index.html')) writeFileSync('dist/app/index.html', APP_PAGE);
+  if (!existsSync('dist/legal/index.html')) writeFileSync('dist/legal/index.html', legalPage('en', 'legal/'));
+  if (!existsSync('dist/fr/mentions-legales/index.html')) {
+    writeFileSync('dist/fr/mentions-legales/index.html', legalPage('fr', 'fr/mentions-legales/'));
+  }
+  if (!existsSync('dist/sitemap.xml')) writeFileSync('dist/sitemap.xml', SITEMAP);
   if (!existsSync('dist/og.png')) writeFileSync('dist/og.png', fakePng(1200, 630));
   base = (await server.listen()).url;
   await server.getWorker().applyD1Migrations('REGISTRY');
@@ -693,6 +724,137 @@ describe('registry and admin', () => {
     expect(status).toBe(200);
     expect(Object.keys(body)).not.toContain('mod');
     expect((await patch({ hidden: false })).status).toBe(200);
+  });
+});
+
+describe('official templates', () => {
+  const ALIAS_IN_PAGE = /\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/;
+
+  it('publishes a template on its first visit and serves its page in each language', async () => {
+    const res = await server.fetch('/t/game-consoles/');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+    expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
+    const html = await res.text();
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('The best game console of all time · Versus</title>');
+    expect(html).toContain('<meta name="robots" content="noindex, follow" />');
+    expect(html).toMatch(/<link rel="canonical" href="https?:\/\/[^"]+\/t\/game-consoles\/" \/>/);
+    expect(html).toMatch(/hreflang="fr" href="https?:\/\/[^"]+\/fr\/t\/consoles-de-jeu\/"/);
+    expect(html).toMatch(/hreflang="x-default" href="https?:\/\/[^"]+\/t\/game-consoles\/"/);
+    expect(html).toContain('<h1 class="lg-h">The best game console of all time</h1>');
+    // The shell's relative addresses (its styles, its script) keep resolving from the legal page's folder.
+    expect(html).toContain('<head><base href="/legal/" />');
+    expect(html).toContain('Nintendo Switch');
+    expect(html).toContain('"@type":"ItemList"');
+    expect(html).toMatch(/href="\/fr\/t\/consoles-de-jeu\/"[^>]*data-lang="fr"/);
+    expect(html).toContain('href="/t/video-games/"');
+    const alias = html.match(ALIAS_IN_PAGE)?.[1];
+    expect(alias).toBeDefined();
+    // The same board again, and in French a board of its own.
+    expect(await (await server.fetch('/t/game-consoles/')).text()).toContain(`/app/b/${alias}`);
+    const fr = await server.fetch('/fr/t/consoles-de-jeu/');
+    expect(fr.status).toBe(200);
+    const frHtml = await fr.text();
+    expect(frHtml).toContain('<html lang="fr">');
+    expect(frHtml).toContain('La meilleure console de jeu de tous les temps');
+    expect(frHtml).not.toContain(`/app/b/${alias}`);
+    // A real board, open, results always visible; the admin sees it as official.
+    const v = await view(alias ?? '');
+    expect(v.body).toMatchObject({ title: 'The best game console of all time', status: 'open' });
+    expect(v.body.items).toHaveLength(12);
+    expect(v.body.ranking).not.toBeNull();
+    const full = (await (await adminApi(`/boards/${alias}`)).json()) as AdminBoardView;
+    expect(full.alias).toBe(alias);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?q=console')).json()) as AdminList;
+        expect(list.boards.find((b) => b.alias === alias)).toMatchObject({ template: 'game-consoles', lang: 'en' });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    // Unknown slug, a slug of the other language, a missing slash.
+    expect((await server.fetch('/t/nothing-here/')).status).toBe(404);
+    expect((await server.fetch('/t/consoles-de-jeu/')).status).toBe(404);
+    expect((await server.fetch('/t/game-consoles/more/')).status).toBe(404);
+    const moved = await server.fetch('/t/game-consoles', { redirect: 'manual' });
+    expect(moved.status).toBe(301);
+    expect(moved.headers.get('Location')).toMatch(/\/t\/game-consoles\/$/);
+  });
+
+  it('lists the templates and the featured boards as Popular, never a hidden one', async () => {
+    const fr = (await (await server.fetch('/api/popular?lang=fr')).json()) as { boards: PopularBoard[] };
+    expect(fr.boards).toHaveLength(TEMPLATES.length);
+    for (const b of fr.boards) {
+      expect(b.lang).toBe('fr');
+      expect(b.template).not.toBe('');
+      expect(b.top).toHaveLength(3);
+      expect(Object.keys(b)).not.toContain('hidden');
+      expect(Object.keys(b)).not.toContain('reports');
+    }
+    expect(fr.boards.map((b) => b.title)).toContain('La meilleure pâtisserie française');
+    // The first call in a language publishes the templates still missing (once).
+    const en0 = (await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] };
+    expect(en0.boards.filter((b) => b.template).length).toBe(TEMPLATES.length);
+    // A board the admin puts forward comes first; hidden, it leaves the list.
+    const { alias } = await publish();
+    await adminApi(`/boards/${alias}`, { method: 'PATCH', body: { featured: true } });
+    await vi.waitFor(
+      async () => {
+        const en = (await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] };
+        const i = en.boards.findIndex((b) => b.alias === alias);
+        expect(en.boards[i]).toMatchObject({ alias, featured: true, title: 'Pizzas', template: '' });
+        // Featured boards (this one, and the one an earlier test featured) all come before the templates.
+        expect(en.boards.slice(0, i + 1).every((b) => b.featured)).toBe(true);
+        expect(en.boards.slice(i + 1).some((b) => b.template)).toBe(true);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    await adminApi(`/boards/${alias}`, { method: 'PATCH', body: { hidden: true } });
+    await vi.waitFor(
+      async () => {
+        const en = (await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] };
+        expect(en.boards.some((b) => b.alias === alias)).toBe(false);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    expect((await server.fetch('/api/popular', { method: 'POST' })).status).toBe(404);
+  });
+
+  it('adds the template pages that have a crowd to the sitemap, and asks to index them', async () => {
+    const before = await (await server.fetch('/sitemap.xml')).text();
+    expect(before).toContain('<urlset');
+    expect(before).not.toContain('/t/');
+    // One voter is a crowd for this test.
+    await server.update({
+      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { TEMPLATE_INDEX_VOTERS: '1' } }],
+    });
+    const page = await (await server.fetch('/t/game-consoles/')).text();
+    const alias = page.match(ALIAS_IN_PAGE)?.[1] ?? '';
+    const voter = await Client.open(alias, 'voter-tpl-1');
+    const st = await voter.next('state');
+    const [a, b] = st.pairs[0] as [string, string];
+    voter.send({ t: 'vote', a, b, s: 1 });
+    await voter.next('pairs');
+    voter.close();
+    await vi.waitFor(
+      async () => {
+        const res = await server.fetch('/sitemap.xml');
+        expect(res.headers.get('Content-Type')).toContain('application/xml');
+        const xml = await res.text();
+        expect(xml).toMatch(
+          /<url><loc>https?:\/\/[^<]+\/t\/game-consoles\/<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod><\/url>/,
+        );
+        expect(xml).not.toContain('/fr/t/consoles-de-jeu/');
+        expect(xml.trim().endsWith('</urlset>')).toBe(true);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    const res = await server.fetch('/t/game-consoles/');
+    expect(res.headers.get('X-Robots-Tag')).toBe('all');
+    const html = await res.text();
+    expect(html).toContain('<meta name="robots" content="index, follow');
+    expect(html).toContain('1 vote');
   });
 });
 

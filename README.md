@@ -26,6 +26,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Published boards**: publish a ranking, share the link, and let a crowd vote in real time (on versus.steevepommier.com; the GitHub Pages copy has no backend). See [`docs/published-boards.md`](docs/published-boards.md).
 - **Share as an image**: your ranking, the crowd's, you against the crowd, or a single duel, drawn in the browser in post, story or landscape format and handed to the system share sheet, the clipboard or a download. A board's link unfurls with its own card, a duel link with its two items.
 - **Moderation**: visitors report a board (anonymously, with a reason); the publisher's page at `/admin/` lists boards with their reports, hides or features them, removes items and takes boards down (see [`docs/published-boards.md#moderation`](docs/published-boards.md#moderation)).
+- **Official templates and a Popular section**: fixed lists on divisive topics (consoles, languages, phones, pastries…) published as real boards everyone votes on, each with an indexable page (`/t/<slug>/`, `/fr/t/<slug>/`) listed in the sitemap once it has a crowd; the gallery's Popular section shows them with the boards the publisher put forward, to vote or start one's own ranking from.
 
 ## Development
 
