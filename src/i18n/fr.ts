@@ -50,6 +50,7 @@ export const fr: Messages = {
   aboutPublishTitle: 'Fais voter la foule',
   aboutPublish:
     'Publie un classement et partage son lien : chacun vote sur les paires qui lui sont proposées, et le classement de la foule se met à jour en direct.',
+  aboutHome: 'Page d’accueil de Versus',
   aboutBy: 'Fait par',
   aboutSource: 'Code source sur GitHub',
   aboutLegal: 'Mentions légales et confidentialité',

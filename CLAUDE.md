@@ -84,7 +84,8 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   gallery.ts          gallery cards: your rankings, your votes (boards voted on), Popular (featured boards and templates), demos
   joined.ts           "Your votes": records a card at the first vote, refreshes cards from the server, forget, keep a copy
   popular.ts          the Popular section's list (fetched at most every ten minutes, never stored) and "Make my own" from it
-  about.ts            the page text closing the gallery (what Versus is, how it works, methods); its static English copy
+  about.ts            the page text closing the gallery (what Versus is, how it works, methods) and its footer line (home page,
+                      author, source, legal notice, D115); its static English copy
                       with the page's h1 is in index.html for crawlers without JavaScript (build/seo.ts)
   workspace.ts        workspace shell, tabs, method menu, renderMain() (duel or results)
   items.ts            side list (live-sorted, FLIP) and item edits (add text/colors/images, rename, remove)

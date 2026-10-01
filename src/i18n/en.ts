@@ -51,6 +51,7 @@ export const en = {
   aboutPublishTitle: 'Let a crowd vote',
   aboutPublish:
     'Publish a ranking and share its link: everyone votes on the pairs they are given, and the crowd’s ranking updates live.',
+  aboutHome: 'Versus home page',
   aboutBy: 'Made by',
   aboutSource: 'Source code on GitHub',
   aboutLegal: 'Legal notice and privacy',

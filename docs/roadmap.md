@@ -33,6 +33,7 @@ Last updated 2026-09-30.
 - Moderation (D111 to D113, `docs/published-boards.md#moderation`): a Report link on every board (reason, note, anonymous, one per voter), hidden and featured flags per board, and the moderation page at `/admin/` (registry list with filters and search, totals, per-board view with reports, close, feature, hide, remove an item, clear reports, take down), behind the admin token, out of the index and the offline cache.
 - Pictures on published boards through review (D113, D114, `docs/published-boards.md#images`): off by default (`IMAGES_UPLOAD`), announced at publication and sent to R2 afterwards, shown as text until the admin approves them from the moderation page (a filter, the pictures with Approve and Refuse), public under `/img/b/…` once approved, deleted when refused or with their item or board.
 - Official templates and public lists (D114 to D112, `docs/published-boards.md#official-templates-and-the-popular-section`): thirteen fixed lists on divisive topics published by the Worker as real boards (EN and FR, never expiring), each with an indexable page at `/t/<slug>/` and `/fr/t/<slug>/` (crowd ranking as text, hreflang, JSON-LD, `noindex` until 30 voters), the Popular section of the gallery (featured boards and templates, the liveliest first, with Vote and Make my own), and a sitemap the Worker completes with the template pages that have a crowd.
+- A way back to the home page from the app (D115): a discreet link in the footer closing the gallery; the installed app follows it too.
 
 ## Next (suggested order)
 

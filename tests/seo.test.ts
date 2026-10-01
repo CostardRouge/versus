@@ -24,6 +24,7 @@ import {
   DEFAULT_SITE_URL,
   DESCRIPTION,
   DESCRIPTIONS,
+  HOMES,
   ICONS,
   LANGUAGES,
   LEGAL_DESCRIPTIONS,
@@ -38,7 +39,7 @@ import {
   TITLE,
   TITLES,
 } from '../build/site';
-import { aboutHTML } from '../src/app/about';
+import { aboutHTML, HOME_PAGE_PATH } from '../src/app/about';
 import { STASH_KEY } from '../src/app/router';
 import { en } from '../src/i18n/en';
 import { fr } from '../src/i18n/fr';
@@ -279,6 +280,18 @@ describe('page text', () => {
       expect(found[0]).toBe(h1 ? 1 : 2);
       for (const l of found) expect(l - (found[0] ?? 0)).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('links back to the home page of the app’s language, from the app’s folder', () => {
+    for (const lang of LANGUAGES) expect(PAGES[HOMES[lang]].path).toBe(HOME_PAGE_PATH[lang]);
+    const foot = (lang: 'en' | 'fr') =>
+      aboutHTML((k) => String((lang === 'fr' ? fr : en)[k]), { h1: false, publish: false, lang }).match(
+        /<p class="about-foot">[\s\S]*?<\/p>/,
+      )?.[0] ?? '';
+    expect(foot('en')).toContain(`<a href="../">${en.aboutHome}</a>`);
+    expect(foot('fr')).toContain(`<a href="../fr/">${fr.aboutHome}</a>`);
+    // The static copy crawlers read links it too.
+    expect(aboutStatic(false)).toContain('<a href="../">Versus home page</a>');
   });
 
   it('mentions publishing only in builds that have the API', () => {
