@@ -3,6 +3,7 @@ import { parseJoined } from '../core/joined';
 import type { Joined, Ranking } from '../core/types';
 import type { Lang } from '../i18n';
 
+/** Rankings. An item's image is a data URL, or a reference `idb:<key>` to one kept in IndexedDB (src/app/images.ts, D118). */
 export const STORE_KEY = 'versus-v1';
 export const PREF_KEY = 'versus-prefs';
 /** Keys used by the earlier prototypes; user-made rankings are carried over once. */
@@ -66,7 +67,7 @@ export function loadLegacyRanks(): Ranking[] {
 }
 
 /** Returns false when the write failed (quota exceeded or storage unavailable); the stored rankings are then unchanged. */
-export function saveRanks(ranks: Ranking[]): boolean {
+export function saveRanks(ranks: readonly Ranking[]): boolean {
   try {
     const s = storage();
     if (!s) return false;

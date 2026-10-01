@@ -235,6 +235,18 @@ describe('parseBackup', () => {
     expect(b.joined[0]?.settings.revealAfter).toBe(DEFAULT_SETTINGS.revealAfter);
   });
 
+  it('keeps the picture addresses of published boards, in cards and in copies', () => {
+    const pic = '/img/Ab3dEf7hJk/p0.jpg';
+    const b = read(
+      file({
+        rankings: [rank('r1', { items: [item('a', 'Tea', { img: 'https://example.com/tea.jpg' }), item('b')] })],
+        joined: [card(ALIAS, { items: [item('p0', 'Margherita', { img: pic }), item('p1')] })],
+      }),
+    );
+    expect(b.rankings[0]?.items[0]?.img).toBe('https://example.com/tea.jpg');
+    expect(b.joined[0]?.items[0]?.img).toBe(pic);
+  });
+
   it('keeps the first of two rankings with the same id', () => {
     const b = read(file({ rankings: [rank('r1', { title: 'First' }), rank('r1', { title: 'Second' })] }));
     expect(b.rankings.map((r) => r.title)).toEqual(['First']);

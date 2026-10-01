@@ -1,4 +1,5 @@
 import { fillCSS } from '../core/colors';
+import { shownImage } from '../core/images';
 import type { Item } from '../core/types';
 import { esc, initials } from '../core/util';
 import { t } from '../i18n';
@@ -115,7 +116,8 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export const thumbHTML = (it: Item): string =>
-  it.fill
-    ? `<span class="thumb" style="background:${fillCSS(it.fill)}"></span>`
-    : `<span class="thumb" style="--h:${it.h}">${it.img ? `<img src="${it.img}" alt="">` : esc(initials(it.label))}</span>`;
+export function thumbHTML(it: Item): string {
+  if (it.fill) return `<span class="thumb" style="background:${fillCSS(it.fill)}"></span>`;
+  const img = shownImage(it.img);
+  return `<span class="thumb" style="--h:${it.h}">${img ? `<img src="${img}" alt="">` : esc(initials(it.label))}</span>`;
+}

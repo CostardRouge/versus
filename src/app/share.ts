@@ -1,5 +1,6 @@
 import { trackEvent } from '../audience';
 import { fillInk, hslToHex, normHex, rgbOf } from '../core/colors';
+import { shownImage } from '../core/images';
 import type { RankingView } from '../core/protocol';
 import { agreement, lastDuelPerPair, ownRanking } from '../core/published';
 import { methodOf, validHistory } from '../core/scoring';
@@ -278,7 +279,8 @@ function drawMedia(
   ctx.save();
   roundRect(ctx, x, y, w, h, r);
   ctx.clip();
-  const img = it.img ? images.get(it.img) : undefined;
+  const src = shownImage(it.img);
+  const img = src ? images.get(src) : undefined;
   if (it.fill) {
     ctx.fillStyle = fillPaint(ctx, it.fill, x, y, w, h);
     ctx.fillRect(x, y, w, h);
@@ -352,7 +354,7 @@ function drawTile(
   drawMedia(ctx, P, row.it, x, y, w, h, r, images, 'none');
   const it = row.it;
   const pad = w * 0.08;
-  if (it.img) {
+  if (shownImage(it.img)) {
     // A shade under the name, as on the duel cards.
     ctx.save();
     roundRect(ctx, x, y, w, h, r);
@@ -364,7 +366,7 @@ function drawTile(
     ctx.fillRect(x, y, w, h);
     ctx.restore();
   }
-  const ink = it.fill ? fillInk(it.fill) : it.img ? '#ffffff' : P.ink;
+  const ink = it.fill ? fillInk(it.fill) : shownImage(it.img) ? '#ffffff' : P.ink;
   ctx.fillStyle = ink;
   const label = fitText(ctx, it.label, w - pad * 2, 3, w * 0.13, w * 0.075, (s) => font(700, s, P.display));
   const height = label.lines.length * label.size * 1.05;
@@ -437,7 +439,7 @@ function drawDuelCard(
   ctx.shadowColor = 'transparent';
   drawMedia(ctx, P, it, 0, 0, w, h, w * 0.1, images, 'none');
   const pad = w * 0.09;
-  if (it.img) {
+  if (shownImage(it.img)) {
     ctx.save();
     roundRect(ctx, 0, 0, w, h, w * 0.1);
     ctx.clip();
@@ -448,7 +450,7 @@ function drawDuelCard(
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
-  ctx.fillStyle = it.fill ? fillInk(it.fill) : it.img ? '#ffffff' : P.ink;
+  ctx.fillStyle = it.fill ? fillInk(it.fill) : shownImage(it.img) ? '#ffffff' : P.ink;
   const label = fitText(ctx, it.label, w - pad * 2, 3, w * 0.17, w * 0.09, (s) => font(700, s, P.display));
   const height = label.lines.length * label.size * 1.05;
   lines(ctx, label, pad, h - pad - height, 1.05);
@@ -830,7 +832,7 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
 
 async function imagesOf(spec: CardSpec): Promise<Images> {
   const items = [...spec.rows, ...spec.mine].map((r) => r.it).concat(spec.pair ?? []);
-  const srcs = [...new Set(items.map((i) => i.img).filter((s): s is string => !!s))];
+  const srcs = [...new Set(items.map((i) => shownImage(i.img)).filter((s): s is string => !!s))];
   const loaded = await Promise.all(srcs.map(loadImage));
   const out: Images = new Map();
   srcs.forEach((s, i) => {

@@ -1,4 +1,5 @@
 import { fillCSS } from '../core/colors';
+import { shownImage } from '../core/images';
 import { compute, METHOD_KEYS, methodOf, remaining, stability } from '../core/scoring';
 import type { Computed, Item, ItemStats, MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
@@ -164,7 +165,7 @@ export function resultsHTML(r: Ranking): string {
         .slice(0, 3)
         .map(
           (it, i) => `<li class="pod pod-${i + 1}">
-      <div class="pod-media" style="${it.fill ? `background:${fillCSS(it.fill)}` : `--h:${it.h}`}">${it.img ? `<img src="${it.img}" alt="">` : it.fill ? '' : `<span class="pod-txt">${esc(it.label)}</span>`}</div>
+      <div class="pod-media" style="${it.fill ? `background:${fillCSS(it.fill)}` : `--h:${it.h}`}">${shownImage(it.img) ? `<img src="${shownImage(it.img)}" alt="">` : it.fill ? '' : `<span class="pod-txt">${esc(it.label)}</span>`}</div>
       <div class="pod-info"><span class="pod-place">${i + 1}</span><div><b>${esc(it.label)}</b><span class="mono">${line(stat(C, it.id))}</span></div></div>
     </li>`,
         )

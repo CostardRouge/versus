@@ -28,9 +28,9 @@ export const legalEn = {
 
   deviceTitle: 'On your device',
   device1:
-    'Your rankings, their items (images included), your duels and your preferences (language, theme, display choices) are kept in your browser’s local storage, on this device only. So are, if you use published rankings, an anonymous voter id (a random string), the keys of the rankings you published and the cards under “Your votes”.',
+    'Your rankings, their items (images included), your duels and your preferences (language, theme, display choices) are kept in your browser’s storage (local storage, and IndexedDB for images), on this device only. So are, if you use published rankings, an anonymous voter id (a random string), the keys of the rankings you published and the cards under “Your votes”.',
   device2:
-    'The installed app also keeps its own files in the browser’s cache to work offline: files, never your data. None of this is sent anywhere, except what you publish. To erase it, delete your rankings in the app, or clear this site’s data in your browser’s settings.',
+    'The installed app also keeps its own files in the browser’s cache to work offline: files, never your data. None of this is sent anywhere, except what you publish, or a file you export yourself. To erase it, delete your rankings in the app, or clear this site’s data in your browser’s settings.',
 
   boardsTitle: 'Published rankings',
   boards1:
@@ -44,7 +44,7 @@ export const legalEn = {
   count1:
     'Visits are counted with <a href="https://umami.is">Umami</a>, self-hosted on the publisher’s own server at <code>insight.steevepommier.com</code>: no third party receives the data, and none of it serves advertising.',
   count2:
-    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, an installation, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
+    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, an installation, a file exported or imported, with counts only, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
   count3:
     '<b>Never counted:</b> the content of your rankings, their titles or items, the address of a published ranking, the author’s key, your IP address (it gives the country, then is discarded), or anything that could follow you from one site to another. No cookie is set.',
   count4:

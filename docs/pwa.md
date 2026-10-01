@@ -15,6 +15,12 @@ Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable 
   - **Updates are offered, never forced** (D78): once a new worker is installed and waiting, a bar above the header says a new version is ready, with **Reload** and **Later**. Reload asks the worker to take over, then the page reloads. Later hides the bar; the new version starts once every tab of the app is closed. An open app checks for a new version when it comes back to the foreground, at most hourly.
   - **Install button** in the header, shown only when the browser offers installation (`beforeinstallprompt`: Chrome and Edge on desktop and Android). It replaces Chrome's mini-infobar on Android. A toast confirms the installation.
   - **Persistent storage** (`navigator.storage.persist()`) requested in the installed app only: installed apps get it silently, while a tab in Firefox would show a prompt.
+- **Images in IndexedDB** (`src/core/images.ts`, `src/app/images.ts`, D118–D120):
+  - An item's image is a data URL in memory, as always. In `localStorage` it becomes a reference, `idb:<key>`, once IndexedDB (database `versus`, store `images`, a record `{ key, data, t }` per image) holds it. The key comes from the content: an image used twice is stored once.
+  - **Saving** (`save()` in `src/app/state.ts`): images already stored are written as references; a new one is written inline, stored, then the rankings are written again, smaller. The storage warning waits for that second write. An import stores its images first, then writes the rankings.
+  - **Startup**: references are read before the first render. One that can't be read stays a reference, saved again unchanged, and the item shows its label. Images saved inline before D118 move to IndexedDB on the first load.
+  - **Clean-up**: five seconds after startup, images no ranking uses and stored more than a day ago are removed.
+  - Without IndexedDB (an old browser, some private modes), images stay inline in `localStorage`, as before.
 - **Export and import** (`src/core/backup.ts`, `src/app/backup.ts`, D97–D101):
   - **Export** under the gallery's rankings: a backup file (`versus-2026-09-30.json`) with every ranking except the demos, the owner tokens of published boards, the "Your votes" cards and the voter id. When it holds owner tokens, a toast says the file gives control of those boards. **Export** in a ranking's results: that ranking alone (`versus-<title>.json`), without its board link, to send to someone.
   - The file goes through the share sheet on touch devices (Save to Files, AirDrop, a message), and as a download elsewhere.
@@ -47,7 +53,8 @@ On the deployed site, in Chrome:
 2. Network → Offline, then reload: the gallery and the demos open, a duel works, fonts are right.
 3. After the next deploy, come back to the tab (or reload): the bar "A new version of Versus is ready" appears. Reload shows the new version; the old cache is gone.
 4. On an Android phone: open the site in Chrome, tap Install in the header, open Versus from the home screen, turn on airplane mode, open it again.
-5. On an iPhone: in Safari, open the app, tap Export under your rankings and save the file to Files. Share → Add to Home Screen, open Versus from the icon: an app window, with a note saying the rankings from Safari aren't here. Tap Import, pick the file: the rankings appear.
+5. Images: add a few dozen photos to a ranking, then DevTools → Application: Local storage `versus-v1` holds `idb:…` references, IndexedDB → `versus` → `images` holds the photos. Reload: the photos are there. (Tested with Playwright: 120 photos, 26 MB, `localStorage` at 15 kB, no warning.)
+6. On an iPhone: in Safari, open the app, tap Export under your rankings and save the file to Files. Share → Add to Home Screen, open Versus from the icon: an app window, with a note saying the rankings from Safari aren't here. Tap Import, pick the file: the rankings appear.
 
 These steps were run in Chromium with Playwright while building this (served under `/versus/` like GitHub Pages, with two builds to simulate a deploy); the script is a starting point for the end-to-end tests on the roadmap.
 
@@ -55,13 +62,13 @@ These steps were run in Chromium with Playwright while building this (served und
 
 - **App views are paths** (D92): every navigation under `app/` (`app/demo/…`, `app/b/…`) gets the stored app page, which reads its path; its `<base>` names the app's folder, so the page's relative addresses hold at any depth.
 - **Published boards need the network**: votes and the crowd ranking are live. Offline, the local rankings work; boards don't.
-- **Storage**: rankings, images included, live in `localStorage` (about 5 MB). Photos fill it quickly; see the next steps.
+- **Storage**: rankings live in `localStorage` (about 5 MB), images in IndexedDB (D118), which holds far more. Safari may clear a site's storage, both kinds together, after seven days of browsing without a visit to it, except for home-screen apps: an export is the backup.
 - **Other tabs**: after Reload in one tab, other tabs keep the old version until they reload. The old cache is deleted, so an old tab that needs a file it never loaded fetches it from the network.
 
 ## Next steps (proposed order)
 
 1. ~~**Export / import**, then **`display: standalone`**~~: done (D97–D101).
-2. **Images in IndexedDB**: `localStorage` caps at about 5 MB, a few dozen photos.
+2. ~~**Images in IndexedDB**~~: done (D118–D120).
 3. **Share target**: share photos or text from another app (gallery, browser) straight into a new or existing ranking. Android and installed Chromium apps.
 4. **Manifest shortcuts** ("New ranking") and **screenshots** for Chrome's richer install dialog.
 5. **Notifications** for published boards (Web Push) once the backend is deployed: a board closes, results are revealed. On iOS, only for home-screen apps, which are now `standalone`.

@@ -4,6 +4,7 @@ import { detectLang, type Lang, setLang as setI18nLang } from '../i18n';
 import { initDom } from './dom';
 import { bindEvents } from './events';
 import { applyStatic } from './header';
+import { hasImageRefs, loadImages, tidyImages } from './images';
 import { initPwa } from './pwa';
 import { routeFromURL } from './rankings';
 import { S, save } from './state';
@@ -29,10 +30,19 @@ export function mount(d: Document): void {
     if (!S.ranks.some((r) => r.id === demo.id)) S.ranks.push(buildDemo(demo, lang));
   }
   relabelDemos(S.ranks, lang === 'fr' ? 'en' : 'fr', lang);
+  // Images kept in IndexedDB are read before the first render, so cards never show without them (D118).
+  if (hasImageRefs(S.ranks)) void loadImages(S.ranks).then(start);
+  else start();
+}
+
+function start(): void {
+  // Also moves images still inline in localStorage (saved before D118) into IndexedDB.
   save();
   bindEvents();
   initPwa();
   applyStatic();
   // The address names the view: the gallery, a ranking, a demo or a published board.
   routeFromURL();
+  // Unused images, once the app is up: never in the way of the first render.
+  setTimeout(() => void tidyImages(S.ranks), 5000);
 }

@@ -2,6 +2,7 @@ import { hasBackup } from '../core/backup';
 import { revealAt } from '../core/board';
 import { fillCSS } from '../core/colors';
 import { DEMOS } from '../core/demos';
+import { shownImage } from '../core/images';
 import { addedItems, joinedAgreement, joinedTop, newsOf, pairsOf, sortJoined } from '../core/joined';
 import type { PopularBoard } from '../core/protocol';
 import { compute, stability } from '../core/scoring';
@@ -21,7 +22,8 @@ function tileHTML(it: Item | undefined, i: number, ranked: boolean): string {
   if (!it) return `<span class="${cls}"></span>`;
   const n = ranked ? `<span class="tile-n mono">${i + 1}</span>` : '';
   if (it.fill) return `<span class="${cls}" style="background:${fillCSS(it.fill)}">${n}</span>`;
-  if (it.img) return `<span class="${cls}" style="background-image:url('${it.img}')">${n}</span>`;
+  const img = shownImage(it.img);
+  if (img) return `<span class="${cls}" style="background-image:url('${img}')">${n}</span>`;
   return `<span class="${cls} txt" style="--h:${it.h}">${n}<b>${esc(it.label)}</b></span>`;
 }
 function rcardHTML(r: Ranking): string {
