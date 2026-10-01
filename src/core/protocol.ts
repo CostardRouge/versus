@@ -1,5 +1,6 @@
 import { ALIAS_RE, canSeeRanking, isOutcome, isRecord, LIMITS, VOTER_RE, voteCount, votesOf } from './board';
 import type {
+  BoardLang,
   BoardSettings,
   BoardStatus,
   Computed,
@@ -7,7 +8,9 @@ import type {
   ErrorCode,
   Item,
   MethodKey,
+  Moderation,
   Outcome,
+  ReportReason,
   Result,
   SharedBoard,
 } from './types';
@@ -49,8 +52,11 @@ export interface BoardView {
 }
 
 export type ClientMessage =
-  /** First message on a connection; `owner` is the owner token, for the author. */
-  | { t: 'hello'; voter: string; owner?: string }
+  /**
+   * First message on a connection; `owner` is the owner token, for the author; `pair` the duel a shared link
+   * asked for, served first when the voter can still vote on it.
+   */
+  | { t: 'hello'; voter: string; owner?: string; pair?: [string, string] }
   | { t: 'vote'; a: string; b: string; s: Outcome }
   | { t: 'skip'; a: string; b: string }
   /** Deletes one of my votes; its pair comes back first in my queue. */
@@ -99,6 +105,131 @@ export function boardView(board: SharedBoard, C: Computed, online: number, visib
 
 export const myDuels = (board: SharedBoard, voter: string): Duel[] =>
   votesOf(board, voter).map(({ a, b, s }) => ({ a, b, s }));
+
+// ─── Admin ──────────────────────────────────────────────────────────────────
+
+/** What the server lets the app do, besides voting: whether pictures may be published (sent for review). */
+export interface ServerConfig {
+  images: 'off' | 'review';
+}
+
+/** What the admin page can narrow the list of boards to. */
+export const ADMIN_FILTERS = ['all', 'reported', 'pictures', 'featured', 'hidden', 'open', 'closed'] as const;
+export type AdminFilter = (typeof ADMIN_FILTERS)[number];
+export const isAdminFilter = (x: unknown): x is AdminFilter => ADMIN_FILTERS.includes(x as AdminFilter);
+
+/** One board in the admin list: the registry's row (worker/src/registry.ts), refreshed at most once a day for votes. */
+export interface AdminRow {
+  alias: string;
+  title: string;
+  status: BoardStatus;
+  lang: BoardLang;
+  items: number;
+  votes: number;
+  voters: number;
+  /** Visitors' reports awaiting the admin. */
+  reports: number;
+  /** Items whose picture awaits the admin's review. */
+  pictures: number;
+  hidden: boolean;
+  featured: boolean;
+  /** The key of the official template it was made from, or ''. */
+  template: string;
+  /** Votes in the last 7 days, as of the last write. */
+  recent: number;
+  /** The crowd's first three labels, as of the last write. */
+  top: string[];
+  created: number;
+  /** Last activity, refreshed at most once a day. */
+  active: number;
+}
+
+/** A board of the Popular section (docs/published-boards.md#official-templates): a public row of the registry. */
+export type PopularBoard = Pick<
+  AdminRow,
+  'alias' | 'title' | 'status' | 'lang' | 'items' | 'votes' | 'voters' | 'featured' | 'template' | 'top' | 'active'
+>;
+
+export const popularOf = (row: AdminRow): PopularBoard => ({
+  alias: row.alias,
+  title: row.title,
+  status: row.status,
+  lang: row.lang,
+  items: row.items,
+  votes: row.votes,
+  voters: row.voters,
+  featured: row.featured,
+  template: row.template,
+  top: row.top,
+  active: row.active,
+});
+
+export interface AdminList {
+  boards: AdminRow[];
+  limit: number;
+  offset: number;
+  filter: AdminFilter;
+  q: string;
+}
+
+export interface AdminTotals {
+  boards: number;
+  open: number;
+  votes: number;
+  voters: number;
+  /** Boards with at least one report awaiting the admin. */
+  reported: number;
+  /** Pictures awaiting the admin's review, over every board. */
+  pictures: number;
+  featured: number;
+  hidden: number;
+}
+
+/** A report as the admin page shows it: its reason, note and time, never who sent it. */
+export interface ReportView {
+  reason: ReportReason;
+  note: string;
+  t: number;
+}
+
+/** Everything the admin page needs about one board: the full view, ranking included, its flags and reports. */
+export interface AdminBoardView extends BoardView {
+  alias: string;
+  lang: BoardLang;
+  touched: number;
+  mod: Moderation;
+  reports: ReportView[];
+}
+
+export function adminBoardView(board: SharedBoard, C: Computed, online: number, alias: string): AdminBoardView {
+  return {
+    ...boardView(board, C, online, true),
+    alias,
+    lang: board.lang,
+    touched: board.touched,
+    mod: board.mod,
+    reports: [...board.reports.values()].map(({ reason, note, t }) => ({ reason, note, t })),
+  };
+}
+
+// ─── Link previews ──────────────────────────────────────────────────────────
+
+/** What a board's link preview says (the Worker writes it into the app page's head): no ranking, whoever asks. */
+export interface Unfurl {
+  title: string;
+  lang: BoardLang;
+  status: BoardStatus;
+  items: { id: string; label: string }[];
+  counts: { votes: number; voters: number };
+}
+
+export const unfurlOf = (board: SharedBoard): Unfurl => ({
+  title: board.title,
+  lang: board.lang,
+  status: board.status,
+  items: board.items.map(({ id, label }) => ({ id, label })),
+  counts: { votes: board.votes.size, voters: board.voters.size },
+});
 
 // ─── "Your votes" ───────────────────────────────────────────────────────────
 
@@ -156,10 +287,18 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   }
   if (!isRecord(m)) return null;
   switch (m.t) {
-    case 'hello':
+    case 'hello': {
       if (typeof m.voter !== 'string' || !VOTER_RE.test(m.voter)) return null;
       if (m.owner !== undefined && typeof m.owner !== 'string') return null;
-      return m.owner === undefined ? { t: 'hello', voter: m.voter } : { t: 'hello', voter: m.voter, owner: m.owner };
+      const pair = m.pair;
+      if (pair !== undefined && !(Array.isArray(pair) && pair.length === 2 && pair.every(isId))) return null;
+      return {
+        t: 'hello',
+        voter: m.voter,
+        ...(m.owner === undefined ? {} : { owner: m.owner }),
+        ...(pair === undefined ? {} : { pair: [pair[0], pair[1]] as [string, string] }),
+      };
+    }
     case 'vote':
       return isId(m.a) && isId(m.b) && isOutcome(m.s) ? { t: 'vote', a: m.a, b: m.b, s: m.s } : null;
     case 'skip':

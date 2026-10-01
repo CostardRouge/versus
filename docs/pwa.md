@@ -6,7 +6,7 @@ Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable 
 
 - **Manifest**: generated from `build/site.ts` (name, colors, icons, `standalone`, D98). It opens the app (`start_url: ./app/`); its `id` stays `./`, what it was before the home page, so installed copies remain the same app (D87).
 - **Service worker** (`src/sw/sw.ts`, about 90 lines, 0.9 kB gzip), built as `sw.js` at the site's root by `build/pwa-plugin.ts`; its scope is the whole site, the app registering it from `app/` with `../sw.js`:
-  - **Install**: stores the three pages (the app and the two home pages), their scripts and styles, the three latin fonts of the first render, the manifest and the SVG icon (about 500 kB before compression). Each page is stored under its folder's address (`./app/`, `./`, `./fr/`), which GitHub Pages and Cloudflare both serve directly. Requests use `cache: 'reload'` so the HTTP cache can't hand back the previous deploy.
+  - **Install**: stores the three pages (the app and the two home pages), their scripts and styles (the moderation page's bundle, `admin-*`, excepted: nothing to moderate offline), the three latin fonts of the first render, the manifest and the SVG icon (about 500 kB before compression). Each page is stored under its folder's address (`./app/`, `./`, `./fr/`), which GitHub Pages and Cloudflare both serve directly. Requests use `cache: 'reload'` so the HTTP cache can't hand back the previous deploy.
   - **Fetch**: a navigation to the app or one of its views (anything under `app/`) gets the stored page; a navigation to a home page goes to the network first, so it is always current, and falls back to the stored copy offline; stored files and anything under `assets/` are served from the cache first, and font subsets for other scripts are stored on first use (hashed names never change). Everything else goes to the network untouched: `/api/`, WebSockets, other origins (the audience measurement tracker included, `docs/analytics.md`), non-GET requests, the legal pages (`legal/`, `fr/mentions-legales/`: not needed offline), `robots.txt`, `llms.txt`, the social card and PNG icons.
   - **Activate**: deletes the older `versus-*` caches and takes control of open pages.
   - **Version**: a hash of the stored files' names and bytes (`build/pwa.ts`), written into the worker at build time. A deploy that changes the app changes `sw.js`, so browsers install the new worker.
@@ -63,7 +63,8 @@ These steps were run in Chromium with Playwright while building this (served und
 1. ~~**Export / import**, then **`display: standalone`**~~: done (D97–D101).
 2. **Images in IndexedDB**: `localStorage` caps at about 5 MB, a few dozen photos.
 3. **Share target**: share photos or text from another app (gallery, browser) straight into a new or existing ranking. Android and installed Chromium apps.
-4. **Native share sheet** (Web Share API) for results and board links, with the results image.
-5. **Manifest shortcuts** ("New ranking") and **screenshots** for Chrome's richer install dialog.
-6. **Notifications** for published boards (Web Push) once the backend is deployed: a board closes, results are revealed. On iOS, only for home-screen apps, which are now `standalone`.
-7. **Capacitor shell**, only if the stores are ever wanted (D75): same build, native push and app links.
+4. **Manifest shortcuts** ("New ranking") and **screenshots** for Chrome's richer install dialog.
+5. **Notifications** for published boards (Web Push) once the backend is deployed: a board closes, results are revealed. On iOS, only for home-screen apps, which are now `standalone`.
+6. **Capacitor shell**, only if the stores are ever wanted (D75): same build, native push and app links.
+
+Done since: the native share sheet (Web Share API) with the result drawn as an image, from the Ranking tab, a board, a duel and the end-of-vote page (D110, D111).

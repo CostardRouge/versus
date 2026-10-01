@@ -4,7 +4,8 @@ import { mkRank } from '../core/model';
 import { parseBoardHash } from '../core/published';
 import { parseOwnerFragment, parseRoute } from '../core/route';
 import { methodOf } from '../core/scoring';
-import type { Ranking } from '../core/types';
+import { parseDuelQuery } from '../core/share';
+import type { Item, Ranking } from '../core/types';
 import { uid } from '../core/util';
 import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
 import { enterBoard, leaveBoard, renderBoard } from './board';
@@ -15,6 +16,7 @@ import { galleryHTML } from './gallery';
 import { applyStatic } from './header';
 import { renderList } from './items';
 import { refreshJoined } from './joined';
+import { refreshPopular } from './popular';
 import { online } from './remote';
 import { appRoot, currentPath, routeURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
@@ -47,6 +49,7 @@ export function render(): void {
   } else {
     view.innerHTML = galleryHTML();
     void refreshJoined();
+    void refreshPopular();
   }
 }
 /** Opens a ranking; `replace` when the view it leaves shouldn't stay in the history (a withdrawn board). */
@@ -118,6 +121,20 @@ export function duplicateRank(id: string | undefined): void {
   open(c.id, 'duel');
   toast(t('copyCreated'));
 }
+/**
+ * "Make my own": a ranking of this browser with a board's title and items (copied, no votes), for someone who
+ * voted on it and wants their version, to change and publish; `template` when it starts from a popular board.
+ */
+export function makeOwn(title: string, items: readonly Item[], from: 'board' | 'card' | 'template'): Ranking {
+  const r = mkRank(title);
+  r.items = items.map((it) => ({ ...structuredClone(it), id: uid() }));
+  S.ranks.push(r);
+  save();
+  trackEvent('ranking-created', { from });
+  open(r.id, 'duel');
+  toast(t('madeMine'));
+  return r;
+}
 export function toggleDemos(): void {
   S.prefs.hideDemos = !S.prefs.hideDemos;
   savePrefs(S.prefs);
@@ -162,12 +179,15 @@ export function goBack(): void {
   window.scrollTo?.(0, 0);
 }
 
-/** Opens a published board at its own address, the link to share. */
-export function openBoard(alias: string | undefined, opts: { replace?: boolean } = {}): void {
+/** Opens a published board at its own address, the link to share; `duel` is the pair a shared link asked for. */
+export function openBoard(
+  alias: string | undefined,
+  opts: { replace?: boolean; duel?: [string, string] | null } = {},
+): void {
   if (!alias) return;
   S.route = { view: 'board', alias, tab: 'duel' };
   syncURL(opts.replace ? 'replace' : 'push');
-  enterBoard(alias, online());
+  enterBoard(alias, online(), opts.duel ?? null);
   render();
   window.scrollTo?.(0, 0);
 }
@@ -190,13 +210,16 @@ export function routeFromURL(): void {
   const route = parseRoute(currentPath());
   if (route?.view === 'board') {
     owner ??= parseOwnerFragment(location.hash);
+    // A duel link (`?duel=a.b`): the board opens on that duel; the address loses the query once open.
+    const duel = parseDuelQuery(location.search);
     if (owner) {
       saveOwner(route.alias, owner);
       history.replaceState(null, '', location.pathname);
       // Reconnect so the server knows this connection is the author's.
       leaveBoard();
-    } else if (S.route.view === 'board' && S.route.alias === route.alias) return;
-    openBoard(route.alias, { replace: true });
+    } else if (S.route.view === 'board' && S.route.alias === route.alias && !duel) return;
+    if (duel) leaveBoard();
+    openBoard(route.alias, { replace: true, duel });
     return;
   }
   if (route?.view === 'rank') {

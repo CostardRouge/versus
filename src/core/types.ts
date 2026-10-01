@@ -12,12 +12,17 @@ export interface Fill {
 export interface Item {
   id: string;
   label: string;
-  /** Downscaled image as a data URL. */
+  /** Downscaled image as a data URL; on a published board, the address of an approved picture. */
   img: string | null;
   fill: Fill | null;
   /** Hue used to tint text-only cards. */
   h: number;
+  /** On a published board: a picture sent for the moderator's review, or refused (docs/published-boards.md#images). */
+  pic?: PictureState;
 }
+
+/** A published item's picture while it isn't shown: waiting for the moderator, or refused by them. */
+export type PictureState = 'pending' | 'refused';
 
 export interface Duel {
   a: string;
@@ -91,6 +96,30 @@ export interface Vote extends Duel {
   t: number;
 }
 
+/** The language a board was published in: its link previews speak it. */
+export type BoardLang = 'en' | 'fr';
+
+/** Why a visitor reports a board (docs/published-boards.md#moderation). */
+export type ReportReason = 'spam' | 'offensive' | 'personal' | 'other';
+
+/** A visitor's report of a board: one per voter, the newest replacing the older one. */
+export interface Report {
+  voter: string;
+  reason: ReportReason;
+  /** A few words from the reporter, possibly empty. */
+  note: string;
+  t: number;
+}
+
+/**
+ * What the admin decided about a board: hidden, it keeps working for whoever has its link but stays out of
+ * every public list; featured, it is put forward in them.
+ */
+export interface Moderation {
+  hidden: boolean;
+  featured: boolean;
+}
+
 export interface SharedBoard {
   title: string;
   items: Item[];
@@ -99,13 +128,24 @@ export interface SharedBoard {
   created: number;
   /** Last activity other than a vote (publication, settings, status), for the inactivity TTL. */
   touched: number;
+  lang: BoardLang;
+  mod: Moderation;
+  /** The site's own board (an official template, `core/templates.ts`): never expires, the admin is its author. */
+  official: boolean;
+  /** The template it was made from (its key), or '' (docs/published-boards.md#official-templates). */
+  template: string;
   /** Votes in arrival order, keyed by voter and pair. */
   votes: Map<string, Vote>;
   /** The same votes grouped by voter, each group in arrival order and keyed by pair. */
   voters: Map<string, Map<string, Vote>>;
+  /** Visitors' reports, keyed by voter, in arrival order. */
+  reports: Map<string, Report>;
 }
 
-export type BoardMeta = Pick<SharedBoard, 'title' | 'settings' | 'status' | 'created' | 'touched'>;
+export type BoardMeta = Pick<
+  SharedBoard,
+  'title' | 'settings' | 'status' | 'created' | 'touched' | 'lang' | 'mod' | 'official' | 'template'
+>;
 
 /**
  * A published board this browser voted on without managing it: a card under "Your votes" in the

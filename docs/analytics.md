@@ -18,6 +18,9 @@ Last updated 2026-09-30. Ported from steevepommier.com and vanessagedeon.com (th
 | `/app/demo/<slug>`, `…/ranking`, `…/items` | A demo and its tabs (same for everyone, so kept) |
 | `/app/r/:id`, `/app/r/:id/ranking`, `/app/r/:id/items` | A ranking of this browser: its id replaced |
 | `/app/b/:alias` | A published board: its alias replaced (whoever has it can vote) |
+| `/t/<slug>/`, `/fr/t/<slug>/` | An official template's page (a fixed set of pages, D110): counted by the legal page's script, whose shell they use |
+
+The moderation page (`/admin/`, the publisher's) carries no measurement settings and never reports.
 
 Referrer: the other site the visitor came from (origin and path only), then, inside the app, the previous view, as a page load would report it. Title: the page's title, which never holds user content.
 
@@ -25,11 +28,12 @@ Referrer: the other site the visitor came from (origin and path only), then, ins
 
 | Event | When | Data |
 | --- | --- | --- |
-| `ranking-created` | New ranking, or a copy | `from`: `new`, `copy`, `demo` |
+| `ranking-created` | New ranking, a copy, or "Make my own" from a board, a card under Your votes or a card of the Popular section | `from`: `new`, `copy`, `demo`, `board`, `card`, `template` |
 | `ranking-finished` | The end of a local ranking is announced (D73) | `method`, `end` (`sort` or `stable`), `demo`, `items` |
-| `board-published` | A ranking is published | `method`, `visibility`, `items`, `votes` (the author's duels carried over) |
+| `board-published` | A ranking is published | `method`, `visibility`, `items`, `votes` (the author's duels carried over), `pictures` (how many were sent for review) |
 | `board-joined` | First vote on a board from this browser (its "Your votes" card appears) | none |
 | `board-finished` | The voter has voted every pair (end-of-vote page, D64) | `items` |
+| `shared` | A result or a duel shared as an image (D102, D103) | `kind` (`ranking`, `crowd`, `duo`, `duel`), `format` (`post`, `story`, `landscape`), `how` (`share-image`, `share-text`, `copy-text`, `copy-image`, `download`) |
 | `app-installed` | The browser reports the app installed | none |
 | `rankings-exported` | A file was saved or shared (D97) | `what` (`all` or `one`), `rankings`, `votes` (counts) |
 | `rankings-imported` | A file brought something new | `rankings` (added), `same` (already here), `votes` (cards added) |

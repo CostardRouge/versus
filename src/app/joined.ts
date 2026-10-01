@@ -4,7 +4,7 @@ import { applySummary, type BoardSnapshot, joinedCopy, seeBoard, sortJoined, ups
 import type { Joined } from '../core/types';
 import { t } from '../i18n';
 import { toast } from './dom';
-import { open, render } from './rankings';
+import { makeOwn, open, render } from './rankings';
 import { fetchSummaries, online } from './remote';
 import { S, save } from './state';
 import { saveJoined, savePrefs } from './storage';
@@ -107,6 +107,12 @@ export function forgetJoined(alias: string | undefined): void {
       render();
     },
   });
+}
+
+/** "Make my own" from a card: a ranking of this browser with the board's items, without the votes. */
+export function makeMineFromCard(alias: string | undefined): void {
+  const j = alias ? joinedOf(alias) : undefined;
+  if (j) makeOwn(j.title, j.items, 'card');
 }
 
 /** A board that is gone becomes a ranking of the voter's own, with its items and their votes. */

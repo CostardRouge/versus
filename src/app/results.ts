@@ -177,7 +177,8 @@ export function resultsHTML(r: Ranking): string {
       <div class="res-actions">
         ${ranked && n >= 2 ? viewsHTML() : ''}
         <button class="btn primary" type="button" data-action="tab" data-tab="duel" ${n < 2 ? 'disabled' : ''}>${t('keepDueling')}</button>
-        <button class="btn" type="button" data-action="copy">${t('copy')}</button>
+        ${ranked && n >= 2 ? `<button class="btn" type="button" data-action="share-rank">${t('share')}</button>` : ''}
+        <button class="btn ghost" type="button" data-action="copy">${t('copy')}</button>
         <button class="btn ghost" type="button" data-action="export-one" data-id="${r.id}" title="${t('exportOneTitle')}">${t('exportOne')}</button>
         <button class="btn ghost" type="button" data-action="reset" data-id="${r.id}" ${r.history.length || r.demo ? '' : 'disabled'}>${r.demo ? t('reset') : t('restart')}</button>
       </div>

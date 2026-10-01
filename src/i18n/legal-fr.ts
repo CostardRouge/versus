@@ -32,15 +32,17 @@ export const legalFr: LegalMessages = {
 
   boardsTitle: 'Classements publiés',
   boards1:
-    'Quand tu publies un classement, son titre, ses éléments (texte et couleurs : les images ne peuvent pas être publiées) et ses réglages sont envoyés au serveur pour que d’autres votent. Chaque vote est enregistré avec l’identifiant anonyme du navigateur qui l’a donné, la paire, le choix et l’heure : ni nom, ni e-mail, ni adresse IP.',
+    'Quand tu publies un classement, son titre, ses éléments (texte et couleurs) et ses réglages sont envoyés au serveur pour que d’autres votent, avec une image de celui-ci (son titre et ses éléments, dessinée par ton navigateur) qui s’affiche quand son lien est collé quelque part ; partager un duel en dessine une de ce duel aussi. Quand l’éditeur le permet, les images de tes éléments sont envoyées aussi, gardées pour la relecture de l’éditeur et montrées aux votants seulement une fois validées ; une image refusée est supprimée. Chaque vote est enregistré avec l’identifiant anonyme du navigateur qui l’a donné, la paire, le choix et l’heure : ni nom, ni e-mail, ni adresse IP.',
   boards2:
     'Un classement publié est supprimé quand son auteur le retire, ou après {days} jours sans activité. Toute personne qui a son lien peut le voir et voter : n’y publie rien de personnel. Le lien de l’auteur porte une clé après le <code>#</code>, que les navigateurs n’envoient jamais à un serveur : garde-le pour toi.',
+  boards3:
+    'Signaler un classement envoie le motif que tu choisis, ta précision s’il y en a une, et le même identifiant anonyme de votant, pour qu’un navigateur ne compte qu’une fois ; l’éditeur lit les signalements pour décider de retirer un classement, de le masquer des listes du site ou de le laisser. Rien d’autre n’est gardé sur toi.',
 
   countTitle: 'Mesure d’audience',
   count1:
     'Les visites sont comptées avec <a href="https://umami.is">Umami</a>, auto-hébergé sur un serveur de l’éditeur à l’adresse <code>insight.steevepommier.com</code> : aucun tiers ne reçoit les données, et rien ne sert à la publicité.',
   count2:
-    '<b>Ce qui est compté :</b> les pages vues, où ce qui identifie un classement ou un classement publié est remplacé par un repère (<code>/app/r/:id</code>) ; le site d’où tu viens ; quelques événements anonymes (un classement créé ou terminé, un classement publié, un premier vote sur un classement publié et toutes ses paires votées, une installation, un camp choisi dans le débat de la chocolatine) ; ton navigateur, ton système, le type d’appareil, la taille d’écran, la langue et le pays.',
+    '<b>Ce qui est compté :</b> les pages vues, où ce qui identifie un classement ou un classement publié est remplacé par un repère (<code>/app/r/:id</code>) ; le site d’où tu viens ; quelques événements anonymes (un classement créé ou terminé, un classement publié, un premier vote sur un classement publié et toutes ses paires votées, un résultat ou un duel partagé en image et par quel moyen, une installation, un camp choisi dans le débat de la chocolatine) ; ton navigateur, ton système, le type d’appareil, la taille d’écran, la langue et le pays.',
   count3:
     '<b>Ce qui ne l’est jamais :</b> le contenu de tes classements, leurs titres ou leurs éléments, l’adresse d’un classement publié, la clé de l’auteur, ton adresse IP (elle donne le pays, puis est oubliée), ni rien qui puisse te suivre d’un site à l’autre. Aucun cookie n’est déposé.',
   count4:
@@ -68,7 +70,7 @@ export const legalFr: LegalMessages = {
   licence1:
     'Versus est un logiciel libre : son <a href="{source}">code source</a> est publié sous <a href="{license}">licence MIT</a>.',
   licence2:
-    'Ce que tu mets dans Versus reste à toi. Quand tu publies un classement, tu en es responsable et tu dois avoir le droit de partager ce qu’il contient. Quelque chose d’illégal ou de choquant dans un classement publié ? Envoie son lien à {email} et il sera retiré.',
+    'Ce que tu mets dans Versus reste à toi. Quand tu publies un classement, tu en es responsable et tu dois avoir le droit de partager ce qu’il contient. Quelque chose d’illégal ou de choquant dans un classement publié ? Utilise son bouton <b>Signaler</b>, ou envoie son lien à {email}, et il sera retiré.',
 
   liabTitle: 'Responsabilité',
   liab1:

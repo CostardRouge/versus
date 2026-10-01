@@ -1,10 +1,22 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
-import { ACTION_INTERVAL_MS, ALIAS_RE } from '../src/core/board';
-import type { BoardSummary, BoardView, ClientMessage, ServerMessage } from '../src/core/protocol';
+import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS } from '../src/core/board';
+import type {
+  AdminBoardView,
+  AdminList,
+  AdminTotals,
+  BoardSummary,
+  BoardView,
+  ClientMessage,
+  PopularBoard,
+  ServerMessage,
+} from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
+import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
+import { TEMPLATES } from '../src/core/templates';
 import type { BoardSettings, Ranking } from '../src/core/types';
+import { fakePng } from './helpers/png';
 
 /** End-to-end tests of the Worker and its Durable Object, running in the local workerd runtime. */
 
@@ -15,9 +27,51 @@ const ADMIN = 'admin-secret-for-tests';
 const server = createTestHarness({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN } }] });
 let base: URL;
 
+/** The app page's head, as the build writes it (the tags a board's link preview rewrites). */
+const APP_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Versus — Rank anything</title>
+<meta name="description" content="Rank anything by pairwise comparison." />
+<meta property="og:title" content="Versus — Rank anything" /><meta property="og:description" content="Rank anything." />
+<meta property="og:url" content="https://versus.example.com/app/" /><meta property="og:image" content="https://versus.example.com/og.png" />
+<meta property="og:image:alt" content="Versus" /><meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" />
+<meta name="twitter:title" content="Versus — Rank anything" /><meta name="twitter:description" content="Rank anything." />
+<meta name="twitter:image" content="https://versus.example.com/og.png" /><meta name="twitter:image:alt" content="Versus" />
+</head><body><main id="view"></main></body></html>`;
+
+/** The legal page's shell, as the build writes it: the template pages are rendered into it. */
+const legalPage = (lang: 'en' | 'fr', path: string) => `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
+<title>Legal notice · Versus</title><meta name="description" content="Who publishes Versus." />
+<link rel="canonical" href="https://versus.example.com/${path}" />
+<link rel="alternate" hreflang="en" href="https://versus.example.com/legal/" /><link rel="alternate" hreflang="fr" href="https://versus.example.com/fr/mentions-legales/" />
+<link rel="alternate" hreflang="x-default" href="https://versus.example.com/legal/" />
+<meta name="robots" content="index, follow" /><meta property="og:title" content="Legal" /><meta property="og:description" content="Legal" />
+<meta property="og:url" content="https://versus.example.com/${path}" /><meta property="og:image" content="https://versus.example.com/og.png" />
+<meta property="og:image:alt" content="Versus" /><meta name="twitter:title" content="Legal" /><meta name="twitter:description" content="Legal" />
+<meta name="twitter:image" content="https://versus.example.com/og.png" /><meta name="twitter:image:alt" content="Versus" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[]}</script>
+</head><body class="lg-page"><header class="nav"><nav class="langs"><a href="../legal/" data-lang="en">EN</a><a href="../fr/mentions-legales/" data-lang="fr">FR</a></nav></header>
+<main id="main" class="wrap lg"><h1>Legal notice</h1></main><footer class="foot"><nav class="foot-langs"><a href="../legal/" data-lang="en">English</a><a href="../fr/mentions-legales/" data-lang="fr">Français</a></nav></footer></body></html>`;
+
+const SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://versus.example.com/</loc><lastmod>2026-09-30</lastmod></url>
+  <url><loc>https://versus.example.com/fr/</loc><lastmod>2026-09-30</lastmod></url>
+</urlset>
+`;
+
 beforeAll(async () => {
-  // The Worker serves the app from dist/; the tests run before any build, so an empty folder will do.
-  mkdirSync('dist', { recursive: true });
+  // The Worker serves the site from dist/; the tests run before any build, so a folder with the app's page
+  // (for link previews), the legal pages (the template pages' shells), the sitemap and the site's card (the
+  // fallback under /og/) is enough. A real build is left as it is.
+  mkdirSync('dist/app', { recursive: true });
+  mkdirSync('dist/legal', { recursive: true });
+  mkdirSync('dist/fr/mentions-legales', { recursive: true });
+  if (!existsSync('dist/app/index.html')) writeFileSync('dist/app/index.html', APP_PAGE);
+  if (!existsSync('dist/legal/index.html')) writeFileSync('dist/legal/index.html', legalPage('en', 'legal/'));
+  if (!existsSync('dist/fr/mentions-legales/index.html')) {
+    writeFileSync('dist/fr/mentions-legales/index.html', legalPage('fr', 'fr/mentions-legales/'));
+  }
+  if (!existsSync('dist/sitemap.xml')) writeFileSync('dist/sitemap.xml', SITEMAP);
+  if (!existsSync('dist/og.png')) writeFileSync('dist/og.png', fakePng(1200, 630));
   base = (await server.listen()).url;
   await server.getWorker().applyD1Migrations('REGISTRY');
 });
@@ -50,7 +104,7 @@ function api(path: string, init: { method?: string; body?: unknown; token?: stri
   return server.fetch(`${init.root ?? '/api/boards'}${path}`, { method: init.method ?? 'GET', headers, body });
 }
 
-const adminApi = (path: string, init: { method?: string; token?: string } = {}) =>
+const adminApi = (path: string, init: { method?: string; token?: string; body?: unknown } = {}) =>
   api(path, { ...init, root: '/api/admin', token: init.token ?? ADMIN });
 
 async function publish(settings: Partial<BoardSettings> = {}, duels: unknown[] = []) {
@@ -82,7 +136,7 @@ class Client {
     );
   }
 
-  static async open(alias: string, voter: string, owner?: string): Promise<Client> {
+  static async open(alias: string, voter: string, owner?: string, pair?: [string, string]): Promise<Client> {
     const url = new URL(`/api/boards/${alias}`, base);
     url.protocol = 'ws:';
     const ws = new WebSocket(url);
@@ -91,7 +145,7 @@ class Client {
       ws.addEventListener('error', reject);
     });
     const client = new Client(ws);
-    client.send(owner ? { t: 'hello', voter, owner } : { t: 'hello', voter });
+    client.send({ t: 'hello', voter, ...(owner ? { owner } : {}), ...(pair ? { pair } : {}) });
     return client;
   }
 
@@ -236,6 +290,26 @@ describe('voting', () => {
     first.close();
   });
 
+  it('serves the duel a shared link asked for first', async () => {
+    const { alias } = await publish();
+    const voter = await Client.open(alias, 'voter-one-1', undefined, ['p3', 'p4']);
+    const state = await voter.next('state');
+    expect(state.pairs[0]).toEqual(['p3', 'p4']);
+    expect(state.pairs).toHaveLength(3);
+    voter.send({ t: 'vote', a: 'p3', b: 'p4', s: 1 });
+    await voter.next('pairs');
+    voter.close();
+    // Already voted on: the link opens on whatever comes next.
+    const again = await Client.open(alias, 'voter-one-1', undefined, ['p4', 'p3']);
+    const back = await again.next('state');
+    expect(back.pairs.map(([a, b]) => pairKey(a, b))).not.toContain(pairKey('p3', 'p4'));
+    again.close();
+    // An unknown item: ignored.
+    const other = await Client.open(alias, 'voter-two-2', undefined, ['p0', 'nope']);
+    expect((await other.next('state')).pairs).toHaveLength(3);
+    other.close();
+  });
+
   it('keeps sessions and votes across hibernation', async () => {
     const { alias } = await publish();
     const voter = await Client.open(alias, 'voter-one-1');
@@ -287,6 +361,113 @@ describe('your votes', () => {
     expect((await ask([alias], 'x')).status).toBe(400);
     expect((await ask([alias], 'voter-one-1', '/more')).status).toBe(404);
     expect((await api('', { root: '/api/summaries' })).status).toBe(404);
+  });
+});
+
+describe('link previews', () => {
+  const card = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 4096);
+  const upload = (alias: string, bytes: Uint8Array, query = '', type = 'image/png') =>
+    server.fetch(`/api/boards/${alias}/card${query}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': type, 'CF-Connecting-IP': nextIp() },
+      body: bytes,
+    });
+  const page = async (path: string) => {
+    const res = await server.fetch(path, { headers: { 'CF-Connecting-IP': nextIp() } });
+    return { status: res.status, html: await res.text() };
+  };
+  const content = (html: string, key: string) =>
+    html.match(new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`))?.[1];
+
+  it('writes the board into the head of its page, in its language, with the site’s card until one is drawn', async () => {
+    const res = await api('', {
+      method: 'POST',
+      body: { title: 'Pizzas', items, voter: AUTHOR, lang: 'fr', duels: [{ a: 'p0', b: 'p1', s: 1 }] },
+    });
+    const { alias } = (await res.json()) as { alias: string };
+    const { status, html } = await page(`/app/b/${alias}`);
+    expect(status).toBe(200);
+    expect(html).toContain('<html lang="fr">');
+    expect(html).toContain('<title>Pizzas · Versus</title>');
+    expect(content(html, 'og:title')).toBe('Pizzas · Versus');
+    expect(content(html, 'og:description')).toContain('5 éléments · 1 vote · 1 votant');
+    expect(content(html, 'og:url')).toBe(`${base.origin}/app/b/${alias}`);
+    expect(content(html, 'og:image')).toMatch(/\/og\.png$/);
+    // A duel link names its two items.
+    const duel = await page(`/app/b/${alias}?duel=p2.p0`);
+    expect(content(duel.html, 'og:title')).toBe('Calzone vs Margherita · Pizzas');
+    expect(content(duel.html, 'og:description')).toContain('Calzone ou Margherita ?');
+    expect(content(duel.html, 'og:url')).toBe(`${base.origin}/app/b/${alias}?duel=p2.p0`);
+    // An unknown duel: the board's preview; a board that is gone: the page as the build wrote it.
+    expect(content((await page(`/app/b/${alias}?duel=p2.zz`)).html, 'og:title')).toBe('Pizzas · Versus');
+    const untouched = content((await page('/app/demo/destinations')).html, 'og:title');
+    expect(untouched).toMatch(/^Versus — /);
+    expect(content((await page('/app/b/1111111116')).html, 'og:title')).toBe(untouched);
+  });
+
+  it('stores the card the app drew, serves it under /og/ and puts it in the head', async () => {
+    const { alias } = await publish();
+    expect((await upload(alias, card, '', 'text/plain')).status).toBe(415);
+    expect((await upload(alias, fakePng(1080, 1350))).status).toBe(400);
+    expect((await upload('1111111117', card)).status).toBe(404);
+    expect((await upload(alias, card, '?duel=p0.zz')).status).toBe(400);
+    const stored = await upload(alias, card);
+    expect(stored.status).toBe(201);
+    const { url } = (await stored.json()) as { url: string };
+    expect(url).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/\\d+\\.png$`));
+    const served = await server.fetch(url);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('Content-Type')).toBe('image/png');
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(card);
+    const { html } = await page(`/app/b/${alias}`);
+    expect(content(html, 'og:image')).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/\\d+\\.png$`));
+    expect(content(html, 'twitter:image')).toBe(content(html, 'og:image'));
+    expect(content(html, 'og:image:alt')).toBe('The ranking “Pizzas” on Versus');
+
+    // A duel card of its own; the board's link keeps the board's card.
+    const duelCard = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 2048);
+    expect((await upload(alias, duelCard, '?duel=p1.p0')).status).toBe(201);
+    const duel = await page(`/app/b/${alias}?duel=p0.p1`);
+    expect(content(duel.html, 'og:image')).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/p0\\.p1/\\d+\\.png$`));
+    expect(content(duel.html, 'og:image:alt')).toBe(
+      'Margherita against Regina, a duel of the ranking “Pizzas” on Versus',
+    );
+    const bytes = await (await server.fetch(content(duel.html, 'og:image') ?? '')).arrayBuffer();
+    expect(new Uint8Array(bytes)).toEqual(duelCard);
+    // A duel without a card: the board's link preview falls back to the site's card.
+    expect(content((await page(`/app/b/${alias}?duel=p3.p4`)).html, 'og:image')).toMatch(/\/og\.png$/);
+    // An address that names no stored card gets the site's card.
+    expect((await server.fetch(`/og/b/${alias}/p3.p4/1.png`)).status).toBe(200);
+    expect((await server.fetch('/og/b/1111111118/1.png')).status).toBe(200);
+    expect((await server.fetch('/og/nothing')).status).toBe(200);
+  });
+
+  it('keeps at most a few duel cards per board, and drops every card with the board', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ ...items[0], id: `q${i}`, label: `Q${i}` }));
+    const res = await api('', { method: 'POST', body: { title: 'Many', items: many, voter: AUTHOR } });
+    const { alias, owner } = (await res.json()) as { alias: string; owner: string };
+    let stored = 0;
+    for (let i = 1; i < many.length && stored < CARD_LIMIT + 1; i++) {
+      for (let j = 0; j < i && stored < CARD_LIMIT + 1; j++) {
+        const r = await upload(alias, card, `?duel=q${j}.q${i}`);
+        if (stored < CARD_LIMIT) expect(r.status).toBe(201);
+        else expect(r.status).toBe(409);
+        stored++;
+      }
+    }
+    // Drawing a card again for a duel that has one is always fine.
+    expect((await upload(alias, card, '?duel=q0.q1')).status).toBe(201);
+    const first = content((await page(`/app/b/${alias}?duel=q0.q1`)).html, 'og:image') ?? '';
+    expect(first).toContain(`/og/b/${alias}/q0.q1/`);
+    await api(`/${alias}`, { method: 'DELETE', token: owner });
+    // The cards are gone with the board: the address falls back to the site's card.
+    await vi.waitFor(
+      async () => {
+        const res = await server.fetch(first);
+        expect(new Uint8Array(await res.arrayBuffer())).not.toEqual(card);
+      },
+      { timeout: 5000, interval: 200 },
+    );
   });
 });
 
@@ -472,6 +653,324 @@ describe('registry and admin', () => {
     );
     expect((await adminApi('/boards/1111111111')).status).toBe(404);
     expect((await adminApi('/nothing')).status).toBe(404);
+  });
+
+  it('takes visitors’ reports, one per voter, and lists reported boards first', async () => {
+    const { alias } = await publish();
+    const report = (body: unknown) => api(`/${alias}/report`, { method: 'POST', body });
+    expect((await report({ voter: 'voter-one-1', reason: 'spam', note: '  Ads everywhere  ' })).status).toBe(200);
+    expect((await report({ voter: 'voter-one-1', reason: 'offensive' })).status).toBe(200);
+    expect((await report({ voter: 'voter-two-2', reason: 'other', note: 'x'.repeat(400) })).status).toBe(200);
+    expect((await report({ voter: 'voter-two-2', reason: 'nope' })).status).toBe(400);
+    expect((await report({ voter: 'bad', reason: 'spam' })).status).toBe(400);
+    expect((await report({ voter: 'voter-two-2' })).status).toBe(400);
+    const gone = { voter: 'voter-one-1', reason: 'spam' };
+    expect((await api('/1111111111/report', { method: 'POST', body: gone })).status).toBe(404);
+    expect((await api(`/${alias}/report`)).status).toBe(404);
+    const full = (await (await adminApi(`/boards/${alias}`)).json()) as AdminBoardView;
+    expect(full.alias).toBe(alias);
+    expect(full.mod).toEqual({ hidden: false, featured: false });
+    expect(full.reports).toEqual([
+      { reason: 'offensive', note: '', t: expect.any(Number) },
+      { reason: 'other', note: 'x'.repeat(300), t: expect.any(Number) },
+    ]);
+    expect(JSON.stringify(full.reports)).not.toContain('voter-one-1');
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=reported')).json()) as AdminList;
+        expect(list.filter).toBe('reported');
+        expect(list.boards[0]).toMatchObject({ alias, reports: 2, lang: 'en' });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    const stats = (await (await adminApi('/stats')).json()) as AdminTotals;
+    expect(stats.reported).toBeGreaterThan(0);
+    // Reviewed: the reports go and the board leaves the list.
+    expect(await (await adminApi(`/boards/${alias}/reports`, { method: 'DELETE' })).json()).toBe(2);
+    expect(((await (await adminApi(`/boards/${alias}`)).json()) as AdminBoardView).reports).toEqual([]);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=reported')).json()) as AdminList;
+        expect(list.boards.some((b) => b.alias === alias)).toBe(false);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+  });
+
+  it('hides and features boards, and filters and searches the list', async () => {
+    const { alias } = await publish();
+    const patch = (body: unknown) => adminApi(`/boards/${alias}`, { method: 'PATCH', body });
+    expect(await (await patch({ hidden: true, featured: 'yes' })).json()).toEqual({ hidden: true, featured: false });
+    expect(await (await patch({ featured: true })).json()).toEqual({ hidden: true, featured: true });
+    expect((await adminApi('/boards/1111111111', { method: 'PATCH', body: { hidden: true } })).status).toBe(404);
+    await vi.waitFor(
+      async () => {
+        const hidden = (await (await adminApi('/boards?filter=hidden')).json()) as AdminList;
+        expect(hidden.boards.find((b) => b.alias === alias)).toMatchObject({ hidden: true, featured: true });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    const featured = (await (await adminApi('/boards?filter=featured&q=PIZZ')).json()) as AdminList;
+    expect(featured).toMatchObject({ filter: 'featured', q: 'PIZZ' });
+    expect(featured.boards.some((b) => b.alias === alias)).toBe(true);
+    const none = (await (await adminApi('/boards?filter=featured&q=nothing-like-this')).json()) as AdminList;
+    expect(none.boards).toEqual([]);
+    expect(((await (await adminApi('/boards?filter=bogus&limit=1')).json()) as AdminList).filter).toBe('all');
+    const stats = (await (await adminApi('/stats')).json()) as AdminTotals;
+    expect(stats.hidden).toBeGreaterThan(0);
+    expect(stats.featured).toBeGreaterThan(0);
+    // Voters see none of it: the board keeps working for whoever has the link.
+    const { status, body } = await view(alias);
+    expect(status).toBe(200);
+    expect(Object.keys(body)).not.toContain('mod');
+    expect((await patch({ hidden: false })).status).toBe(200);
+  });
+});
+
+describe('official templates', () => {
+  const ALIAS_IN_PAGE = /\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/;
+
+  it('publishes a template on its first visit and serves its page in each language', async () => {
+    const res = await server.fetch('/t/game-consoles/');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+    expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
+    const html = await res.text();
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('The best game console of all time · Versus</title>');
+    expect(html).toContain('<meta name="robots" content="noindex, follow" />');
+    expect(html).toMatch(/<link rel="canonical" href="https?:\/\/[^"]+\/t\/game-consoles\/" \/>/);
+    expect(html).toMatch(/hreflang="fr" href="https?:\/\/[^"]+\/fr\/t\/consoles-de-jeu\/"/);
+    expect(html).toMatch(/hreflang="x-default" href="https?:\/\/[^"]+\/t\/game-consoles\/"/);
+    expect(html).toContain('<h1 class="lg-h">The best game console of all time</h1>');
+    // The shell's relative addresses (its styles, its script) keep resolving from the legal page's folder.
+    expect(html).toContain('<head><base href="/legal/" />');
+    expect(html).toContain('Nintendo Switch');
+    expect(html).toContain('"@type":"ItemList"');
+    expect(html).toMatch(/href="\/fr\/t\/consoles-de-jeu\/"[^>]*data-lang="fr"/);
+    expect(html).toContain('href="/t/video-games/"');
+    const alias = html.match(ALIAS_IN_PAGE)?.[1];
+    expect(alias).toBeDefined();
+    // The same board again, and in French a board of its own.
+    expect(await (await server.fetch('/t/game-consoles/')).text()).toContain(`/app/b/${alias}`);
+    const fr = await server.fetch('/fr/t/consoles-de-jeu/');
+    expect(fr.status).toBe(200);
+    const frHtml = await fr.text();
+    expect(frHtml).toContain('<html lang="fr">');
+    expect(frHtml).toContain('La meilleure console de jeu de tous les temps');
+    expect(frHtml).not.toContain(`/app/b/${alias}`);
+    // A real board, open, results always visible; the admin sees it as official.
+    const v = await view(alias ?? '');
+    expect(v.body).toMatchObject({ title: 'The best game console of all time', status: 'open' });
+    expect(v.body.items).toHaveLength(12);
+    expect(v.body.ranking).not.toBeNull();
+    const full = (await (await adminApi(`/boards/${alias}`)).json()) as AdminBoardView;
+    expect(full.alias).toBe(alias);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?q=console')).json()) as AdminList;
+        expect(list.boards.find((b) => b.alias === alias)).toMatchObject({ template: 'game-consoles', lang: 'en' });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    // Unknown slug, a slug of the other language, a missing slash.
+    expect((await server.fetch('/t/nothing-here/')).status).toBe(404);
+    expect((await server.fetch('/t/consoles-de-jeu/')).status).toBe(404);
+    expect((await server.fetch('/t/game-consoles/more/')).status).toBe(404);
+    const moved = await server.fetch('/t/game-consoles', { redirect: 'manual' });
+    expect(moved.status).toBe(301);
+    expect(moved.headers.get('Location')).toMatch(/\/t\/game-consoles\/$/);
+  });
+
+  it('lists the templates and the featured boards as Popular, never a hidden one', async () => {
+    const fr = (await (await server.fetch('/api/popular?lang=fr')).json()) as { boards: PopularBoard[] };
+    expect(fr.boards).toHaveLength(TEMPLATES.length);
+    for (const b of fr.boards) {
+      expect(b.lang).toBe('fr');
+      expect(b.template).not.toBe('');
+      expect(b.top).toHaveLength(3);
+      expect(Object.keys(b)).not.toContain('hidden');
+      expect(Object.keys(b)).not.toContain('reports');
+    }
+    expect(fr.boards.map((b) => b.title)).toContain('La meilleure pâtisserie française');
+    // The first call in a language publishes the templates still missing (once).
+    const en0 = (await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] };
+    expect(en0.boards.filter((b) => b.template).length).toBe(TEMPLATES.length);
+    // A board the admin puts forward comes first; hidden, it leaves the list.
+    const { alias } = await publish();
+    await adminApi(`/boards/${alias}`, { method: 'PATCH', body: { featured: true } });
+    await vi.waitFor(
+      async () => {
+        const en = (await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] };
+        const i = en.boards.findIndex((b) => b.alias === alias);
+        expect(en.boards[i]).toMatchObject({ alias, featured: true, title: 'Pizzas', template: '' });
+        // Featured boards (this one, and the one an earlier test featured) all come before the templates.
+        expect(en.boards.slice(0, i + 1).every((b) => b.featured)).toBe(true);
+        expect(en.boards.slice(i + 1).some((b) => b.template)).toBe(true);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    await adminApi(`/boards/${alias}`, { method: 'PATCH', body: { hidden: true } });
+    await vi.waitFor(
+      async () => {
+        const en = (await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] };
+        expect(en.boards.some((b) => b.alias === alias)).toBe(false);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    expect((await server.fetch('/api/popular', { method: 'POST' })).status).toBe(404);
+  });
+
+  it('adds the template pages that have a crowd to the sitemap, and asks to index them', async () => {
+    const before = await (await server.fetch('/sitemap.xml')).text();
+    expect(before).toContain('<urlset');
+    expect(before).not.toContain('/t/');
+    // One voter is a crowd for this test.
+    await server.update({
+      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { TEMPLATE_INDEX_VOTERS: '1' } }],
+    });
+    const page = await (await server.fetch('/t/game-consoles/')).text();
+    const alias = page.match(ALIAS_IN_PAGE)?.[1] ?? '';
+    const voter = await Client.open(alias, 'voter-tpl-1');
+    const st = await voter.next('state');
+    const [a, b] = st.pairs[0] as [string, string];
+    voter.send({ t: 'vote', a, b, s: 1 });
+    await voter.next('pairs');
+    voter.close();
+    await vi.waitFor(
+      async () => {
+        const res = await server.fetch('/sitemap.xml');
+        expect(res.headers.get('Content-Type')).toContain('application/xml');
+        const xml = await res.text();
+        expect(xml).toMatch(
+          /<url><loc>https?:\/\/[^<]+\/t\/game-consoles\/<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod><\/url>/,
+        );
+        expect(xml).not.toContain('/fr/t/consoles-de-jeu/');
+        expect(xml.trim().endsWith('</urlset>')).toBe(true);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    const res = await server.fetch('/t/game-consoles/');
+    expect(res.headers.get('X-Robots-Tag')).toBe('all');
+    const html = await res.text();
+    expect(html).toContain('<meta name="robots" content="index, follow');
+    expect(html).toContain('1 vote');
+  });
+});
+
+describe('pictures for review', () => {
+  const fakeJpeg = (size = 1024) => {
+    const b = new Uint8Array(size);
+    b.set([0xff, 0xd8, 0xff, 0xe0]);
+    return b;
+  };
+  const sendPicture = (alias: string, id: string, bytes: Uint8Array, token?: string, type = 'image/jpeg') =>
+    server.fetch(`/api/boards/${alias}/items/${id}/image`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': type,
+        'CF-Connecting-IP': nextIp(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: bytes,
+    });
+  const announced = (...ids: string[]) => items.map((it) => (ids.includes(it.id) ? { ...it, pic: 'pending' } : it));
+  const publishPics = async (list: unknown[]) => {
+    const res = await api('', { method: 'POST', body: { title: 'Photos', items: list, voter: AUTHOR } });
+    expect(res.status).toBe(201);
+    return (await res.json()) as { alias: string; owner: string };
+  };
+  const decide = (alias: string, id: string, decision: string) =>
+    adminApi(`/boards/${alias}/items/${id}/picture`, { method: 'POST', body: { decision } });
+
+  it('refuses announced pictures while they are off, and says so in its config', async () => {
+    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'off' });
+    const res = await api('', { method: 'POST', body: { title: 'Photos', items: announced('p0'), voter: AUTHOR } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'images_not_allowed' });
+  });
+
+  it('keeps a picture for review, shows it to the admin only, then to everyone once approved', async () => {
+    await server.update({
+      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { IMAGES_UPLOAD: 'review' } }],
+    });
+    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'review' });
+    const { alias, owner } = await publishPics(announced('p0'));
+    const first = (await view(alias)).body.items;
+    expect(first[0]).toMatchObject({ id: 'p0', img: null, pic: 'pending' });
+    expect(Object.keys(first[1] ?? {})).not.toContain('pic');
+    // Only the author, only for an item that announced one, only a JPEG within the limit.
+    expect((await sendPicture(alias, 'p0', fakeJpeg())).status).toBe(403);
+    expect((await sendPicture(alias, 'p1', fakeJpeg(), owner)).status).toBe(404);
+    expect((await sendPicture(alias, 'p0', fakeJpeg(), owner, 'image/png')).status).toBe(415);
+    expect((await sendPicture(alias, 'p0', fakeJpeg(LIMITS.picture + 1), owner)).status).toBe(413);
+    expect((await sendPicture(alias, 'p0', new Uint8Array([1, 2, 3, 4, 5]), owner)).status).toBe(400);
+    expect((await sendPicture(alias, 'p0', fakeJpeg(), owner)).status).toBe(201);
+    // Not public yet; the admin sees it.
+    expect((await server.fetch(`/img/b/${alias}/p0.jpg`)).status).toBe(404);
+    expect((await server.fetch(`/img/b/${alias}/p0.png`)).status).toBe(404);
+    expect((await server.fetch('/img/b/nope/p0.jpg')).status).toBe(404);
+    const mine = await adminApi(`/boards/${alias}/items/p0/image`);
+    expect(mine.status).toBe(200);
+    expect(mine.headers.get('Content-Type')).toBe('image/jpeg');
+    expect((await adminApi(`/boards/${alias}/items/p0/image`, { token: 'wrong' })).status).toBe(403);
+    expect((await adminApi(`/boards/${alias}/items/p0/other`)).status).toBe(404);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=pictures')).json()) as AdminList;
+        expect(list.boards.find((b) => b.alias === alias)).toMatchObject({ pictures: 1 });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    expect(((await (await adminApi('/stats')).json()) as AdminTotals).pictures).toBeGreaterThan(0);
+    // Approved: the item shows it from its public address, voters included, right away.
+    const voter = await Client.open(alias, 'voter-pic-1');
+    await voter.next('state');
+    expect((await decide(alias, 'p0', 'maybe')).status).toBe(400);
+    const ok = await decide(alias, 'p0', 'ok');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ id: 'p0', img: `/img/b/${alias}/p0.jpg` });
+    const pushed = await voter.next('state');
+    expect(pushed.board.items[0]).toMatchObject({ id: 'p0', img: `/img/b/${alias}/p0.jpg` });
+    expect(Object.keys(pushed.board.items[0] ?? {})).not.toContain('pic');
+    voter.close();
+    const shown = await server.fetch(`/img/b/${alias}/p0.jpg`);
+    expect(shown.status).toBe(200);
+    expect(shown.headers.get('Content-Type')).toBe('image/jpeg');
+    // Decided once; the board leaves the list of pictures to review.
+    expect((await decide(alias, 'p0', 'ok')).status).toBe(400);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=pictures')).json()) as AdminList;
+        expect(list.boards.some((b) => b.alias === alias)).toBe(false);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+  });
+
+  it('deletes a refused picture, needs one to approve, and drops them all with the board', async () => {
+    const { alias, owner } = await publishPics(announced('p1', 'p2', 'p3'));
+    expect((await sendPicture(alias, 'p1', fakeJpeg(), owner)).status).toBe(201);
+    expect((await sendPicture(alias, 'p2', fakeJpeg(), owner)).status).toBe(201);
+    const no = await decide(alias, 'p1', 'refused');
+    expect(await no.json()).toMatchObject({ id: 'p1', img: null, pic: 'refused' });
+    expect((await adminApi(`/boards/${alias}/items/p1/image`)).status).toBe(404);
+    expect((await view(alias)).body.items[1]).toMatchObject({ id: 'p1', img: null, pic: 'refused' });
+    // Nothing arrived for p3: nothing to approve.
+    expect((await decide(alias, 'p3', 'ok')).status).toBe(404);
+    // Removing an item takes its picture along; taking the board down takes the rest.
+    expect((await adminApi(`/boards/${alias}/items/p2`, { method: 'DELETE' })).status).toBe(200);
+    await vi.waitFor(async () => expect((await adminApi(`/boards/${alias}/items/p2/image`)).status).toBe(404), {
+      timeout: 5000,
+      interval: 200,
+    });
+    const { alias: other, owner: owner2 } = await publishPics(announced('p0'));
+    expect((await sendPicture(other, 'p0', fakeJpeg(), owner2)).status).toBe(201);
+    expect((await adminApi(`/boards/${other}`, { method: 'DELETE' })).status).toBe(200);
+    await vi.waitFor(async () => expect((await adminApi(`/boards/${other}/items/p0/image`)).status).toBe(404), {
+      timeout: 5000,
+      interval: 200,
+    });
   });
 });
 

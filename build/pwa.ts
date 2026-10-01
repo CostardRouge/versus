@@ -12,11 +12,12 @@ export const VERSION_MARK = '__VERSION__';
  * What the service worker stores at install: the pages (the app and the two home pages, so an app installed
  * before the home page existed still opens offline), their scripts and styles, the latin fonts of the first
  * render, the manifest and the SVG icon. Other files under assets/ (font subsets for other scripts) are stored
- * on first use; the social cards, PNG icons and crawler files are never needed offline.
+ * on first use; the social cards, PNG icons and crawler files are never needed offline, and neither is the
+ * admin page (src/admin/admin.ts, whose bundle is named after it).
  */
 const PRECACHE = [
   /^(?:(?:fr|app)\/)?index\.html$/,
-  /^assets\/[^/]+\.(?:js|css)$/,
+  /^assets\/(?!admin-)[^/]+\.(?:js|css)$/,
   /^assets\/[^/]+-latin-(?!ext-)[^/]*\.woff2$/,
   /^manifest\.webmanifest$/,
   new RegExp(`^${ICONS.svg.replace(/\./g, '\\.')}$`),

@@ -143,6 +143,31 @@ describe('boot script', () => {
     expect(landingBoot('fr')).toContain('display-mode: minimal-ui');
   });
 
+  it('lets the installed app reach the home page through its own link', () => {
+    // A runnable copy of the script, with the browser's answers stubbed: an app window, coming from the app or not.
+    const run = (referrer: string) => {
+      const left: string[] = [];
+      const js = landingBoot('en').replace(/<\/?script>/g, '');
+      const document = {
+        documentElement: { classList: { add() {} }, dataset: {} as Record<string, string> },
+        referrer,
+      };
+      const location = { hash: '', origin: 'https://versus.example.com', replace: (to: string) => left.push(to) };
+      const matchMedia = () => ({ matches: true });
+      const localStorage = { getItem: () => null };
+      new Function('document', 'location', 'matchMedia', 'localStorage', js)(
+        document,
+        location,
+        matchMedia,
+        localStorage,
+      );
+      return left;
+    };
+    expect(run('')).toEqual(['./app/']);
+    expect(run('https://elsewhere.example/')).toEqual(['./app/']);
+    expect(run('https://versus.example.com/app/')).toEqual([]);
+  });
+
   it('honors a language chosen before, only for visitors arriving from elsewhere', () => {
     const js = landingBoot('en');
     expect(js).toContain("prefs.lang !== 'en'");
@@ -166,7 +191,11 @@ describe('pages', () => {
       const html = read(page);
       expect(html).toContain(`<html lang="${PAGES[page].lang}">`);
       expect(html).toContain(HEAD_MARK);
-      if (page !== 'app') {
+      if (page === 'admin') {
+        // The moderation page renders itself; only the head and the theme script are filled.
+        expect(html).toContain(BOOT_MARK);
+        expect(html).not.toContain(BODY_MARK);
+      } else if (page !== 'app') {
         expect(html).toContain(BOOT_MARK);
         expect(html).toContain(BODY_MARK);
       } else {

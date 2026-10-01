@@ -6,14 +6,18 @@
   "compatibility_date": "2026-09-20",
   "observability": { "enabled": true },
   // No routes on purpose: the custom domain is added in the dashboard, and deploys keep it.
-  // Files are served before the Worker runs; the Worker gets what matches none (the API, the app's views, 404s).
-  "assets": { "directory": "../dist", "binding": "ASSETS" },
+  // Files are served before the Worker runs; the Worker gets what matches none (the API, the app's views, the
+  // template pages, 404s), and the sitemap, which it completes with the template pages (docs/seo.md).
+  "assets": { "directory": "../dist", "binding": "ASSETS", "run_worker_first": ["/sitemap.xml"] },
   "durable_objects": {
     "bindings": [{ "name": "BOARDS", "class_name": "BoardObject" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BoardObject"] }],
   // Board registry for the admin API. Wrangler creates the database on the first deploy.
   "d1_databases": [{ "binding": "REGISTRY", "database_name": "versus-registry", "migrations_dir": "migrations" }],
+  // The cards a board's links unfurl with (uploaded by the app, served under /og/). `npm run worker:deploy`
+  // creates the bucket when it is missing; the account's R2 must be enabled once in the dashboard.
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "versus-images" }],
   // Per-IP limits (the period is 10 or 60 seconds).
   "ratelimits": [
     { "name": "PUBLISH_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },

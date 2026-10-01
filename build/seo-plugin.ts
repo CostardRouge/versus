@@ -46,9 +46,15 @@ export function fillPage(
   opts: { url: string; publish: boolean; head: string[]; path?: string; analytics?: AnalyticsConfig | null },
 ): string {
   const { lang, kind } = PAGES[page];
-  const marks = kind === 'app' ? [BASE_MARK, HEAD_MARK, NOSCRIPT_MARK, ABOUT_MARK] : [HEAD_MARK, BOOT_MARK, BODY_MARK];
+  const marks =
+    kind === 'app'
+      ? [BASE_MARK, HEAD_MARK, NOSCRIPT_MARK, ABOUT_MARK]
+      : kind === 'admin'
+        ? [HEAD_MARK, BOOT_MARK]
+        : [HEAD_MARK, BOOT_MARK, BODY_MARK];
   for (const mark of marks) if (!html.includes(mark)) throw new Error(`${PAGES[page].file} needs ${mark}`);
-  const analytics = opts.analytics ? [analyticsTag(opts.analytics, PAGES[page].path)] : [];
+  // The admin page is the publisher's: its visits aren't counted.
+  const analytics = opts.analytics && kind !== 'admin' ? [analyticsTag(opts.analytics, PAGES[page].path)] : [];
   const out = html.replace(HEAD_MARK, [...headTags(opts.url, page), ...opts.head, ...analytics].join('\n    '));
   if (kind === 'app') {
     return out
@@ -56,6 +62,7 @@ export function fillPage(
       .replace(NOSCRIPT_MARK, noscriptHtml())
       .replace(ABOUT_MARK, aboutStatic(opts.publish));
   }
+  if (kind === 'admin') return out.replace(BOOT_MARK, legalBoot());
   if (kind === 'legal') {
     return out
       .replace(BOOT_MARK, legalBoot())

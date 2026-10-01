@@ -2,6 +2,7 @@ import { fillCode, sameFill } from './colors';
 import { mkRank } from './model';
 import { compute, pairKey } from './scoring';
 import type {
+  BoardLang,
   BoardMeta,
   BoardSettings,
   BoardStatus,
@@ -11,8 +12,11 @@ import type {
   Fill,
   Item,
   MethodKey,
+  Moderation,
   Outcome,
   Ranking,
+  Report,
+  ReportReason,
   Result,
   Rng,
   Session,
@@ -41,7 +45,21 @@ export const LIMITS = {
   skipped: 12,
   /** Boards refreshed in one "Your votes" request (one Durable Object call each). */
   summaries: 24,
+  /** A report's note, and how many voters' reports a board keeps. */
+  note: 300,
+  reports: 200,
+  /** Bytes of an item's picture (a 640 px JPEG, as the app downsizes them). */
+  picture: 250_000,
 };
+
+/**
+ * Whether published items may carry pictures: not at all (the default), sent to the moderator for review and
+ * shown once approved, or as given (the site's own boards, whose pictures are the site's).
+ */
+export type ImagePolicy = 'off' | 'review' | 'direct';
+
+/** Where an approved picture may live: on this site under /img/, or an https address (official templates). */
+export const IMAGE_URL_RE = /^(?:\/img\/[\w./-]+|https:\/\/[^\s"'<>]+)$/;
 /** Undoing the very last vote stays possible this long when votes are final (mis-taps). */
 export const UNDO_GRACE_MS = 10_000;
 /** Minimum delay between two votes or skips of one connection (each one triggers pair assignment). */
@@ -58,6 +76,11 @@ export const DEFAULT_SETTINGS: BoardSettings = {
   allowChange: true,
   visitorsAddItems: false,
 };
+
+/** A board starts neither hidden nor featured. */
+export const DEFAULT_MODERATION: Moderation = { hidden: false, featured: false };
+
+export const REPORT_REASONS: readonly ReportReason[] = ['spam', 'offensive', 'personal', 'other'];
 
 export const VOTER_RE = /^[\w-]{8,64}$/;
 const ITEM_ID_RE = /^[\w-]{1,32}$/;
@@ -103,26 +126,43 @@ export function parseFill(x: unknown): Fill | null | undefined {
 export interface NewItem {
   label: string;
   fill: Fill | null;
+  /** An approved picture's address (official boards only); null otherwise. */
+  img: string | null;
+  /** The author will send a picture for review (when the policy allows it). */
+  pic?: 'pending';
 }
 
-/** An item's content: a label, and a fill for colors. No images on published boards (v1). */
-export function parseNewItem(x: unknown): Result<NewItem> {
+/**
+ * An item's content: a label, a fill for colors, and, by policy, a picture: none (`off`), announced and sent
+ * for review (`pic: 'pending'`, `review`), or its address as given (`direct`, the site's own boards).
+ */
+export function parseNewItem(x: unknown, images: ImagePolicy = 'off'): Result<NewItem> {
   if (!isRecord(x) || typeof x.label !== 'string') return fail('bad_request');
-  if (x.img !== null && x.img !== undefined) return fail('images_not_allowed');
+  let img: string | null = null;
+  if (x.img !== null && x.img !== undefined) {
+    if (images !== 'direct' || typeof x.img !== 'string' || !IMAGE_URL_RE.test(x.img))
+      return fail('images_not_allowed');
+    img = x.img;
+  }
+  let pic: 'pending' | undefined;
+  if (x.pic !== undefined) {
+    if (x.pic !== 'pending' || images === 'off' || img) return fail('images_not_allowed');
+    pic = 'pending';
+  }
   const fill = parseFill(x.fill);
   if (fill === undefined) return fail('bad_request');
   const label = x.label.trim();
   if (label.length > LIMITS.label || (!label && !fill)) return fail('bad_request');
-  return ok({ label, fill });
+  return ok({ label, fill, img, ...(pic ? { pic } : {}) });
 }
 
-function parseItem(x: unknown): Result<Item> {
+function parseItem(x: unknown, images: ImagePolicy): Result<Item> {
   if (!isRecord(x) || typeof x.id !== 'string' || !ITEM_ID_RE.test(x.id)) return fail('bad_request');
-  const content = parseNewItem(x);
+  const content = parseNewItem(x, images);
   if (!content.ok) return content;
-  const { label, fill } = content.value;
+  const { label, fill, img, pic } = content.value;
   const h = typeof x.h === 'number' && Number.isInteger(x.h) && x.h >= 0 && x.h < 360 ? x.h : hueOf(label);
-  return ok({ id: x.id, label, img: null, fill, h });
+  return ok({ id: x.id, label, img, fill, h, ...(pic ? { pic } : {}) });
 }
 
 /** Applies the valid fields of `patch`; anything else keeps its current value. */
@@ -148,19 +188,25 @@ export interface PublishInput {
   voter: string;
   /** The author's local duels, pushed as their votes (empty to start without votes). */
   duels: Duel[];
+  /** The app's language at publication, for the link previews; English unless said otherwise. */
+  lang: BoardLang;
 }
 
-/** Validates a publish request. Duels on unknown items are dropped, like the local history does. */
-export function parsePublish(x: unknown): Result<PublishInput> {
+/**
+ * Validates a publish request. Duels on unknown items are dropped, like the local history does. `images` is
+ * the server's picture policy for this request.
+ */
+export function parsePublish(x: unknown, images: ImagePolicy = 'off'): Result<PublishInput> {
   if (!isRecord(x) || typeof x.title !== 'string' || !Array.isArray(x.items)) return fail('bad_request');
   const title = x.title.trim();
   if (!title || title.length > LIMITS.title) return fail('bad_request');
   if (typeof x.voter !== 'string' || !VOTER_RE.test(x.voter)) return fail('bad_request');
+  const lang: BoardLang = x.lang === 'fr' ? 'fr' : 'en';
   if (x.items.length < 2 || x.items.length > LIMITS.items) return fail('bad_request');
   const items: Item[] = [];
   const ids = new Set<string>();
   for (const raw of x.items) {
-    const r = parseItem(raw);
+    const r = parseItem(raw, images);
     if (!r.ok) return r;
     if (ids.has(r.value.id)) return fail('bad_request');
     ids.add(r.value.id);
@@ -176,7 +222,7 @@ export function parsePublish(x: unknown): Result<PublishInput> {
   }
   // The method comes from the local ranking; exact sort falls back to Balanced.
   const settings = patchSettings(DEFAULT_SETTINGS, x.settings);
-  return ok({ title, items, settings, voter: x.voter, duels });
+  return ok({ title, items, settings, voter: x.voter, duels, lang });
 }
 
 // ─── Board state ────────────────────────────────────────────────────────────
@@ -207,16 +253,45 @@ function putVote(board: SharedBoard, v: Vote): Vote | null {
   return prev;
 }
 
-/** Rebuilds a board from stored parts; `votes` must be in arrival order. */
-export function restoreBoard(meta: BoardMeta, items: Item[], votes: Iterable<Vote>): SharedBoard {
-  const board: SharedBoard = { ...meta, items, votes: new Map(), voters: new Map() };
+/** Rebuilds a board from stored parts; `votes` and `reports` must be in arrival order. */
+export function restoreBoard(
+  meta: BoardMeta,
+  items: Item[],
+  votes: Iterable<Vote>,
+  reports: Iterable<Report> = [],
+): SharedBoard {
+  const board: SharedBoard = { ...meta, items, votes: new Map(), voters: new Map(), reports: new Map() };
   for (const v of votes) putVote(board, v);
+  for (const r of reports) board.reports.set(r.voter, r);
   return board;
 }
 
-/** A new board; the author's duels become their votes, repeated pairs collapsing to the last duel. */
-export function createBoard(input: PublishInput, now: number): SharedBoard {
-  const meta: BoardMeta = { title: input.title, settings: input.settings, status: 'open', created: now, touched: now };
+/** What makes a board the site's own: an official template, which never expires. */
+export interface Origin {
+  official: boolean;
+  template: string;
+}
+
+/**
+ * A new board; the author's duels become their votes, repeated pairs collapsing to the last duel. `origin`
+ * marks the site's own boards (official templates).
+ */
+export function createBoard(
+  input: PublishInput,
+  now: number,
+  origin: Origin = { official: false, template: '' },
+): SharedBoard {
+  const meta: BoardMeta = {
+    title: input.title,
+    settings: input.settings,
+    status: 'open',
+    created: now,
+    touched: now,
+    lang: input.lang,
+    mod: { ...DEFAULT_MODERATION },
+    official: origin.official,
+    template: origin.template,
+  };
   return restoreBoard(
     meta,
     input.items,
@@ -224,13 +299,86 @@ export function createBoard(input: PublishInput, now: number): SharedBoard {
   );
 }
 
-export const boardMeta = ({ title, settings, status, created, touched }: SharedBoard): BoardMeta => ({
+export const boardMeta = ({
   title,
   settings,
   status,
   created,
   touched,
+  lang,
+  mod,
+  official,
+  template,
+}: SharedBoard): BoardMeta => ({
+  title,
+  settings,
+  status,
+  created,
+  touched,
+  lang,
+  mod,
+  official,
+  template,
 });
+
+/** Votes cast in the last `days` days: how alive a board is, for the Popular section. */
+export function recentVotes(board: SharedBoard, now: number, days = 7): number {
+  const since = now - days * 86_400_000;
+  let n = 0;
+  for (const v of board.votes.values()) if (v.t >= since) n++;
+  return n;
+}
+
+// ─── Moderation ─────────────────────────────────────────────────────────────
+
+export interface ReportInput {
+  voter: string;
+  reason: ReportReason;
+  note: string;
+}
+
+/** A visitor's report: their voter id, a reason from the list, and a note cut to LIMITS.note. */
+export function parseReport(x: unknown): Result<ReportInput> {
+  if (!isRecord(x) || typeof x.voter !== 'string' || !VOTER_RE.test(x.voter)) return fail('bad_request');
+  if (!REPORT_REASONS.includes(x.reason as ReportReason)) return fail('bad_request');
+  if (x.note !== undefined && typeof x.note !== 'string') return fail('bad_request');
+  const note = (x.note ?? '').trim().slice(0, LIMITS.note);
+  return ok({ voter: x.voter, reason: x.reason as ReportReason, note });
+}
+
+/**
+ * Records a report. One per voter (a new one replaces theirs), LIMITS.reports voters at most: enough to
+ * make a board stand out on the admin page, not enough to fill the store. Not an activity for the TTL.
+ */
+export function addReport(board: SharedBoard, input: ReportInput, now: number): Result<Report> {
+  if (!board.reports.has(input.voter) && board.reports.size >= LIMITS.reports) return fail('full');
+  const report: Report = { ...input, t: now };
+  board.reports.delete(input.voter);
+  board.reports.set(input.voter, report);
+  return ok(report);
+}
+
+/** The admin has seen the reports: they go, and the board can be reported again. */
+export function clearReports(board: SharedBoard): Report[] {
+  const gone = [...board.reports.values()];
+  board.reports.clear();
+  return gone;
+}
+
+/** The flags of a moderation patch; anything else is ignored. */
+export function parseModeration(x: unknown): Partial<Moderation> {
+  const out: Partial<Moderation> = {};
+  if (!isRecord(x)) return out;
+  if (typeof x.hidden === 'boolean') out.hidden = x.hidden;
+  if (typeof x.featured === 'boolean') out.featured = x.featured;
+  return out;
+}
+
+/** Applies the admin's flags. Not an activity for the TTL: moderation must not keep a dead board alive. */
+export function moderate(board: SharedBoard, patch: Partial<Moderation>): Moderation {
+  board.mod = { ...board.mod, ...patch };
+  return board.mod;
+}
 
 export const voteCount = (board: SharedBoard, voter: string): number => board.voters.get(voter)?.size ?? 0;
 
@@ -270,10 +418,41 @@ export function addItem(board: SharedBoard, input: NewItem, id: string, now: num
   if (board.items.length >= LIMITS.items) return fail('full');
   const key = input.label.toLowerCase();
   if (board.items.some((i) => i.label.toLowerCase() === key)) return fail('exists');
-  const item: Item = { id, label: input.label, img: null, fill: input.fill, h: hueOf(input.label) };
+  const item: Item = {
+    id,
+    label: input.label,
+    img: input.img,
+    fill: input.fill,
+    h: hueOf(input.label),
+    ...(input.pic ? { pic: input.pic } : {}),
+  };
   board.items.push(item);
   board.touched = now;
   return ok(item);
+}
+
+// ─── Pictures (docs/published-boards.md#images) ────────────────────────────
+
+/** Items whose picture waits for the moderator. */
+export const pendingPictures = (board: SharedBoard): number => board.items.filter((i) => i.pic === 'pending').length;
+
+/** Whether an item's picture may be sent now: the item announced one, and it is still waiting. */
+export const awaitsPicture = (board: SharedBoard, id: string): boolean =>
+  board.items.some((i) => i.id === id && i.pic === 'pending');
+
+/**
+ * The moderator's decision on an item's picture: approved, the item shows it from `url`; refused, the item
+ * stays as text and the author sees why. Not an activity for the TTL.
+ */
+export function decidePicture(board: SharedBoard, id: string, decision: 'ok' | 'refused', url: string): Result<Item> {
+  const it = board.items.find((i) => i.id === id);
+  if (!it) return fail('not_found');
+  if (it.pic !== 'pending') return fail('bad_request');
+  const rest: Item = { ...it };
+  delete rest.pic;
+  const next: Item = decision === 'ok' ? { ...rest, img: url } : { ...rest, img: null, pic: 'refused' };
+  board.items = board.items.map((i) => (i.id === id ? next : i));
+  return ok(next);
 }
 
 /** Removes an item and every vote that involves it (they would count for nothing). A board keeps 2 items. */
@@ -479,7 +658,10 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
   }
 }
 
-/** A new session; `lastActionAt` carries over when a connection says hello again, so it can't dodge the limit. */
+/**
+ * A new session; `lastActionAt` carries over when a connection says hello again, so it can't dodge the limit.
+ * `wanted` is the duel a shared link asked for: it comes first when this voter can still vote on it.
+ */
 export function openSession(
   board: SharedBoard,
   voter: string,
@@ -487,10 +669,26 @@ export function openSession(
   C: Computed,
   rng: Rng,
   lastActionAt = 0,
+  wanted: readonly [string, string] | null = null,
 ): Session {
   const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt };
   refill(board, session, C, rng);
+  if (wanted) preferPair(board, session, wanted[0], wanted[1]);
   return session;
+}
+
+/**
+ * Puts a pair first in the session's queue (the duel a shared link names). Nothing happens when the pair isn't
+ * one of the board's, this voter already voted on it, or the board is closed.
+ */
+export function preferPair(board: SharedBoard, session: Session, a: string, b: string): boolean {
+  const has = (id: string) => board.items.some((i) => i.id === id);
+  if (board.status !== 'open' || a === b || !has(a) || !has(b)) return false;
+  const k = pairKey(a, b);
+  if (board.voters.get(session.voter)?.has(k)) return false;
+  const rest = session.queue.filter(([x, y]) => pairKey(x, y) !== k);
+  session.queue = [[a, b] as [string, string], ...rest].slice(0, LIMITS.queue);
+  return true;
 }
 
 const queueIndex = (session: Session, a: string, b: string): number => {

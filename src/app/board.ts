@@ -1,11 +1,11 @@
 import { trackEvent } from '../audience';
-import { revealAt } from '../core/board';
+import { LIMITS, REPORT_REASONS, revealAt } from '../core/board';
 import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
-import type { BoardView, Counts, RankingView, ServerMessage } from '../core/protocol';
+import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
-import type { BoardStatus, Duel, ErrorCode, Fill, Item, Outcome, Ranking } from '../core/types';
+import type { BoardStatus, Duel, ErrorCode, Fill, Item, Outcome, Ranking, ReportReason } from '../core/types';
 import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { closeColor, cp, openBoardColor } from './color';
@@ -24,7 +24,7 @@ import {
 import { fmtCrowd } from './format';
 import { flushJoined, markGone, noteBoard } from './joined';
 import { optionsHTML, readSettings, settingsHTML } from './publish';
-import { open } from './rankings';
+import { makeOwn, open } from './rankings';
 import {
   ApiError,
   addBoardItem,
@@ -33,6 +33,7 @@ import {
   patchBoard,
   recolorBoardItem,
   removeBoardItem,
+  reportBoard,
   setBoardStatus,
   withdrawBoard,
 } from './remote';
@@ -112,8 +113,11 @@ const live = (): boolean => S.prefs.live !== false;
 const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
 const localOf = (alias: string): Ranking | undefined => S.ranks.find((r) => r.pub?.alias === alias);
 
-/** Connects to a board (or keeps the current connection when it is the same one). */
-export function enterBoard(alias: string, available: boolean): void {
+/**
+ * Connects to a board (or keeps the current connection when it is the same one). `wanted` is the duel a shared
+ * link asked for: the server serves it first when this voter can still vote on it.
+ */
+export function enterBoard(alias: string, available: boolean, wanted: [string, string] | null = null): void {
   if (B?.alias === alias) return;
   leaveBoard();
   const owner = loadOwners()[alias] ?? null;
@@ -142,7 +146,12 @@ export function enterBoard(alias: string, available: boolean): void {
   B = board;
   resetFinale();
   if (!available) return;
-  const hello = owner ? { t: 'hello' as const, voter: S.voter, owner } : { t: 'hello' as const, voter: S.voter };
+  const hello: ClientMessage = {
+    t: 'hello',
+    voter: S.voter,
+    ...(owner ? { owner } : {}),
+    ...(wanted ? { pair: wanted } : {}),
+  };
   board.socket = new BoardSocket(
     alias,
     hello,
@@ -291,12 +300,20 @@ function boardHTML(b: Board, adminOpen: boolean): string {
       <div class="empty-duel"><h2 class="q">${msg}</h2>${final ? action : ''}</div></div>`;
   }
   const closed = v.status === 'closed';
+  // Voters can start their own version from these items; the author has the ranking already.
+  const mine = b.isOwner
+    ? ''
+    : `<button class="btn sm ghost" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>`;
   return `<div class="board">
     <div class="ws-head b-head">
       ${back}
       <h1 class="b-title">${esc(v.title)}</h1>
       <span class="chip ${closed ? '' : 'chip-live'}">${closed ? t('closedChip') : t('pubChip')}</span>
-      <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
+      <span class="b-head-acts">
+        <button class="btn sm primary" type="button" data-action="share-board">${t('share')}</button>
+        <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
+        ${mine}
+      </span>
     </div>
     <p class="b-counts mono" id="b-counts">${countsText(b.counts)}</p>
     <p class="note b-conn" id="b-conn" role="status" ${b.conn === 'lost' ? '' : 'hidden'}>${t('reconnecting')}</p>
@@ -306,6 +323,7 @@ function boardHTML(b: Board, adminOpen: boolean): string {
         ${b.isOwner ? adminHTML(v, adminOpen) : ''}
         <section class="b-rank" id="b-rank"></section>
         ${!b.isOwner && v.settings.visitorsAddItems && !closed ? `<section class="b-suggest"><h2>${t('suggestTitle')}</h2>${addFormHTML()}</section>` : ''}
+        ${b.isOwner ? '' : `<p class="b-report"><button class="link" type="button" data-action="b-report">${t('report')}</button></p>`}
       </aside>
     </div>
   </div>`;
@@ -329,7 +347,14 @@ function itemsHTML(v: BoardView): string {
     .map((it) => {
       const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
       const warn = twin ? `<small class="b-twin">${esc(t('sameColor', { label: twin.label }))}</small>` : '';
-      return `<li>${itemThumbHTML(it, open)}<span class="b-item"><span class="rlabel">${esc(it.label)}</span>${warn}</span>
+      // A picture sent for review, or refused: the author sees why the item shows as text.
+      const pic =
+        it.pic === 'pending'
+          ? `<small class="b-pic">${t('picPending')}</small>`
+          : it.pic === 'refused'
+            ? `<small class="b-pic b-pic-no">${t('picRefused')}</small>`
+            : '';
+      return `<li>${itemThumbHTML(it, open)}<span class="b-item"><span class="rlabel">${esc(it.label)}</span>${warn}${pic}</span>
         <button class="icon-btn" type="button" data-action="b-remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">${trashSvg}</button></li>`;
     })
     .join('');
@@ -386,7 +411,7 @@ function duelHTML(b: Board, v: BoardView): string {
       <button class="ctl ctl-b" type="button" data-action="b-pick" data-side="b">${t('bWins')} <kbd>→</kbd></button>
     </div>
     <div class="duel-foot">
-      <button class="link" type="button" data-action="b-undo" ${b.mine.length ? '' : 'disabled'}>${t('undoVote')}</button>
+      <span class="duel-foot-acts"><button class="link" type="button" data-action="b-undo" ${b.mine.length ? '' : 'disabled'}>${t('undoVote')}</button><button class="link" type="button" data-action="share-duel">${t('shareDuel')}</button></span>
       <span class="muted">${t('swipeHint')}</span>
     </div>
   </div>`;
@@ -775,6 +800,72 @@ export async function copyBoardLink(alias: string | undefined, admin = false): P
 
 export const boardShare = (): Promise<void> => copyBoardLink(B?.alias);
 export const boardAdminLink = (): Promise<void> => copyBoardLink(B?.alias, true);
+
+/** What sharing the board as an image needs: the board on screen, the crowd as this viewer sees it, the duel up. */
+export interface BoardShare {
+  alias: string;
+  view: BoardView;
+  ranking: RankingView | null;
+  mine: Duel[];
+  counts: Counts;
+  pair: [Item, Item] | null;
+  isOwner: boolean;
+}
+
+export function boardShareData(): BoardShare | null {
+  const b = B;
+  if (!b?.view) return null;
+  const pair = b.pairs[0];
+  const A = pair ? itemOf(pair[0]) : undefined;
+  const C = pair ? itemOf(pair[1]) : undefined;
+  return {
+    alias: b.alias,
+    view: b.view,
+    ranking: b.shown,
+    mine: b.mine,
+    counts: b.counts,
+    pair: A && C && b.view.status === 'open' ? [A, C] : null,
+    isOwner: b.isOwner,
+  };
+}
+
+/** A ranking of this browser with the board's items, for a voter who wants their own version. */
+export function boardMakeMine(): void {
+  const v = B?.view;
+  if (v) makeOwn(v.title, v.items, 'board');
+}
+
+const REASON_KEYS: Record<ReportReason, MsgKey> = {
+  spam: 'reportSpam',
+  offensive: 'reportOffensive',
+  personal: 'reportPersonal',
+  other: 'reportOther',
+};
+
+/** Reports the board to the moderator: a reason from the list and a few words, sent with the anonymous voter id. */
+export async function boardReport(): Promise<void> {
+  const b = B;
+  if (!b?.view) return;
+  const options = REPORT_REASONS.map(
+    (r, i) =>
+      `<label class="opt"><input type="radio" name="report-reason" value="${r}" ${i === 0 ? 'checked' : ''}> ${t(REASON_KEYS[r])}</label>`,
+  ).join('');
+  const html = `<p class="muted">${t('reportBody')}</p>
+    <fieldset class="set">${options}</fieldset>
+    <label class="report-note"><span class="muted">${t('reportNote')}</span>
+      <textarea id="report-note" rows="3" maxlength="${LIMITS.note}"></textarea></label>`;
+  const ok = await ask({ title: t('reportTitle'), html, ok: t('reportSend'), danger: true });
+  if (!ok || B !== b) return;
+  const picked = ($('input[name="report-reason"]:checked') as HTMLInputElement | null)?.value;
+  const reason = REPORT_REASONS.includes(picked as ReportReason) ? (picked as ReportReason) : 'other';
+  const note = ($('#report-note') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+  try {
+    await reportBoard(b.alias, { voter: S.voter, reason, note });
+    toast(t('reported'));
+  } catch (e) {
+    toast(t(e instanceof ApiError && e.code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
+  }
+}
 
 // ─── Author ─────────────────────────────────────────────────────────────────
 

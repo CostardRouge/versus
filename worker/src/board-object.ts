@@ -1,16 +1,28 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   addItem,
+  addReport,
+  awaitsPicture,
   boardMeta,
   canSeeRanking,
+  clearReports,
   createBoard,
   crowd,
+  DEFAULT_MODERATION,
+  decidePicture,
+  type ImagePolicy,
   itemId,
   lastActivity,
   localCopy,
+  moderate,
+  type Origin,
   openSession,
   type PublishInput,
+  parseModeration,
   parseNewItem,
+  parseReport,
+  pendingPictures,
+  recentVotes,
   recolorItem,
   refill,
   removeItem,
@@ -27,6 +39,8 @@ import {
   voteCount,
 } from '../../src/core/board';
 import {
+  type AdminBoardView,
+  adminBoardView,
   type BoardSummary,
   boardSummary,
   boardView,
@@ -35,6 +49,8 @@ import {
   parseClientMessage,
   rankingView,
   type ServerMessage,
+  type Unfurl,
+  unfurlOf,
 } from '../../src/core/protocol';
 import { pairKey } from '../../src/core/scoring';
 import type {
@@ -43,20 +59,27 @@ import type {
   BoardStatus,
   Computed,
   Item,
+  Moderation,
   Outcome,
   Ranking,
+  Report,
+  ReportReason,
   Result,
   Session,
   SharedBoard,
   Vote,
 } from '../../src/core/types';
+import { deleteCards } from './cards';
 import type { Env } from './env';
-import { DAY_MS, deleteBoard, upsertBoard } from './registry';
+import { deletePicture, deletePrefix, picturePath } from './pictures';
+import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
 const BROADCAST_MS = 1000;
 /** Close code sent when the board no longer exists (withdrawn or expired). */
 const GONE = 4004;
+/** Up to this many voters, each new voter refreshes the registry row (then once a day). */
+const FRESH_VOTERS = 100;
 
 // One row per voter and pair: a vote is a single upsert, so one row write (no extra index).
 const SCHEMA = `
@@ -72,12 +95,23 @@ CREATE TABLE IF NOT EXISTS votes (
   PRIMARY KEY (voter, pair)
 ) WITHOUT ROWID;`;
 
+// Visitors' reports, one per voter (docs/published-boards.md#moderation). Its own statement: boards stored
+// before it exists get the table when they wake.
+const REPORTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS reports (
+  voter TEXT PRIMARY KEY,
+  reason TEXT NOT NULL,
+  note TEXT NOT NULL,
+  t INTEGER NOT NULL
+) WITHOUT ROWID;`;
+
 interface StoredMeta extends BoardMeta {
   alias: string;
   ownerHash: string;
 }
 
 type VoteRow = { voter: string; a: string; b: string; s: number; t: number; seq: number };
+type ReportRow = { voter: string; reason: ReportReason; note: string; t: number };
 
 async function sha256(s: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -102,6 +136,8 @@ export class BoardObject extends DurableObject<Env> {
   private ownerHash = '';
   /** Day of the last registry write (in memory: after a wake, the first activity writes again). */
   private registryDay = -1;
+  /** Voters at the last registry write: a new voter on a young board writes again (the public lists watch them). */
+  private registryVoters = -1;
   private seq = 0;
   private cache: { C: Computed; at: number } | null = null;
   private dirty = false;
@@ -130,10 +166,27 @@ export class BoardObject extends DurableObject<Env> {
       votes.push({ voter: row.voter, a: row.a, b: row.b, s: row.s as Outcome, t: row.t });
       this.seq = row.seq + 1;
     }
+    this.sql.exec(REPORTS_SCHEMA);
+    const reports: Report[] = this.sql
+      .exec<ReportRow>('SELECT voter, reason, note, t FROM reports ORDER BY t')
+      .toArray();
     this.ownerHash = ownerHash;
     // Boards stored before the registry existed have no alias: they simply stay out of it.
     this.alias = alias ?? '';
-    this.board = restoreBoard(m, JSON.parse(items.v) as Item[], votes);
+    // Boards stored before link previews have no language, before moderation no flags, before templates no
+    // origin: the defaults.
+    this.board = restoreBoard(
+      {
+        ...m,
+        lang: m.lang ?? 'en',
+        mod: m.mod ?? { ...DEFAULT_MODERATION },
+        official: m.official ?? false,
+        template: m.template ?? '',
+      },
+      JSON.parse(items.v) as Item[],
+      votes,
+      reports,
+    );
   }
 
   private saveMeta(board: SharedBoard): void {
@@ -167,31 +220,59 @@ export class BoardObject extends DurableObject<Env> {
     this.sql.exec("UPDATE meta SET v = ? WHERE k = 'items'", JSON.stringify(board.items));
   }
 
-  /** Keeps the D1 registry row current: always for structural changes, at most once a day for votes. */
+  /**
+   * Keeps the D1 registry row current: always for structural changes, at most once a day for votes, plus each
+   * new voter while the board has fewer than FRESH_VOTERS (the Popular section and the template pages' index
+   * threshold watch the first voters).
+   */
   private touchRegistry(board: SharedBoard, force: boolean): void {
     const db = this.env.REGISTRY;
     if (!db || !this.alias) return;
     const now = Date.now();
     const day = Math.floor(now / DAY_MS);
-    if (!force && day === this.registryDay) return;
+    const voters = board.voters.size;
+    const fresh = voters !== this.registryVoters && voters <= FRESH_VOTERS;
+    if (!force && !fresh && day === this.registryDay) return;
     this.registryDay = day;
-    const row = {
+    this.registryVoters = voters;
+    const row = this.registryRow(board, now);
+    // The registry only serves the admin page and the public lists: a failed write must never fail a vote.
+    this.ctx.waitUntil(upsertBoard(db, row).catch(() => {}));
+  }
+
+  /** The board's row in the registry, as of now. */
+  private registryRow(board: SharedBoard, now: number): RegistryRow {
+    const labels = new Map(board.items.map((it) => [it.id, it.label]));
+    return {
       alias: this.alias,
       title: board.title,
       status: board.status,
+      lang: board.lang,
       items: board.items.length,
       votes: board.votes.size,
       voters: board.voters.size,
+      reports: board.reports.size,
+      pictures: pendingPictures(board),
+      hidden: board.mod.hidden,
+      featured: board.mod.featured,
+      template: board.template,
+      recent: recentVotes(board, now),
+      top: this.crowd(board)
+        .order.slice(0, 3)
+        .map((it) => labels.get(it.id) ?? it.label),
       created: board.created,
       active: now,
     };
-    // The registry only serves the admin view: a failed write must never fail a vote.
-    this.ctx.waitUntil(upsertBoard(db, row).catch(() => {}));
   }
 
   private ttlMs(): number {
     const s = Number(this.env.BOARD_TTL_SECONDS);
     return (Number.isFinite(s) && s > 0 ? s : TTL_DAYS * 86_400) * 1000;
+  }
+
+  /** Whether authors may announce pictures for review (the IMAGES_UPLOAD variable). Visitors never may. */
+  private imagePolicy(): ImagePolicy {
+    return this.env.IMAGES_UPLOAD === 'review' ? 'review' : 'off';
   }
 
   /** Crowd ranking, recomputed at most once per BROADCAST_MS while votes keep coming. */
@@ -214,22 +295,32 @@ export class BoardObject extends DurableObject<Env> {
 
   // ─── RPC from the Worker ──────────────────────────────────────────────────
 
-  async publish(input: PublishInput, ownerToken: string, alias: string): Promise<'ok' | 'exists'> {
+  /**
+   * Publishes the board. `origin` marks the site's own boards (official templates): they never expire, and
+   * their registry row is written at once, so the page that asked for them finds it.
+   */
+  async publish(
+    input: PublishInput,
+    ownerToken: string,
+    alias: string,
+    origin: Origin = { official: false, template: '' },
+  ): Promise<'ok' | 'exists'> {
     const ownerHash = await sha256(ownerToken);
     if (this.board) return 'exists';
     const now = Date.now();
-    const board = createBoard(input, now);
+    const board = createBoard(input, now, origin);
     this.board = board;
     this.alias = alias;
     this.ownerHash = ownerHash;
     this.cache = null;
     this.sql.exec(SCHEMA);
+    this.sql.exec(REPORTS_SCHEMA);
     this.ctx.storage.transactionSync(() => {
       this.saveMeta(board);
       this.sql.exec("INSERT INTO meta (k, v) VALUES ('items', ?)", JSON.stringify(board.items));
       for (const v of board.votes.values()) this.saveVote(v);
     });
-    await this.ctx.storage.setAlarm(now + this.ttlMs());
+    if (!board.official) await this.ctx.storage.setAlarm(now + this.ttlMs());
     this.touchRegistry(board, true);
     return 'ok';
   }
@@ -245,6 +336,11 @@ export class BoardObject extends DurableObject<Env> {
   summary(voter: string): BoardSummary | null {
     const board = this.board;
     return board ? boardSummary(board, this.crowd(board), voter) : null;
+  }
+
+  /** What the board's link preview says: title, items, counts and language, never the ranking. */
+  unfurl(): Unfurl | null {
+    return this.board ? unfurlOf(this.board) : null;
   }
 
   async updateSettings(token: string, patch: unknown): Promise<Result<BoardSettings>> {
@@ -267,7 +363,7 @@ export class BoardObject extends DurableObject<Env> {
   async addItem(token: string, raw: unknown): Promise<Result<Item>> {
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
-    const input = parseNewItem(raw);
+    const input = parseNewItem(raw, this.imagePolicy());
     if (!input.ok) return input;
     const r = addItem(board.value, input.value, this.newItemId(board.value), Date.now());
     if (r.ok) this.itemsChanged(board.value, []);
@@ -299,12 +395,33 @@ export class BoardObject extends DurableObject<Env> {
     return { ok: true, value: copy };
   }
 
+  /** A visitor reports the board (one report per voter, the newest kept); the admin page sees the count. */
+  report(raw: unknown): Result<true> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const input = parseReport(raw);
+    if (!input.ok) return input;
+    const r = addReport(board, input.value, Date.now());
+    if (!r.ok) return r;
+    const { voter, reason, note, t } = r.value;
+    this.sql.exec(
+      `INSERT INTO reports (voter, reason, note, t) VALUES (?, ?, ?, ?)
+       ON CONFLICT (voter) DO UPDATE SET reason = excluded.reason, note = excluded.note, t = excluded.t`,
+      voter,
+      reason,
+      note,
+      t,
+    );
+    this.touchRegistry(board, true);
+    return { ok: true, value: true };
+  }
+
   // ─── Admin (the Worker checks the admin token before calling these) ──────
 
-  /** Everything, ranking included, whatever the visibility. */
-  adminView(): ReturnType<typeof boardView> | null {
+  /** Everything, ranking included, whatever the visibility, with the flags and the reports. */
+  adminView(): AdminBoardView | null {
     const board = this.board;
-    return board ? boardView(board, this.crowd(board), this.ctx.getWebSockets().length, true) : null;
+    return board ? adminBoardView(board, this.crowd(board), this.ctx.getWebSockets().length, this.alias) : null;
   }
 
   adminStatus(status: BoardStatus): Result<BoardStatus> {
@@ -313,6 +430,45 @@ export class BoardObject extends DurableObject<Env> {
 
   adminRemoveItem(id: string): Result<number> {
     return this.board ? this.applyRemove(this.board, id) : { ok: false, error: 'not_found' };
+  }
+
+  /** Hides or features the board (docs/published-boards.md#moderation); voters see no difference. */
+  adminModerate(patch: unknown): Result<Moderation> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const mod = moderate(board, parseModeration(patch));
+    this.saveMeta(board);
+    this.touchRegistry(board, true);
+    return { ok: true, value: mod };
+  }
+
+  /** The reports were reviewed: they go, and the board leaves the "reported" list. */
+  adminClearReports(): Result<number> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const n = clearReports(board).length;
+    this.sql.exec('DELETE FROM reports');
+    this.touchRegistry(board, true);
+    return { ok: true, value: n };
+  }
+
+  // ─── Pictures (docs/published-boards.md#images) ──────────────────────────
+
+  /** Whether the author may send this item's picture now: theirs, announced at publication, still waiting. */
+  async pictureSlot(token: string, id: string): Promise<Result<true>> {
+    const board = await this.ownedBoard(token);
+    if (!board.ok) return board;
+    return awaitsPicture(board.value, id) ? { ok: true, value: true } : { ok: false, error: 'not_found' };
+  }
+
+  /** The admin's decision on an item's picture; approved, the item shows it from its public address. */
+  adminPicture(id: string, decision: 'ok' | 'refused'): Result<Item> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const r = decidePicture(board, id, decision, picturePath(this.alias, id));
+    if (!r.ok) return r;
+    this.itemsChanged(board, []);
+    return r;
   }
 
   /** Takedown: deletes the board without a copy for anyone. */
@@ -334,6 +490,9 @@ export class BoardObject extends DurableObject<Env> {
     const r = removeItem(board, id, Date.now());
     if (!r.ok) return r;
     this.itemsChanged(board, r.value);
+    // Its picture, if any, goes with it.
+    const images = this.env.IMAGES;
+    if (images && this.alias) this.ctx.waitUntil(deletePicture(images, this.alias, id).catch(() => {}));
     return { ok: true, value: r.value.length };
   }
 
@@ -377,6 +536,12 @@ export class BoardObject extends DurableObject<Env> {
     this.timer = null;
     const db = this.env.REGISTRY;
     if (db && this.alias) this.ctx.waitUntil(deleteBoard(db, this.alias).catch(() => {}));
+    // The cards its links unfurled with go too.
+    const images = this.env.IMAGES;
+    if (images && this.alias) {
+      this.ctx.waitUntil(deleteCards(images, this.alias).catch(() => {}));
+      this.ctx.waitUntil(deletePrefix(images, `img/${this.alias}/`).catch(() => {}));
+    }
     this.board = null;
     this.cache = null;
     this.ownerHash = '';
@@ -386,7 +551,8 @@ export class BoardObject extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     const board = this.board;
-    if (!board) return;
+    // The site's own boards never expire.
+    if (!board || board.official) return;
     const due = lastActivity(board) + this.ttlMs();
     if (Date.now() >= due) await this.destroy('expired');
     else await this.ctx.storage.setAlarm(due);
@@ -415,7 +581,15 @@ export class BoardObject extends DurableObject<Env> {
       board = this.board;
       if (!board) return ws.close(GONE, 'not_found');
       const prev = ws.deserializeAttachment() as Session | null;
-      const session = openSession(board, msg.voter, owner, this.crowd(board), Math.random, prev?.lastActionAt);
+      const session = openSession(
+        board,
+        msg.voter,
+        owner,
+        this.crowd(board),
+        Math.random,
+        prev?.lastActionAt,
+        msg.pair ?? null,
+      );
       ws.serializeAttachment(session);
       return send(ws, this.stateFor(board, session));
     }

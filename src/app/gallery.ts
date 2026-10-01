@@ -3,13 +3,15 @@ import { revealAt } from '../core/board';
 import { fillCSS } from '../core/colors';
 import { DEMOS } from '../core/demos';
 import { addedItems, joinedAgreement, joinedTop, newsOf, pairsOf, sortJoined } from '../core/joined';
+import type { PopularBoard } from '../core/protocol';
 import { compute, stability } from '../core/scoring';
 import type { Item, Joined, Ranking } from '../core/types';
-import { esc } from '../core/util';
+import { esc, hueOf } from '../core/util';
 import { getLang, methodText as M, pct, plural, t } from '../i18n';
 import { aboutHTML } from './about';
 import { trashSvg } from './dom';
 import { ago, fmtScore } from './format';
+import { popularBoards } from './popular';
 import { iosHomeScreen } from './pwa';
 import { online } from './remote';
 import { localData, S, stat } from './state';
@@ -108,11 +110,39 @@ function jcardHTML(j: Joined): string {
   const actions = j.gone
     ? `<button class="btn sm" type="button" data-action="joined-copy" data-alias="${alias}" title="${t('keepCopyTitle')}">${t('keepCopy')}</button>`
     : `<button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${done < total && j.status === 'open' ? t('continueVote') : t('openBoard')}</button>
-      <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>`;
+      <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>
+      <button class="btn sm ghost" type="button" data-action="make-mine" data-alias="${alias}" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>`;
   return `<article class="rcard${news ? ' fresh' : ''}${j.gone ? ' gone' : ''}">
     ${main}
     ${note}
     <div class="rcard-actions">${actions}${forget}</div>
+  </article>`;
+}
+
+/** A board of the Popular section: the crowd's top three, the counts, and the ways in (vote, make my own). */
+function pcardHTML(b: PopularBoard): string {
+  const alias = esc(b.alias);
+  const tops: Item[] = b.top.map((label, i) => ({ id: `top-${i}`, label, img: null, fill: null, h: hueOf(label) }));
+  const ranked = b.votes > 0;
+  const chip = b.template
+    ? `<span class="chip">${t('officialChip')}</span>`
+    : `<span class="chip chip-live">${t('featuredChip')}</span>`;
+  const closed = b.status === 'closed' ? `<span class="chip">${t('closedChip')}</span>` : '';
+  const lead = ranked && tops[0] ? `${t('leading')} <b>${esc(tops[0].label)}</b>` : t('noVotesYet');
+  return `<article class="rcard">
+    <button class="rcard-main" type="button" data-action="open-board" data-alias="${alias}" aria-label="${esc(t('openAria', { title: b.title }))}">
+      <div class="mosaic">${[0, 1, 2].map((i) => tileHTML(tops[i], i, ranked)).join('')}</div>
+      <div class="rcard-body">
+        <div class="rcard-title"><h3>${esc(b.title)}</h3>${chip}${closed}</div>
+        <p class="meta mono">${plural(b.items, 'item')} · ${plural(b.votes, 'vote')} · ${plural(b.voters, 'voter')}</p>
+        <p class="lead">${lead}</p>
+      </div>
+    </button>
+    <div class="rcard-actions">
+      <button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${t(b.status === 'closed' ? 'openBoard' : 'vote')}</button>
+      <button class="btn sm ghost" type="button" data-action="make-mine-popular" data-alias="${alias}" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>
+      <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>
+    </div>
   </article>`;
 }
 
@@ -133,6 +163,14 @@ export function galleryHTML(): string {
   const joined = sortJoined(S.joined);
   const demos = DEMOS.map((d) => S.ranks.find((r) => r.id === d.id)).filter((r): r is Ranking => !!r);
   const hide = !!S.prefs.hideDemos;
+  // The liveliest eight: enough to pick from, not a second gallery.
+  const popular = popularBoards().slice(0, 8);
+  const popularSec = popular.length
+    ? `<div class="sec-head popular-head">
+      <div><h2>${t('popular')}</h2><p class="muted">${t('popularIntro')}</p></div>
+    </div>
+    <div class="g-grid">${popular.map(pcardHTML).join('')}</div>`
+    : '';
   const votesGrid = `<div class="g-grid">${joined.map(jcardHTML).join('')}</div>`;
   // Someone who came through a shared link and made nothing yet sees their votes first.
   const top =
@@ -162,6 +200,7 @@ export function galleryHTML(): string {
   return `<section class="gallery">
     ${note}${top}
     ${dataHTML()}
+    ${popularSec}
     <div class="sec-head demo-head">
       <div><h2>${t('demos')}</h2><p class="muted">${t('demosIntro')}</p></div>
       <button class="link" type="button" data-action="toggle-demos">${hide ? t('showDemos') : t('hideDemos')}</button>

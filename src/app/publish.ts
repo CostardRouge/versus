@@ -1,12 +1,21 @@
 import { trackEvent } from '../audience';
 import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS } from '../core/board';
-import { lastDuelPerPair, type PublishBlock, publishBlock, publishMethod, publishRequest } from '../core/published';
+import {
+  dataURLBytes,
+  lastDuelPerPair,
+  type PublishBlock,
+  pictureItems,
+  publishBlock,
+  publishMethod,
+  publishRequest,
+} from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
-import { methodText as M, type MsgKey, plural, t } from '../i18n';
+import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
 import { boardURL } from './board';
 import { $, ask, copyText, doc, toast } from './dom';
 import { openBoard } from './rankings';
-import { ApiError, publishBoard } from './remote';
+import { ApiError, fetchConfig, publishBoard, putItemImage } from './remote';
+import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
 
@@ -95,9 +104,34 @@ const PUBLISH_ERRORS: Partial<Record<string, MsgKey>> = {
   images_not_allowed: 'blockImages',
 };
 
+/**
+ * Sends the pictures the published items announced, one by one, for the moderator's review. A picture that
+ * fails leaves its item as text: the author panel says it waits, and nothing else breaks.
+ */
+async function sendPictures(r: Ranking, alias: string, owner: string): Promise<void> {
+  let sent = 0;
+  for (const it of pictureItems(r)) {
+    const data = dataURLBytes(it.img);
+    if (!data) continue;
+    try {
+      await putItemImage(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }));
+      sent++;
+    } catch {
+      /* this item stays as text */
+    }
+  }
+  toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+}
+
 export async function publishRanking(r: Ranking | undefined): Promise<void> {
   if (!r || r.pub || publishing) return;
-  const block = publishBlock(r);
+  let block = publishBlock(r);
+  // Pictures travel only when the server reviews them (docs/published-boards.md#images).
+  let pictures = 0;
+  if (block === 'images' && (await fetchConfig()).images === 'review') {
+    pictures = pictureItems(r).length;
+    block = publishBlock({ ...r, items: r.items.map((it) => ({ ...it, img: null })) });
+  }
   if (block) {
     await ask({ title: t('cantPublish'), body: t(BLOCKS[block], { n: LIMITS.items }), ok: t('gotIt'), cancel: false });
     return;
@@ -105,6 +139,7 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
   const duels = lastDuelPerPair(r).length;
   const settings: BoardSettings = { ...DEFAULT_SETTINGS, method: publishMethod(r) };
   const html = `<p>${t('publishBody')}</p>
+    ${pictures ? `<p class="pub-pictures">${t('publishPictures', { pictures: plural(pictures, 'picture') })}</p>` : ''}
     ${duels ? `<label class="opt pub-votes"><input type="checkbox" id="pub-votes" checked> ${t('publishVotes', { duels: plural(duels, 'duel') })}</label>` : ''}
     ${settingsHTML('pub', settings)}
     <details class="more"><summary>${t('moreOptions')}</summary>${optionsHTML('pub', settings)}</details>
@@ -132,7 +167,10 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
   const withVotes = $<HTMLInputElement>('#pub-votes', form)?.checked ?? false;
   publishing = true;
   try {
-    const request = { ...publishRequest(r, S.voter, chosen, withVotes), ...(turnstile ? { turnstile } : {}) };
+    const request = {
+      ...publishRequest(r, S.voter, chosen, withVotes, getLang(), pictures > 0),
+      ...(turnstile ? { turnstile } : {}),
+    };
     const { alias, owner } = await publishBoard(request);
     const used = { ...settings, ...chosen };
     trackEvent('board-published', {
@@ -140,11 +178,15 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
       visibility: used.visibility,
       items: r.items.length,
       votes: withVotes,
+      pictures,
     });
     r.pub = { alias, status: 'open' };
     r.updated = Date.now();
     saveOwner(alias, owner);
     save();
+    // The link's preview image, drawn here from the same items and votes the server just received.
+    uploadPublishedCard(r, alias, withVotes);
+    if (pictures) void sendPictures(r, alias, owner);
     const copied = await copyText(boardURL(alias));
     openBoard(alias);
     toast(t(copied ? 'published' : 'publishedShare'));

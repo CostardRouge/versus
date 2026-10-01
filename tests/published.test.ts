@@ -69,13 +69,16 @@ describe('publishing', () => {
     r.title = 'x'.repeat(LIMITS.title + 10);
     (r.items[0] as { label: string }).label = 'y'.repeat(LIMITS.label + 5);
     r.history = [{ a: r.items[0]?.id ?? '', b: r.items[1]?.id ?? '', s: 1 }];
-    const req = publishRequest(r, 'voter-one-1', { visibility: 'blind' }, true);
+    const req = publishRequest(r, 'voter-one-1', { visibility: 'blind' }, true, 'fr');
     expect(req.title).toHaveLength(LIMITS.title);
     expect(req.items[0]?.label).toHaveLength(LIMITS.label);
     expect(req.items.every((i) => i.img === null)).toBe(true);
     expect(req.duels).toHaveLength(1);
     expect(req.settings).toEqual({ visibility: 'blind' });
-    expect(publishRequest(r, 'voter-one-1', {}, false).duels).toEqual([]);
+    expect(req.lang).toBe('fr');
+    const bare = publishRequest(r, 'voter-one-1', {}, false);
+    expect(bare.duels).toEqual([]);
+    expect(bare.lang).toBe('en');
   });
 });
 

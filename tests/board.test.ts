@@ -4,12 +4,15 @@ import {
   ADD_INTERVAL_MS,
   ALIAS_RE,
   addItem,
+  addReport,
   assignPairs,
   boardMeta,
   canSeeRanking,
   castVote,
+  clearReports,
   createBoard,
   crowd,
+  DEFAULT_MODERATION,
   DEFAULT_SETTINGS,
   itemId,
   LIMITS,
@@ -17,11 +20,15 @@ import {
   lastVote,
   localCopy,
   makeAlias,
+  moderate,
   openSession,
   type PublishInput,
+  parseModeration,
   parseNewItem,
   parsePublish,
+  parseReport,
   patchSettings,
+  preferPair,
   recolorItem,
   refill,
   removeItem,
@@ -58,6 +65,7 @@ const input = (n = 4, over: Partial<PublishInput> = {}): PublishInput => ({
   settings: { ...DEFAULT_SETTINGS },
   voter: V1,
   duels: [],
+  lang: 'en',
   ...over,
 });
 
@@ -463,7 +471,7 @@ describe('assignPairs', () => {
 
 describe('items after publication', () => {
   it('validates new items like published ones', () => {
-    expect(value(parseNewItem({ label: '  Hawaii  ' }))).toEqual({ label: 'Hawaii', fill: null });
+    expect(value(parseNewItem({ label: '  Hawaii  ' }))).toEqual({ label: 'Hawaii', fill: null, img: null });
     expect(value(parseNewItem({ label: '', fill: { type: 'solid', colors: ['#ff8800'] } })).fill?.colors).toEqual([
       '#ff8800',
     ]);
@@ -476,15 +484,15 @@ describe('items after publication', () => {
 
   it('adds items to an open board, once per label, up to the limit', () => {
     const b = board(3);
-    const item = value(addItem(b, { label: 'Hawaii', fill: null }, 'new1', T0 + 5));
+    const item = value(addItem(b, { label: 'Hawaii', fill: null, img: null }, 'new1', T0 + 5));
     expect(item).toEqual({ id: 'new1', label: 'Hawaii', img: null, fill: null, h: hueOf('Hawaii') });
     expect(b.items).toHaveLength(4);
     expect(lastActivity(b)).toBe(T0 + 5);
-    expect(errorOf(addItem(b, { label: 'HAWAII', fill: null }, 'new2', T0))).toBe('exists');
+    expect(errorOf(addItem(b, { label: 'HAWAII', fill: null, img: null }, 'new2', T0))).toBe('exists');
     const full = board(LIMITS.items);
-    expect(errorOf(addItem(full, { label: 'One more', fill: null }, 'x', T0))).toBe('full');
+    expect(errorOf(addItem(full, { label: 'One more', fill: null, img: null }, 'x', T0))).toBe('full');
     setStatus(b, 'closed', T0);
-    expect(errorOf(addItem(b, { label: 'Late', fill: null }, 'x', T0))).toBe('closed');
+    expect(errorOf(addItem(b, { label: 'Late', fill: null, img: null }, 'x', T0))).toBe('closed');
   });
 
   it('removes an item with every vote that involves it, keeping at least 2 items', () => {
@@ -546,7 +554,7 @@ describe('items after publication', () => {
     const b = board(3);
     const visitor = openSession(b, V2, false, crowd(b), mulberry32(1));
     const author = openSession(b, V1, true, crowd(b), mulberry32(1));
-    const item = (label: string) => ({ label, fill: null });
+    const item = (label: string) => ({ label, fill: null, img: null });
     expect(errorOf(sessionAdd(b, visitor, item('A'), 'a', T0))).toBe('forbidden');
     value(sessionAdd(b, author, item('B'), 'b', T0));
     updateSettings(b, { visitorsAddItems: true }, T0);
@@ -656,6 +664,27 @@ describe('sessions', () => {
     expect(errorOf(sessionReset(b, s, crowd(b), rng))).toBe('final');
   });
 
+  it('serves the duel a shared link asked for first, when the voter can still vote on it', () => {
+    const b = board(6);
+    const s = openSession(b, V2, false, crowd(b), rng, 0, ['i4', 'i5']);
+    expect(s.queue[0]).toEqual(['i4', 'i5']);
+    expect(s.queue).toHaveLength(LIMITS.queue);
+    expect(new Set(keys(s.queue)).size).toBe(LIMITS.queue);
+    // Already voted on, unknown, or the same item twice: the queue is left as it is.
+    value(castVote(b, V2, 'i0', 'i1', 1, T0));
+    expect(preferPair(b, s, 'i0', 'i1')).toBe(false);
+    expect(preferPair(b, s, 'i0', 'nope')).toBe(false);
+    expect(preferPair(b, s, 'i2', 'i2')).toBe(false);
+    expect(s.queue[0]).toEqual(['i4', 'i5']);
+    // Asking for a pair already queued moves it first without repeating it.
+    const second = s.queue[1] as [string, string];
+    expect(preferPair(b, s, second[1], second[0])).toBe(true);
+    expect(pairKey(...(s.queue[0] as [string, string]))).toBe(pairKey(...second));
+    expect(new Set(keys(s.queue)).size).toBe(s.queue.length);
+    setStatus(b, 'closed', T0);
+    expect(preferPair(b, s, 'i2', 'i3')).toBe(false);
+  });
+
   it('refills around votes cast elsewhere, and empties when closed or done', () => {
     const b = board(3);
     const s = openSession(b, V2, false, crowd(b), rng);
@@ -671,5 +700,59 @@ describe('sessions', () => {
     setStatus(b, 'closed', T0);
     refill(b, t, crowd(b), rng);
     expect(t.queue).toEqual([]);
+  });
+});
+
+describe('moderation', () => {
+  it('starts neither hidden nor featured, and keeps the flags in its meta', () => {
+    const b = board();
+    expect(b.mod).toEqual(DEFAULT_MODERATION);
+    expect(boardMeta(b).mod).toEqual({ hidden: false, featured: false });
+    expect(parseModeration({ hidden: true, featured: 'yes', other: 1 })).toEqual({ hidden: true });
+    expect(parseModeration(null)).toEqual({});
+    expect(moderate(b, { hidden: true })).toEqual({ hidden: true, featured: false });
+    moderate(b, { featured: true });
+    expect(b.mod).toEqual({ hidden: true, featured: true });
+    // Not an activity: moderation never keeps a dead board alive.
+    expect(lastActivity(b)).toBe(T0);
+  });
+
+  it('validates a report and trims its note', () => {
+    expect(value(parseReport({ voter: V1, reason: 'spam', note: '  Ads  ' }))).toEqual({
+      voter: V1,
+      reason: 'spam',
+      note: 'Ads',
+    });
+    expect(value(parseReport({ voter: V1, reason: 'other' })).note).toBe('');
+    expect(value(parseReport({ voter: V1, reason: 'other', note: 'x'.repeat(500) })).note).toHaveLength(LIMITS.note);
+    const bad = [
+      { voter: V1, reason: 'rude' },
+      { voter: 'x', reason: 'spam' },
+      { voter: V1, reason: 'spam', note: 3 },
+      'spam',
+      null,
+    ];
+    for (const x of bad) expect(errorOf(parseReport(x))).toBe('bad_request');
+  });
+
+  it('keeps one report per voter, up to the limit, and restores them', () => {
+    const b = board();
+    value(addReport(b, { voter: V1, reason: 'spam', note: '' }, T0 + 1));
+    value(addReport(b, { voter: V2, reason: 'other', note: 'hm' }, T0 + 2));
+    const again = value(addReport(b, { voter: V1, reason: 'offensive', note: 'really' }, T0 + 3));
+    expect(again).toEqual({ voter: V1, reason: 'offensive', note: 'really', t: T0 + 3 });
+    expect([...b.reports.values()].map((r) => r.voter)).toEqual([V2, V1]);
+    expect(lastActivity(b)).toBe(T0);
+    const copy = restoreBoard(boardMeta(b), b.items, b.votes.values(), b.reports.values());
+    expect([...copy.reports.entries()]).toEqual([...b.reports.entries()]);
+    for (let i = 0; i < LIMITS.reports; i++) {
+      addReport(b, { voter: `voter-${String(i).padStart(4, '0')}`, reason: 'spam', note: '' }, T0);
+    }
+    expect(b.reports.size).toBe(LIMITS.reports);
+    expect(errorOf(addReport(b, { voter: 'voter-new-one', reason: 'spam', note: '' }, T0))).toBe('full');
+    // A voter already there can still change theirs.
+    expect(errorOf(addReport(b, { voter: V1, reason: 'spam', note: '' }, T0))).toBeNull();
+    expect(clearReports(b)).toHaveLength(LIMITS.reports);
+    expect(b.reports.size).toBe(0);
   });
 });

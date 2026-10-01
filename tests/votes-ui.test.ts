@@ -48,7 +48,9 @@ const summary = (over: Partial<BoardSummary> = {}): BoardSummary => ({
 
 let answer: () => Response = () => Response.json({ [ALIAS]: summary() });
 let fetches = 0;
-const fetchMock = async () => {
+const fetchMock = async (url: string) => {
+  // The Popular section asks on its own; here it is empty and not counted.
+  if (String(url).includes('/api/popular')) return Response.json({ boards: [] });
   fetches++;
   return answer();
 };

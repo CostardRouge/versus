@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { BoardView, ClientMessage, ItemScore, RankingView, ServerMessage } from '../src/core/protocol';
 import type { Ranking } from '../src/core/types';
+import { installFakeCanvas } from './helpers/canvas';
 
 /** The publish modal and the board page, against a fake API and fake WebSockets. */
 
@@ -104,11 +105,15 @@ beforeAll(async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init: RequestInit) => {
+      // The Popular section asks on its own; here it stays empty and out of the calls.
+      if (url.includes('/api/popular')) return Response.json({ boards: [] });
       const headers = (init.headers ?? {}) as Record<string, string>;
       const call = {
         method: init.method ?? 'GET',
         url,
-        body: init.body ? JSON.parse(String(init.body)) : undefined,
+        // A card upload sends the image itself; everything else is JSON.
+        body:
+          init.body instanceof Blob ? { blob: init.body.type } : init.body ? JSON.parse(String(init.body)) : undefined,
         auth: headers.Authorization ?? null,
       };
       calls.push(call);
@@ -117,6 +122,7 @@ beforeAll(async () => {
     }),
   );
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true });
+  installFakeCanvas();
   window.scrollTo = () => {};
   localStorage.clear();
   const withImage: Ranking = {
@@ -143,14 +149,17 @@ afterEach(() => {
 });
 
 describe('publishing', () => {
-  it('refuses a ranking with images, saying why', () => {
+  it('refuses a ranking with images, saying why', async () => {
     click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
     click('[data-action="publish"]');
+    // The server is asked first whether it takes pictures.
+    await flush();
     expect($('#m-title')?.textContent).toBe('Can’t publish yet');
     expect($('#m-body')?.textContent).toContain('Remove the images');
     expect($('#m-cancel')?.hidden).toBe(true);
     click('#m-ok');
-    expect(calls).toHaveLength(0);
+    // The server was asked whether it takes pictures (it doesn't here), nothing else.
+    expect(calls.map((c) => c.url)).toEqual(['/api/config']);
     click('[data-action="back"]');
   });
 
@@ -170,7 +179,10 @@ describe('publishing', () => {
     expect(($('#pub-votes') as HTMLInputElement).checked).toBe(true);
     ($('#m-body input[name="pub-vis"][value="after"]') as HTMLInputElement).checked = true;
     ($('#pub-n') as HTMLInputElement).value = '4';
-    respond = () => ({ status: 201, body: { alias: ALIAS, owner: OWNER } });
+    respond = (c) =>
+      c.method === 'PUT'
+        ? { status: 201, body: { url: `http://localhost:3000/og/b/${ALIAS}/1.png` } }
+        : { status: 201, body: { alias: ALIAS, owner: OWNER } };
     click('#m-ok');
     await flush();
 
@@ -178,8 +190,15 @@ describe('publishing', () => {
     expect(post?.url).toBe('/api/boards');
     expect(post?.body).toMatchObject({
       settings: { visibility: 'after', revealAfter: 4, method: 'bt', allowChange: true },
+      lang: 'en',
     });
     expect((post?.body as { duels?: unknown[] } | undefined)?.duels).toHaveLength(1);
+    // The link's preview card, drawn here and sent right after publishing.
+    await flush();
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: `/api/boards/${ALIAS}/card`,
+      body: { blob: 'image/png' },
+    });
     expect(location.pathname).toBe(`/b/${ALIAS}`);
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
     expect(stored().find((r) => r.pub)?.pub).toEqual({ alias: ALIAS, status: 'open' });
@@ -569,5 +588,191 @@ describe('your votes', () => {
     click(`.rcard-main[data-action="open-board"][data-alias="${VISITED}"]`);
     expect(location.pathname).toBe(`/b/${VISITED}`);
     click('.board [data-action="back"]');
+  });
+
+  it('starts a ranking of your own from a card, with the items and no votes', () => {
+    click(`[data-action="make-mine"][data-alias="${VISITED}"]`);
+    expect($('#toast')?.textContent).toBe('Your own version, ready to change and publish');
+    expect(($('#rank-title') as HTMLInputElement).value).toBe('Pizzas');
+    const mine = stored().find((r) => r.title === 'Pizzas' && !r.pub);
+    expect(mine?.items.map((i) => i.label)).toEqual(['Margherita', 'Regina', 'Calzone']);
+    expect(mine?.items.map((i) => i.id)).not.toContain('p0');
+    expect(mine?.history).toEqual([]);
+    click('[data-action="back"]');
+  });
+});
+
+describe('sharing', () => {
+  const DUEL = 'Du3dEf7hJk';
+
+  it('opens a duel link on that duel, and drops the query from the address', () => {
+    history.pushState(null, '', `/b/${DUEL}?duel=p1.p2`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(location.pathname).toBe(`/b/${DUEL}`);
+    expect(location.search).toBe('');
+    const ws = FakeSocket.last();
+    ws.open();
+    expect(ws.sent[0]).toEqual({ t: 'hello', voter: expect.any(String), pair: ['p1', 'p2'] });
+    ws.receive({
+      ...state(),
+      pairs: [
+        ['p1', 'p2'],
+        ['p0', 'p2'],
+      ],
+    } as ServerMessage);
+    expect($('.card-a')?.textContent).toContain('Regina');
+  });
+
+  it('shares the board as an image and sends its card for the link preview', async () => {
+    respond = (c) =>
+      c.method === 'PUT' ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } } : { status: 404, body: {} };
+    expect($('.b-head [data-action="b-make-mine"]')).not.toBeNull();
+    click('[data-action="share-board"]');
+    expect($('#m-title')?.textContent).toBe('Share this ranking');
+    await flush();
+    expect($('#share-preview canvas')).not.toBeNull();
+    const msg = $('.share-msg')?.textContent ?? '';
+    expect(msg).toContain('Pizzas · 3 votes · 2 voters');
+    expect(msg).toContain('1. Margherita');
+    expect(msg).toContain(`Vote too: http://localhost:3000/b/${DUEL}`);
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card` });
+    click('#m-ok');
+    // Opening it again draws no new card: one per link and session.
+    calls.length = 0;
+    click('[data-action="share-board"]');
+    await flush();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    click('#m-ok');
+  });
+
+  it('shares the duel on screen, with a link that opens on it', async () => {
+    click('[data-action="share-duel"]');
+    expect($('#m-title')?.textContent).toBe('Share this duel');
+    await flush();
+    expect($('.share-msg')?.textContent).toBe(
+      `Regina or Calzone? Vote too: http://localhost:3000/b/${DUEL}?duel=p1.p2`,
+    );
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card?duel=p1.p2` });
+    click('#m-ok');
+  });
+
+  it('shares the end-of-vote page as you against the crowd, and offers your own version', async () => {
+    const ws = FakeSocket.last();
+    ws.receive({
+      ...state(),
+      mine: [
+        { a: 'p0', b: 'p1', s: 1 },
+        { a: 'p1', b: 'p2', s: 1 },
+        { a: 'p0', b: 'p2', s: 1 },
+      ],
+      pairs: [],
+    } as ServerMessage);
+    click('[data-action="b-finale"]');
+    expect($('#fin [data-action="b-make-mine"]')).not.toBeNull();
+    click('[data-action="share-finale"]');
+    expect($('#m-title')?.textContent).toBe('Share your result');
+    await flush();
+    const msg = $('.share-msg')?.textContent ?? '';
+    expect(msg).toContain('I agree with the crowd 100% of the time.');
+    expect(msg).toContain('My top 3: Margherita · Regina · Calzone');
+    expect(msg).toContain('The crowd’s top 3: Margherita · Regina · Calzone');
+    click('#m-ok');
+    click('[data-action="b-make-mine"]');
+    expect(($('#rank-title') as HTMLInputElement).value).toBe('Pizzas');
+    expect($('#toast')?.textContent).toBe('Your own version, ready to change and publish');
+  });
+
+  it('shows no "make my own" to the author', () => {
+    click('[data-action="back"]');
+    history.pushState(null, '', `/b/${ALIAS}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({}, true));
+    expect($('.b-head [data-action="b-make-mine"]')).toBeNull();
+    expect($('.b-head [data-action="share-board"]')).not.toBeNull();
+    click('[data-action="back"]');
+  });
+});
+
+describe('reporting', () => {
+  const REPORTED = 'Rep7rTbxAr';
+
+  it('lets a voter report the board with a reason and a note', async () => {
+    respond = (c) =>
+      c.method === 'POST' && c.url.endsWith('/report') ? { status: 200, body: true } : { status: 404, body: {} };
+    history.pushState(null, '', `/b/${REPORTED}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state());
+    click('[data-action="b-report"]');
+    expect($('#m-title')?.textContent).toBe('Report this ranking');
+    ($('input[name="report-reason"][value="personal"]') as HTMLInputElement).checked = true;
+    ($('#report-note') as HTMLTextAreaElement).value = ' It names my neighbour ';
+    click('#m-ok');
+    await flush();
+    expect(calls.find((c) => c.method === 'POST')).toMatchObject({
+      url: `/api/boards/${REPORTED}/report`,
+      body: { voter: expect.any(String), reason: 'personal', note: 'It names my neighbour' },
+    });
+    expect($('#toast')?.textContent).toBe('Thanks, your report was sent.');
+  });
+
+  it('shows no report link to the author', () => {
+    FakeSocket.last().receive(state({}, true));
+    expect($('[data-action="b-report"]')).toBeNull();
+    click('[data-action="back"]');
+  });
+});
+
+describe('pictures for review', () => {
+  const PICS = 'P1cTuReS7b';
+
+  it('announces the pictures and sends them after publishing, when the server reviews them', async () => {
+    respond = (c) => {
+      if (c.url === '/api/config') return { status: 200, body: { images: 'review' } };
+      if (c.method === 'POST') return { status: 201, body: { alias: PICS, owner: OWNER } };
+      return { status: 201, body: { url: `http://localhost:3000/og/b/${PICS}/1.png`, ok: true } };
+    };
+    click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
+    click('[data-action="publish"]');
+    await flush();
+    expect($('#m-title')?.textContent).toBe('Publish this ranking?');
+    expect($('.pub-pictures')?.textContent).toContain('Your 1 picture will be sent to the moderator');
+    click('#m-ok');
+    await flush();
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/boards');
+    const sent = (post?.body as { items: { id: string; img: string | null; pic?: string }[] } | undefined)?.items;
+    expect(sent).toEqual([
+      { id: 'i1', label: 'Beach', img: null, fill: null, h: 1, pic: 'pending' },
+      { id: 'i2', label: 'Hills', img: null, fill: null, h: 2 },
+    ]);
+    await flush();
+    await flush();
+    expect(calls.find((c) => c.method === 'PUT' && c.url.endsWith('/image'))).toMatchObject({
+      url: `/api/boards/${PICS}/items/i1/image`,
+      body: { blob: 'image/jpeg' },
+      auth: `Bearer ${OWNER}`,
+    });
+    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
+    // The author panel says the picture waits.
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(
+      state(
+        {
+          title: 'Photos',
+          items: [
+            { id: 'i1', label: 'Beach', img: null, fill: null, h: 1, pic: 'pending' },
+            { id: 'i2', label: 'Hills', img: null, fill: null, h: 2 },
+          ],
+          ranking: null,
+        },
+        true,
+      ),
+    );
+    expect($('#b-admin .b-pic')?.textContent).toBe('Picture awaiting review');
+    click('[data-action="back"]');
   });
 });

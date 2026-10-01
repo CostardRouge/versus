@@ -19,6 +19,9 @@ export const LINKS = {
 /** The legal notice of each language, relative to the site's root (the pages in build/site.ts). */
 export const LEGAL_PATH: Record<Lang, string> = { en: 'legal/', fr: 'fr/mentions-legales/' };
 
+/** The home page of each language, relative to the site's root: the way back to the showcase from the app. */
+export const HOME_PAGE_PATH: Record<Lang, string> = { en: '', fr: 'fr/' };
+
 const METHODS: readonly MethodKey[] = ['bt', 'elo', 'win', 'sort'];
 
 /** `t()` in the app, the English messages at build time. */
@@ -48,6 +51,6 @@ export function aboutHTML(tx: Text, opts: { h1: boolean; publish: boolean; lang:
           <p>${tx('aboutPrivate')}</p>${opts.publish ? `\n          <${sub}>${tx('aboutPublishTitle')}</${sub}>\n          <p>${tx('aboutPublish')}</p>` : ''}
         </div>
       </div>
-      <p class="about-foot">${tx('aboutBy')} <a href="${LINKS.author.url}">${LINKS.author.name}</a> · <a href="${LINKS.source}">${tx('aboutSource')}</a> · <a href="../${LEGAL_PATH[opts.lang]}">${tx('aboutLegal')}</a></p>
+      <p class="about-foot"><a href="../${HOME_PAGE_PATH[opts.lang]}">${tx('aboutHome')}</a> · ${tx('aboutBy')} <a href="${LINKS.author.url}">${LINKS.author.name}</a> · <a href="${LINKS.source}">${tx('aboutSource')}</a> · <a href="../${LEGAL_PATH[opts.lang]}">${tx('aboutLegal')}</a></p>
     </section>`;
 }

@@ -77,14 +77,15 @@ export function landingBoot(lang: Lang): string {
         }
         // Links from before the home page: the app's routes live in the fragment (#/b/<alias>).
         if (/^#\\//.test(location.hash)) return leave('${root}${APP_PATH}' + location.hash);
-        // An app installed before the home page existed still opens here.
-        if (matchMedia('(display-mode: standalone), (display-mode: minimal-ui), (display-mode: fullscreen)').matches) {
+        // Arriving from another page of the site (the app's link to the home page, the language switch).
+        var inside = false;
+        try { inside = new URL(document.referrer).origin === location.origin; } catch (e) {}
+        // An app installed before the home page existed still opens here; one that follows its own link here stays.
+        if (!inside && matchMedia('(display-mode: standalone), (display-mode: minimal-ui), (display-mode: fullscreen)').matches) {
           return leave('${root}${APP_PATH}');
         }
         var prefs = {};
         try { prefs = JSON.parse(localStorage.getItem('versus-prefs') || '{}') || {}; } catch (e) {}
-        var inside = false;
-        try { inside = new URL(document.referrer).origin === location.origin; } catch (e) {}
         if (!inside && (prefs.lang === 'en' || prefs.lang === 'fr') && prefs.lang !== '${lang}') {
           return leave('${root}' + (prefs.lang === 'fr' ? '${HOME_PATH.fr}' : '${HOME_PATH.en}'));
         }

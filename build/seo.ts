@@ -1,6 +1,8 @@
 import { aboutHTML } from '../src/app/about.ts';
 import { en } from '../src/i18n/en.ts';
 import {
+  ADMIN_DESCRIPTION,
+  ADMIN_TITLE,
   AUTHOR,
   COLORS,
   DEFAULT_SITE_URL,
@@ -9,6 +11,7 @@ import {
   FEATURES,
   HOMES,
   ICONS,
+  type IndexedKind,
   LANGUAGES,
   LEGAL_DESCRIPTIONS,
   LEGAL_TITLES,
@@ -20,6 +23,7 @@ import {
   OG_IMAGES,
   PAGES,
   type PageKey,
+  type PageKind,
   pngIcon,
   REPOSITORY,
   type SiteLang,
@@ -76,11 +80,17 @@ export const pageUrl = (url: string, page: PageKey): string => abs(url, PAGES[pa
 export const rootFrom = (page: PageKey): string =>
   '../'.repeat(PAGES[page].path.split('/').filter(Boolean).length) || './';
 
-/** A page's title and description: the home page's for the language, or the legal notice's. */
-export const titleOf = (page: PageKey): string =>
-  PAGES[page].kind === 'legal' ? LEGAL_TITLES[PAGES[page].lang] : TITLES[PAGES[page].lang];
-export const descriptionOf = (page: PageKey): string =>
-  PAGES[page].kind === 'legal' ? LEGAL_DESCRIPTIONS[PAGES[page].lang] : DESCRIPTIONS[PAGES[page].lang];
+/** A page's title and description: the home page's for the language, the legal notice's, or the admin page's. */
+export const titleOf = (page: PageKey): string => {
+  const { kind, lang } = PAGES[page];
+  return kind === 'legal' ? LEGAL_TITLES[lang] : kind === 'admin' ? ADMIN_TITLE : TITLES[lang];
+};
+export const descriptionOf = (page: PageKey): string => {
+  const { kind, lang } = PAGES[page];
+  return kind === 'legal' ? LEGAL_DESCRIPTIONS[lang] : kind === 'admin' ? ADMIN_DESCRIPTION : DESCRIPTIONS[lang];
+};
+
+const indexed = (kind: PageKind): kind is IndexedKind => kind === 'home' || kind === 'legal';
 
 /** Max snippet and a large image preview in results; the rest states the default posture explicitly. */
 export const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
@@ -89,6 +99,8 @@ export const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, m
  * compete with the home pages, which carry the text. `follow` keeps its links counting.
  */
 export const ROBOTS_APP = 'noindex, follow';
+/** The admin page: nothing to index, nothing to follow. */
+export const ROBOTS_ADMIN = 'noindex, nofollow';
 
 const meta = (attr: 'name' | 'property', key: string, content: string): string =>
   `<meta ${attr}="${key}" content="${esc(content)}" />`;
@@ -210,7 +222,7 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
   const root = rootFrom(page);
   const title = titleOf(page);
   const description = descriptionOf(page);
-  const versions = kind === 'app' ? null : VERSIONS[kind];
+  const versions = indexed(kind) ? VERSIONS[kind] : null;
   return [
     `<title>${esc(title)}</title>`,
     meta('name', 'description', description),
@@ -221,7 +233,7 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
           link({ rel: 'alternate', hreflang: 'x-default', href: pageUrl(url, versions.en) }),
         ]
       : []),
-    meta('name', 'robots', versions ? ROBOTS : ROBOTS_APP),
+    meta('name', 'robots', versions ? ROBOTS : kind === 'admin' ? ROBOTS_ADMIN : ROBOTS_APP),
     meta('name', 'author', AUTHOR.name),
     meta('name', 'application-name', NAME),
     meta('name', 'apple-mobile-web-app-title', NAME),
@@ -259,11 +271,11 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
     meta('name', 'twitter:description', description),
     meta('name', 'twitter:image', image),
     meta('name', 'twitter:image:alt', card.alt),
-    ...(kind === 'app'
-      ? []
-      : [
+    ...(versions
+      ? [
           `<script type="application/ld+json">${jsonLd(url, lang, kind === 'legal' ? legalGraph(url, lang) : graph(url, lang))}</script>`,
-        ]),
+        ]
+      : []),
   ];
 }
 
@@ -321,11 +333,19 @@ export function manifest(): Record<string, unknown> {
 
 /**
  * robots.txt. AI crawlers are allowed, training and answer engines alike, as on steevepommier.com: llms.txt
- * exists to be read. Only the published boards API is off limits. Crawlers read robots.txt at the root of a
- * host only, so this one counts on the Worker's domain, not under github.io/versus/.
+ * exists to be read. Only the published boards API and the admin page are off limits. Crawlers read robots.txt
+ * at the root of a host only, so this one counts on the Worker's domain, not under github.io/versus/.
  */
 export function robotsTxt(url: string): string {
-  return ['User-agent: *', 'Allow: /', 'Disallow: /api/', '', `Sitemap: ${abs(url, 'sitemap.xml')}`, ''].join('\n');
+  return [
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /api/',
+    `Disallow: /${PAGES.admin.path}`,
+    '',
+    `Sitemap: ${abs(url, 'sitemap.xml')}`,
+    '',
+  ].join('\n');
 }
 
 /**
@@ -392,8 +412,11 @@ export function headersFile(): string {
       '  Content-Type: text/html; charset=utf-8',
       '',
     ]),
-    // The meta tag says the same; the header also covers anything else under app/.
+    // The meta tag says the same; the header also covers anything else under app/ and admin/.
     '/app/*',
+    '  X-Robots-Tag: noindex',
+    '',
+    `/${PAGES.admin.path}*`,
     '  X-Robots-Tag: noindex',
     '',
     '/assets/*',
