@@ -1,7 +1,8 @@
+import type { Local } from '../core/backup';
 import type { Computed, ItemStats, Joined, Ranking } from '../core/types';
 import { t } from '../i18n';
 import { toast } from './dom';
-import { type Prefs, saveRanks } from './storage';
+import { loadOwners, type Prefs, saveRanks } from './storage';
 
 /** App state: saved rankings, preferences and the current route. */
 
@@ -36,3 +37,6 @@ export function save(): void {
     toast(t('storageWarn'));
   }
 }
+
+/** Everything this browser keeps, for export and import (src/core/backup.ts). */
+export const localData = (): Local => ({ ranks: S.ranks, owners: loadOwners(), joined: S.joined, voter: S.voter });

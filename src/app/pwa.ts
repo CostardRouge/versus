@@ -135,3 +135,6 @@ async function persist(): Promise<void> {
     /* best effort */
   }
 }
+
+/** The home-screen app on iOS, which keeps its own storage apart from Safari's (docs/pwa.md). */
+export const iosHomeScreen = (): boolean => (navigator as Navigator & { standalone?: boolean }).standalone === true;

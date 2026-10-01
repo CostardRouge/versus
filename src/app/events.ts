@@ -1,4 +1,5 @@
 import { locale, t } from '../i18n';
+import { exportAll, exportOne, importFile, isBackupFile, pickImport } from './backup';
 import {
   boardAddItem,
   boardAdminLink,
@@ -225,6 +226,15 @@ function onClick(e: MouseEvent): void {
     case 'update-later':
       dismissUpdate();
       break;
+    case 'export-all':
+      void exportAll();
+      break;
+    case 'export-one':
+      void exportOne(id);
+      break;
+    case 'import':
+      pickImport();
+      break;
   }
 }
 
@@ -244,6 +254,12 @@ function onInput(e: Event): void {
 
 function onChange(e: Event): void {
   const tg = e.target as HTMLInputElement;
+  if (tg.id === 'import-input') {
+    const file = tg.files?.[0];
+    tg.value = '';
+    if (file) void importFile(file);
+    return;
+  }
   // The color editor also serves published boards, where there is no local ranking.
   if (colorChange(tg) || (S.route.view === 'board' && boardChange(tg))) return;
   const r = cur();
@@ -375,6 +391,12 @@ export function bindEvents(): void {
     dragDepth = 0;
     doc.body.classList.remove('dropping');
     const files = [...(e.dataTransfer?.files ?? [])];
+    // A Versus file dropped anywhere is imported; images go to the open ranking (or a new one).
+    const [first] = files;
+    if (files.length === 1 && first && isBackupFile(first)) {
+      void importFile(first);
+      return;
+    }
     const date = new Date().toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
     const r = cur() ?? newRank(t('imagesRankTitle', { date }));
     void addFiles(r, files);
