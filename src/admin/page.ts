@@ -37,6 +37,7 @@ const PAGE = 50;
 const FILTER_KEYS: Record<AdminFilter, AdminKey> = {
   all: 'fAll',
   reported: 'fReported',
+  pictures: 'fPictures',
   featured: 'fFeatured',
   hidden: 'fHidden',
   open: 'fOpen',
@@ -205,6 +206,7 @@ export function mountAdmin(opts: AdminOpts): void {
       [s.votes, 'sVotes'],
       [s.voters, 'sVoters'],
       [s.reported, 'sReported'],
+      [s.pictures, 'sPictures'],
       [s.featured, 'sFeatured'],
       [s.hidden, 'sHidden'],
     ];
@@ -231,6 +233,7 @@ export function mountAdmin(opts: AdminOpts): void {
       b.template ? tx('official') : '',
       b.featured ? tx('featured') : '',
       b.hidden ? tx('hidden') : '',
+      b.pictures ? tx('picFlag', { n: n(b.pictures) }) : '',
     ].filter(Boolean);
     return `<tr class="${b.reports ? 'ad-reported' : ''} ${open ? 'ad-open' : ''}" data-alias="${esc(b.alias)}">
       <td class="ad-title"><a href="${esc(opts.boardURL(b.alias))}" target="_blank" rel="noopener">${esc(b.title)}</a>
@@ -281,9 +284,21 @@ export function mountAdmin(opts: AdminOpts): void {
           )
           .join('')}</ol>`
       : '';
+    // Pictures waiting for a decision: shown here (fetched with the token), approved or refused one by one.
+    const pending = v.items.filter((it) => it.pic === 'pending');
+    const pictures = pending.length
+      ? `<section class="ad-pics-sec"><h3>${tx('picturesTitle')} <span class="mono">${n(pending.length)}</span></h3>
+        <ul class="ad-pics">${pending
+          .map(
+            (it) =>
+              `<li><img data-pic="${esc(it.id)}" alt="" width="160" height="160"><span class="ad-pic-label">${esc(it.label)}</span><span class="ad-pic-acts">${button('approve-pic', tx('approve'), `data-id="${esc(it.id)}"`, 'ad-btn sm primary')}${button('refuse-pic', tx('refuse'), `data-id="${esc(it.id)}"`, 'ad-btn sm danger')}</span></li>`,
+          )
+          .join('')}</ul></section>`
+      : '';
     return `<div class="ad-panel">
       <div class="ad-actions">${actions}<a class="ad-btn" href="${esc(opts.boardURL(v.alias))}" target="_blank" rel="noopener">${tx('openBoard')} ↗</a></div>
       <p class="ad-muted ad-meta">${tx('language')}: ${v.lang} · ${tx('visibility')}: ${v.settings.visibility} · ${tx('method')}: ${v.settings.method} · ${tx('cCreated')}: ${when(v.created)}</p>
+      ${pictures}
       <div class="ad-cols">
         <section><h3>${tx('reports')} <span class="mono">${n(v.reports.length)}</span></h3>${reports}</section>
         <section><h3>${tx('items')} <span class="mono">${n(v.items.length)}</span></h3>${items}</section>
@@ -332,6 +347,32 @@ export function mountAdmin(opts: AdminOpts): void {
     }
     root.innerHTML = `<header class="ad-top">${brand}${button('logout', tx('logout'), '', 'ad-btn sm')}</header>
     <main class="ad-main" aria-busy="${st.busy}">${error}${statsHTML()}${toolsHTML()}${tableHTML()}</main>`;
+    void loadPictures();
+  }
+
+  /** The pictures to review are behind the token: fetched here and shown from object URLs (freed on the next render). */
+  const shown: string[] = [];
+  async function loadPictures(): Promise<void> {
+    if (typeof URL.revokeObjectURL === 'function') for (const url of shown.splice(0)) URL.revokeObjectURL(url);
+    const alias = st.open;
+    if (!alias || typeof URL.createObjectURL !== 'function') return;
+    for (const img of root.querySelectorAll<HTMLImageElement>('img[data-pic]')) {
+      const id = img.dataset.pic ?? '';
+      try {
+        const res = await opts.fetch(
+          `${opts.api ?? ''}/api/admin/boards/${alias}/items/${encodeURIComponent(id)}/image`,
+          {
+            headers: { Authorization: `Bearer ${st.token}` },
+          },
+        );
+        if (!res.ok || st.open !== alias) continue;
+        const url = URL.createObjectURL(await res.blob());
+        shown.push(url);
+        img.src = url;
+      } catch {
+        /* the picture stays blank; the label and the buttons are there */
+      }
+    }
   }
 
   // ─── Events ───────────────────────────────────────────────────────────────
@@ -403,6 +444,15 @@ export function mountAdmin(opts: AdminOpts): void {
       case 'clear-reports':
         if (alias) void act(() => call('DELETE', `/boards/${alias}/reports`));
         break;
+      case 'approve-pic':
+      case 'refuse-pic': {
+        const id = el.dataset.id;
+        const decision = el.dataset.act === 'approve-pic' ? 'ok' : 'refused';
+        if (alias && id) {
+          void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, { decision }));
+        }
+        break;
+      }
       case 'remove-item': {
         const id = el.dataset.id;
         if (alias && id && opts.confirm(tx('confirmRemove', { label: el.dataset.label ?? '', title }))) {

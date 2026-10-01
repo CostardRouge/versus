@@ -12,12 +12,17 @@ export interface Fill {
 export interface Item {
   id: string;
   label: string;
-  /** Downscaled image as a data URL. */
+  /** Downscaled image as a data URL; on a published board, the address of an approved picture. */
   img: string | null;
   fill: Fill | null;
   /** Hue used to tint text-only cards. */
   h: number;
+  /** On a published board: a picture sent for the moderator's review, or refused (docs/published-boards.md#images). */
+  pic?: PictureState;
 }
+
+/** A published item's picture while it isn't shown: waiting for the moderator, or refused by them. */
+export type PictureState = 'pending' | 'refused';
 
 export interface Duel {
   a: string;

@@ -18,10 +18,12 @@ export const adminEn = {
   sVotes: 'votes',
   sVoters: 'voters',
   sReported: 'reported',
+  sPictures: 'pictures to review',
   sFeatured: 'featured',
   sHidden: 'hidden',
   fAll: 'All',
   fReported: 'Reported',
+  fPictures: 'Pictures',
   fFeatured: 'Featured',
   fHidden: 'Hidden',
   fOpen: 'Open',
@@ -71,6 +73,10 @@ export const adminEn = {
   visibility: 'Results',
   method: 'Method',
   done: 'Done.',
+  picFlag: 'Pictures to review: {n}',
+  picturesTitle: 'Pictures to review',
+  approve: 'Approve',
+  refuse: 'Refuse',
 };
 
 export type AdminKey = keyof typeof adminEn;
@@ -92,10 +98,12 @@ export const adminFr: AdminMessages = {
   sVotes: 'votes',
   sVoters: 'votants',
   sReported: 'signalés',
+  sPictures: 'images à valider',
   sFeatured: 'à la une',
   sHidden: 'masqués',
   fAll: 'Tous',
   fReported: 'Signalés',
+  fPictures: 'Images',
   fFeatured: 'À la une',
   fHidden: 'Masqués',
   fOpen: 'Ouverts',
@@ -145,6 +153,10 @@ export const adminFr: AdminMessages = {
   visibility: 'Résultats',
   method: 'Méthode',
   done: 'Fait.',
+  picFlag: 'Images à valider : {n}',
+  picturesTitle: 'Images à valider',
+  approve: 'Valider',
+  refuse: 'Refuser',
 };
 
 export type AdminLang = 'en' | 'fr';

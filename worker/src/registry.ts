@@ -36,12 +36,12 @@ export const DAY_MS = 86_400_000;
 export async function upsertBoard(db: D1Database, row: RegistryRow): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO boards (alias, title, status, lang, items, votes, voters, reports, hidden, featured, template, recent, top, created, active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO boards (alias, title, status, lang, items, votes, voters, reports, pictures, hidden, featured, template, recent, top, created, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (alias) DO UPDATE SET title = excluded.title, status = excluded.status, lang = excluded.lang,
          items = excluded.items, votes = excluded.votes, voters = excluded.voters, reports = excluded.reports,
-         hidden = excluded.hidden, featured = excluded.featured, template = excluded.template,
-         recent = excluded.recent, top = excluded.top, active = excluded.active`,
+         pictures = excluded.pictures, hidden = excluded.hidden, featured = excluded.featured,
+         template = excluded.template, recent = excluded.recent, top = excluded.top, active = excluded.active`,
     )
     .bind(
       row.alias,
@@ -52,6 +52,7 @@ export async function upsertBoard(db: D1Database, row: RegistryRow): Promise<voi
       row.votes,
       row.voters,
       row.reports,
+      row.pictures,
       row.hidden ? 1 : 0,
       row.featured ? 1 : 0,
       row.template,
@@ -72,6 +73,7 @@ export { isAdminFilter as isFilter };
 const WHERE: Record<AdminFilter, string> = {
   all: '1',
   reported: 'reports > 0',
+  pictures: 'pictures > 0',
   featured: 'featured = 1',
   hidden: 'hidden = 1',
   open: "status = 'open'",
@@ -107,11 +109,11 @@ export async function totals(db: D1Database): Promise<RegistryTotals> {
     .prepare(
       `SELECT COUNT(*) AS boards, COALESCE(SUM(status = 'open'), 0) AS open,
          COALESCE(SUM(votes), 0) AS votes, COALESCE(SUM(voters), 0) AS voters,
-         COALESCE(SUM(reports > 0), 0) AS reported, COALESCE(SUM(featured), 0) AS featured,
-         COALESCE(SUM(hidden), 0) AS hidden FROM boards`,
+         COALESCE(SUM(reports > 0), 0) AS reported, COALESCE(SUM(pictures), 0) AS pictures,
+         COALESCE(SUM(featured), 0) AS featured, COALESCE(SUM(hidden), 0) AS hidden FROM boards`,
     )
     .first<RegistryTotals>();
-  return row ?? { boards: 0, open: 0, votes: 0, voters: 0, reported: 0, featured: 0, hidden: 0 };
+  return row ?? { boards: 0, open: 0, votes: 0, voters: 0, reported: 0, pictures: 0, featured: 0, hidden: 0 };
 }
 
 // ─── Public lists ───────────────────────────────────────────────────────────

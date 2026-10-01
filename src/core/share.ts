@@ -234,6 +234,10 @@ export function pngSize(bytes: Uint8Array): { width: number; height: number } | 
   return { width: view.getUint32(16), height: view.getUint32(20) };
 }
 
+/** True when the bytes start like a JPEG (the pictures the app sends for review are 640 px JPEGs). */
+export const isJpeg = (bytes: Uint8Array): boolean =>
+  bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+
 /** True when the bytes are the card a link unfurls with: a PNG of the landscape format, within the size limit. */
 export function isCardImage(bytes: Uint8Array): boolean {
   if (bytes.length > CARD_MAX_BYTES) return false;

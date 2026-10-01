@@ -1,4 +1,11 @@
-import type { BoardSummary, BoardView, ClientMessage, PopularBoard, ServerMessage } from '../core/protocol';
+import type {
+  BoardSummary,
+  BoardView,
+  ClientMessage,
+  PopularBoard,
+  ServerConfig,
+  ServerMessage,
+} from '../core/protocol';
 import type { PublishRequest } from '../core/published';
 import { duelQuery } from '../core/share';
 import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking, ReportReason } from '../core/types';
@@ -67,22 +74,45 @@ export async function fetchPopular(lang: string): Promise<PopularBoard[]> {
 export const reportBoard = (alias: string, report: { voter: string; reason: ReportReason; note: string }) =>
   call<true>('POST', `/${alias}/report`, report);
 
-/** The card a board's link (or one duel's link) unfurls with: a PNG the app drew. Resolves with its address. */
-export async function putCard(alias: string, png: Blob, pair: readonly [string, string] | null): Promise<string> {
+let configCache: Promise<ServerConfig> | null = null;
+
+/** What the server allows (pictures for review or not), asked once per session; `off` when it can't be reached. */
+export function fetchConfig(): Promise<ServerConfig> {
+  configCache ??= call<ServerConfig>('GET', '', undefined, undefined, '/api/config').catch(() => {
+    configCache = null;
+    return { images: 'off' } as ServerConfig;
+  });
+  return configCache;
+}
+
+/** Sends bytes the server keeps as a file (a card, a picture); resolves with the answer's JSON. */
+async function upload<T>(path: string, body: Blob, token?: string): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': body.type };
+  if (token) headers.Authorization = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`${API ?? ''}/api/boards/${alias}/card${pair ? duelQuery(pair[0], pair[1]) : ''}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/png' },
-      body: png,
-    });
+    res = await fetch(`${API ?? ''}${path}`, { method: 'PUT', headers, body });
   } catch {
     throw new ApiError('network');
   }
-  const data = (await res.json().catch(() => null)) as { url?: string; error?: ErrorCode } | null;
-  if (!res.ok || !data?.url) throw new ApiError(data?.error ?? 'network');
+  const data = (await res.json().catch(() => null)) as (T & { error?: ErrorCode }) | null;
+  if (!res.ok) throw new ApiError(data?.error ?? 'network');
+  return data as T;
+}
+
+/** The card a board's link (or one duel's link) unfurls with: a PNG the app drew. Resolves with its address. */
+export async function putCard(alias: string, png: Blob, pair: readonly [string, string] | null): Promise<string> {
+  const data = await upload<{ url?: string }>(
+    `/api/boards/${alias}/card${pair ? duelQuery(pair[0], pair[1]) : ''}`,
+    png,
+  );
+  if (!data.url) throw new ApiError('network');
   return data.url;
 }
+
+/** An item's picture, announced at publication, sent for the moderator's review (the author's token). */
+export const putItemImage = (alias: string, token: string, id: string, jpeg: Blob): Promise<unknown> =>
+  upload(`/api/boards/${alias}/items/${encodeURIComponent(id)}/image`, jpeg, token);
 
 export type Connection = 'connecting' | 'open' | 'lost' | 'gone';
 

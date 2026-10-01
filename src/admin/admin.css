@@ -339,6 +339,44 @@ input {
   align-items: center;
   gap: 12px;
 }
+
+/* Pictures awaiting a decision: the picture, its item's label, approve or refuse. */
+.ad-pics-sec h3 {
+  margin: 0 0 8px;
+  font: 700 14px / 1.2 var(--f-display);
+}
+.ad-pics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ad-pics li {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.ad-pics img {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.ad-pic-label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ad-pic-acts {
+  display: flex;
+  gap: 6px;
+}
 .ad-empty {
   margin: 0;
   padding: 24px 0;

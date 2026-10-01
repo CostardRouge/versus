@@ -52,6 +52,7 @@ export async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Pr
       votes: 0,
       voters: 0,
       reports: 0,
+      pictures: 0,
       hidden: false,
       featured: false,
       template: t.key,

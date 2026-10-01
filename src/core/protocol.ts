@@ -108,8 +108,13 @@ export const myDuels = (board: SharedBoard, voter: string): Duel[] =>
 
 // ─── Admin ──────────────────────────────────────────────────────────────────
 
+/** What the server lets the app do, besides voting: whether pictures may be published (sent for review). */
+export interface ServerConfig {
+  images: 'off' | 'review';
+}
+
 /** What the admin page can narrow the list of boards to. */
-export const ADMIN_FILTERS = ['all', 'reported', 'featured', 'hidden', 'open', 'closed'] as const;
+export const ADMIN_FILTERS = ['all', 'reported', 'pictures', 'featured', 'hidden', 'open', 'closed'] as const;
 export type AdminFilter = (typeof ADMIN_FILTERS)[number];
 export const isAdminFilter = (x: unknown): x is AdminFilter => ADMIN_FILTERS.includes(x as AdminFilter);
 
@@ -124,6 +129,8 @@ export interface AdminRow {
   voters: number;
   /** Visitors' reports awaiting the admin. */
   reports: number;
+  /** Items whose picture awaits the admin's review. */
+  pictures: number;
   hidden: boolean;
   featured: boolean;
   /** The key of the official template it was made from, or ''. */
@@ -172,6 +179,8 @@ export interface AdminTotals {
   voters: number;
   /** Boards with at least one report awaiting the admin. */
   reported: number;
+  /** Pictures awaiting the admin's review, over every board. */
+  pictures: number;
   featured: number;
   hidden: number;
 }

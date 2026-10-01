@@ -227,6 +227,12 @@ export const fr: Messages = {
   publishTitle: 'Publier ce classement ?',
   publishBody: 'Toute personne qui a le lien pourra le voir et voter. Tu pourras le retirer à tout moment.',
   publishVotes: 'Compter mes {duels} comme mes votes',
+  publishPictures:
+    'Tes {pictures} seront envoyées au modérateur et s’afficheront une fois validées. En attendant, les éléments s’affichent en texte.',
+  picturesSent: '{pictures} envoyées pour validation.',
+  picturesFailed: 'Les images n’ont pas pu être envoyées. Les éléments s’affichent en texte.',
+  picPending: 'Image en attente de validation',
+  picRefused: 'Image refusée par le modérateur',
   settingResults: 'Résultats',
   visAlways: 'Toujours visibles, en direct',
   visAfterPre: 'Visibles après',
@@ -419,4 +425,5 @@ export const frPlurals: Record<PluralKey, [string, string]> = {
   voter: ['votant', 'votants'],
   pair: ['paire', 'paires'],
   duplicate: ['doublon', 'doublons'],
+  picture: ['image', 'images'],
 };

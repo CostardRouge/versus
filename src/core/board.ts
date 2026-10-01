@@ -48,7 +48,18 @@ export const LIMITS = {
   /** A report's note, and how many voters' reports a board keeps. */
   note: 300,
   reports: 200,
+  /** Bytes of an item's picture (a 640 px JPEG, as the app downsizes them). */
+  picture: 250_000,
 };
+
+/**
+ * Whether published items may carry pictures: not at all (the default), sent to the moderator for review and
+ * shown once approved, or as given (the site's own boards, whose pictures are the site's).
+ */
+export type ImagePolicy = 'off' | 'review' | 'direct';
+
+/** Where an approved picture may live: on this site under /img/, or an https address (official templates). */
+export const IMAGE_URL_RE = /^(?:\/img\/[\w./-]+|https:\/\/[^\s"'<>]+)$/;
 /** Undoing the very last vote stays possible this long when votes are final (mis-taps). */
 export const UNDO_GRACE_MS = 10_000;
 /** Minimum delay between two votes or skips of one connection (each one triggers pair assignment). */
@@ -112,26 +123,43 @@ function parseFill(x: unknown): Fill | null | undefined {
 export interface NewItem {
   label: string;
   fill: Fill | null;
+  /** An approved picture's address (official boards only); null otherwise. */
+  img: string | null;
+  /** The author will send a picture for review (when the policy allows it). */
+  pic?: 'pending';
 }
 
-/** An item's content: a label, and a fill for colors. No images on published boards (v1). */
-export function parseNewItem(x: unknown): Result<NewItem> {
+/**
+ * An item's content: a label, a fill for colors, and, by policy, a picture: none (`off`), announced and sent
+ * for review (`pic: 'pending'`, `review`), or its address as given (`direct`, the site's own boards).
+ */
+export function parseNewItem(x: unknown, images: ImagePolicy = 'off'): Result<NewItem> {
   if (!isRecord(x) || typeof x.label !== 'string') return fail('bad_request');
-  if (x.img !== null && x.img !== undefined) return fail('images_not_allowed');
+  let img: string | null = null;
+  if (x.img !== null && x.img !== undefined) {
+    if (images !== 'direct' || typeof x.img !== 'string' || !IMAGE_URL_RE.test(x.img))
+      return fail('images_not_allowed');
+    img = x.img;
+  }
+  let pic: 'pending' | undefined;
+  if (x.pic !== undefined) {
+    if (x.pic !== 'pending' || images === 'off' || img) return fail('images_not_allowed');
+    pic = 'pending';
+  }
   const fill = parseFill(x.fill);
   if (fill === undefined) return fail('bad_request');
   const label = x.label.trim();
   if (label.length > LIMITS.label || (!label && !fill)) return fail('bad_request');
-  return ok({ label, fill });
+  return ok({ label, fill, img, ...(pic ? { pic } : {}) });
 }
 
-function parseItem(x: unknown): Result<Item> {
+function parseItem(x: unknown, images: ImagePolicy): Result<Item> {
   if (!isRecord(x) || typeof x.id !== 'string' || !ITEM_ID_RE.test(x.id)) return fail('bad_request');
-  const content = parseNewItem(x);
+  const content = parseNewItem(x, images);
   if (!content.ok) return content;
-  const { label, fill } = content.value;
+  const { label, fill, img, pic } = content.value;
   const h = typeof x.h === 'number' && Number.isInteger(x.h) && x.h >= 0 && x.h < 360 ? x.h : hueOf(label);
-  return ok({ id: x.id, label, img: null, fill, h });
+  return ok({ id: x.id, label, img, fill, h, ...(pic ? { pic } : {}) });
 }
 
 /** Applies the valid fields of `patch`; anything else keeps its current value. */
@@ -161,8 +189,11 @@ export interface PublishInput {
   lang: BoardLang;
 }
 
-/** Validates a publish request. Duels on unknown items are dropped, like the local history does. */
-export function parsePublish(x: unknown): Result<PublishInput> {
+/**
+ * Validates a publish request. Duels on unknown items are dropped, like the local history does. `images` is
+ * the server's picture policy for this request.
+ */
+export function parsePublish(x: unknown, images: ImagePolicy = 'off'): Result<PublishInput> {
   if (!isRecord(x) || typeof x.title !== 'string' || !Array.isArray(x.items)) return fail('bad_request');
   const title = x.title.trim();
   if (!title || title.length > LIMITS.title) return fail('bad_request');
@@ -172,7 +203,7 @@ export function parsePublish(x: unknown): Result<PublishInput> {
   const items: Item[] = [];
   const ids = new Set<string>();
   for (const raw of x.items) {
-    const r = parseItem(raw);
+    const r = parseItem(raw, images);
     if (!r.ok) return r;
     if (ids.has(r.value.id)) return fail('bad_request');
     ids.add(r.value.id);
@@ -384,10 +415,41 @@ export function addItem(board: SharedBoard, input: NewItem, id: string, now: num
   if (board.items.length >= LIMITS.items) return fail('full');
   const key = input.label.toLowerCase();
   if (board.items.some((i) => i.label.toLowerCase() === key)) return fail('exists');
-  const item: Item = { id, label: input.label, img: null, fill: input.fill, h: hueOf(input.label) };
+  const item: Item = {
+    id,
+    label: input.label,
+    img: input.img,
+    fill: input.fill,
+    h: hueOf(input.label),
+    ...(input.pic ? { pic: input.pic } : {}),
+  };
   board.items.push(item);
   board.touched = now;
   return ok(item);
+}
+
+// ─── Pictures (docs/published-boards.md#images) ────────────────────────────
+
+/** Items whose picture waits for the moderator. */
+export const pendingPictures = (board: SharedBoard): number => board.items.filter((i) => i.pic === 'pending').length;
+
+/** Whether an item's picture may be sent now: the item announced one, and it is still waiting. */
+export const awaitsPicture = (board: SharedBoard, id: string): boolean =>
+  board.items.some((i) => i.id === id && i.pic === 'pending');
+
+/**
+ * The moderator's decision on an item's picture: approved, the item shows it from `url`; refused, the item
+ * stays as text and the author sees why. Not an activity for the TTL.
+ */
+export function decidePicture(board: SharedBoard, id: string, decision: 'ok' | 'refused', url: string): Result<Item> {
+  const it = board.items.find((i) => i.id === id);
+  if (!it) return fail('not_found');
+  if (it.pic !== 'pending') return fail('bad_request');
+  const rest: Item = { ...it };
+  delete rest.pic;
+  const next: Item = decision === 'ok' ? { ...rest, img: url } : { ...rest, img: null, pic: 'refused' };
+  board.items = board.items.map((i) => (i.id === id ? next : i));
+  return ok(next);
 }
 
 /** Removes an item and every vote that involves it (they would count for nothing). A board keeps 2 items. */

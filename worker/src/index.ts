@@ -1,9 +1,10 @@
-import { ALIAS_RE, isRecord, parsePublish } from '../../src/core/board';
-import { parseSummaryRequest } from '../../src/core/protocol';
+import { ALIAS_RE, type ImagePolicy, isRecord, LIMITS, parsePublish } from '../../src/core/board';
+import { parseSummaryRequest, type ServerConfig } from '../../src/core/protocol';
 import { CARD_MAX_BYTES, parseDuelQuery } from '../../src/core/share';
 import type { BoardLang, ErrorCode, Result } from '../../src/core/types';
 import { cardURL, preview, readCard, rewriteHead, storeCard } from './cards';
 import type { Env } from './env';
+import { approvePicture, deletePicture, parsePicturePath, readPicture, storePicture } from './pictures';
 import { newAlias, newOwnerToken } from './random';
 import { isFilter, listBoards, popularBoards, totals } from './registry';
 import { ensureTemplates, sitemap, templatePage } from './templates';
@@ -28,6 +29,11 @@ export { BoardObject } from './board-object';
  *   PUT    /api/boards/:alias/card[?duel=a.b]   the card the board's link (or one duel's) unfurls with: a
  *                                               1200×630 PNG drawn by the app → { url }
  *   POST   /api/boards/:alias/report            { voter, reason, note? }: a visitor reports the board
+ *   PUT    /api/boards/:alias/items/:id/image   the picture an item announced (`pic: 'pending'`): a JPEG, kept
+ *                                               for the admin's review                             (owner)
+ *   GET    /api/config                          { images }: whether pictures may be published (`review`) or not
+ *
+ *   GET    /img/b/:alias/:id.jpg                an item's picture, once the admin approved it
  *
  *   GET    /og/b/:alias[/:a.:b]/:version.png    a stored card, or the site's card when there is none
  *
@@ -47,6 +53,8 @@ export { BoardObject } from './board-object';
  *   PATCH  /api/admin/boards/:alias             { hidden?, featured? }: moderation flags
  *   POST   /api/admin/boards/:alias/close | reopen
  *   DELETE /api/admin/boards/:alias/items/:id   remove an item (moderation)
+ *   GET    /api/admin/boards/:alias/items/:id/image    a picture awaiting review, to look at it
+ *   POST   /api/admin/boards/:alias/items/:id/picture  { decision: 'ok' | 'refused' }
  *   DELETE /api/admin/boards/:alias/reports     the reports were reviewed
  *   DELETE /api/admin/boards/:alias             take the board down
  *
@@ -100,11 +108,20 @@ async function allowed(limit: RateLimit | undefined, req: Request): Promise<bool
   return !limit || (await limit.limit({ key: clientIp(req) })).success;
 }
 
+/** Whether authors may publish pictures (sent for review): the IMAGES_UPLOAD variable, off unless `review`. */
+const imagePolicy = (env: Env): ImagePolicy & ServerConfig['images'] =>
+  env.IMAGES_UPLOAD === 'review' ? 'review' : 'off';
+
+const config = (env: Env): Response =>
+  Response.json({ images: imagePolicy(env) } satisfies ServerConfig, {
+    headers: { 'Cache-Control': 'public, max-age=300' },
+  });
+
 async function publish(req: Request, env: Env): Promise<Response> {
   if (!(await allowed(env.PUBLISH_LIMIT, req))) return error('rate_limited');
   const body = await readJson(req);
   if (body === null) return error('too_large');
-  const input = parsePublish(body);
+  const input = parsePublish(body, imagePolicy(env));
   if (!input.ok) return error(input.error);
   if (env.TURNSTILE_SECRET) {
     const token = isRecord(body) ? body.turnstile : undefined;
@@ -161,12 +178,32 @@ async function putCard(req: Request, env: Env, alias: string): Promise<Response>
   return json({ url: cardURL(new URL(req.url).origin, alias, pair, new Date()) }, 201);
 }
 
+/**
+ * The picture an item announced at publication, sent by the author for the admin's review: a JPEG within the
+ * size limit, for an item still waiting for one. Off (404) without the images bucket.
+ */
+async function putPicture(req: Request, env: Env, alias: string, id: string): Promise<Response> {
+  const bucket = env.IMAGES;
+  if (!bucket) return error('not_found');
+  if (!req.headers.get('Content-Type')?.toLowerCase().startsWith('image/jpeg')) return error('unsupported');
+  if (Number(req.headers.get('Content-Length') ?? 0) > LIMITS.picture) return error('too_large');
+  const bytes = new Uint8Array(await req.arrayBuffer());
+  if (bytes.byteLength > LIMITS.picture) return error('too_large');
+  const slot = await env.BOARDS.getByName(alias).pictureSlot(bearer(req), id);
+  if (!slot.ok) return error(slot.error);
+  const stored = await storePicture(bucket, alias, id, bytes);
+  return stored === 'ok' ? json({ ok: true }, 201) : error(stored);
+}
+
 /** Routes under /api/boards/:alias. */
 async function board(req: Request, env: Env, alias: string, rest: string[]): Promise<Response> {
   const stub = env.BOARDS.getByName(alias);
   const [action, id, ...extra] = rest;
-  if (extra.length) return error('not_found');
   const m = req.method;
+  if (action === 'items' && id !== undefined && extra.length === 1 && extra[0] === 'image') {
+    return m === 'PUT' ? putPicture(req, env, alias, id) : error('not_found');
+  }
+  if (extra.length) return error('not_found');
   if (action === 'card' && id === undefined) return m === 'PUT' ? putCard(req, env, alias) : error('not_found');
   if (action === 'report' && id === undefined) {
     if (m !== 'POST') return error('not_found');
@@ -218,6 +255,13 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
   if (!(await isAdmin(req, env))) return error('forbidden');
   const [section, alias, action, id, ...extra] = parts;
   const m = req.method;
+  // An item's picture: look at it, then decide.
+  if (section === 'boards' && alias && ALIAS_RE.test(alias) && action === 'items' && id && extra.length === 1) {
+    if (extra[0] === 'image' && m === 'GET')
+      return (await readPicture(env.IMAGES, alias, id, true)) ?? error('not_found');
+    if (extra[0] === 'picture' && m === 'POST') return decidePictureRoute(req, env, alias, id);
+    return error('not_found');
+  }
   if (extra.length) return error('not_found');
   if (section === 'stats' && alias === undefined && m === 'GET') {
     return env.REGISTRY ? json(await totals(env.REGISTRY)) : error('not_found');
@@ -257,6 +301,24 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
 }
 
 /**
+ * The admin's decision on a picture: approved, the stored picture becomes public and the item shows it;
+ * refused, the picture is deleted and the item stays as text.
+ */
+async function decidePictureRoute(req: Request, env: Env, alias: string, id: string): Promise<Response> {
+  const bucket = env.IMAGES;
+  if (!bucket) return error('not_found');
+  const body = await readJson(req);
+  if (body === null) return error('too_large');
+  const decision = isRecord(body) ? body.decision : undefined;
+  if (decision !== 'ok' && decision !== 'refused') return error('bad_request');
+  const stub = env.BOARDS.getByName(alias);
+  if (decision === 'ok' && !(await approvePicture(bucket, alias, id))) return error('not_found');
+  const r = await stub.adminPicture(id, decision);
+  if (r.ok && decision === 'refused') await deletePicture(bucket, alias, id);
+  return reply(r);
+}
+
+/**
  * The app's page for a board (`/app/b/<alias>`, with `?duel=a.b` for one of its duels): its head says what the
  * link is about, in the board's language, with the card the app drew when there is one. A board that is gone
  * gets the page as it is (the app then says so).
@@ -289,6 +351,11 @@ async function site(req: Request, env: Env, parts: string[]): Promise<Response> 
     const card = await readCard(env.IMAGES, parts);
     return card ?? assets.fetch(new Request(new URL('/og.png', url), req));
   }
+  if (parts[0] === 'img') {
+    const named = parsePicturePath(parts);
+    const picture = named ? await readPicture(env.IMAGES, named.alias, named.id, false) : null;
+    return picture ?? error('not_found');
+  }
   if (url.pathname.startsWith('/app/')) {
     const [, kind, alias, ...more] = parts;
     if (kind === 'b' && alias && !more.length) return boardPage(req, env, assets, alias);
@@ -315,6 +382,7 @@ export default {
     if (section === 'summaries')
       return req.method === 'POST' && !rest.length ? summaries(req, env) : error('not_found');
     if (section === 'popular') return req.method === 'GET' && !rest.length ? popular(req, env) : error('not_found');
+    if (section === 'config') return req.method === 'GET' && !rest.length ? config(env) : error('not_found');
     if (section !== 'boards') return error('not_found');
     const [alias, ...more] = rest;
     if (alias === undefined) return req.method === 'POST' ? publish(req, env) : error('not_found');

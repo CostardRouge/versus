@@ -32,7 +32,7 @@ export const legalFr: LegalMessages = {
 
   boardsTitle: 'Classements publiés',
   boards1:
-    'Quand tu publies un classement, son titre, ses éléments (texte et couleurs : les images ne peuvent pas être publiées) et ses réglages sont envoyés au serveur pour que d’autres votent, avec une image de celui-ci (son titre et ses éléments, dessinée par ton navigateur) qui s’affiche quand son lien est collé quelque part ; partager un duel en dessine une de ce duel aussi. Chaque vote est enregistré avec l’identifiant anonyme du navigateur qui l’a donné, la paire, le choix et l’heure : ni nom, ni e-mail, ni adresse IP.',
+    'Quand tu publies un classement, son titre, ses éléments (texte et couleurs) et ses réglages sont envoyés au serveur pour que d’autres votent, avec une image de celui-ci (son titre et ses éléments, dessinée par ton navigateur) qui s’affiche quand son lien est collé quelque part ; partager un duel en dessine une de ce duel aussi. Quand l’éditeur le permet, les images de tes éléments sont envoyées aussi, gardées pour la relecture de l’éditeur et montrées aux votants seulement une fois validées ; une image refusée est supprimée. Chaque vote est enregistré avec l’identifiant anonyme du navigateur qui l’a donné, la paire, le choix et l’heure : ni nom, ni e-mail, ni adresse IP.',
   boards2:
     'Un classement publié est supprimé quand son auteur le retire, ou après {days} jours sans activité. Toute personne qui a son lien peut le voir et voter : n’y publie rien de personnel. Le lien de l’auteur porte une clé après le <code>#</code>, que les navigateurs n’envoient jamais à un serveur : garde-le pour toi.',
   boards3:

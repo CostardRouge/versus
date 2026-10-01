@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
-import { ACTION_INTERVAL_MS, ALIAS_RE } from '../src/core/board';
+import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS } from '../src/core/board';
 import type {
   AdminBoardView,
   AdminList,
@@ -855,6 +855,122 @@ describe('official templates', () => {
     const html = await res.text();
     expect(html).toContain('<meta name="robots" content="index, follow');
     expect(html).toContain('1 vote');
+  });
+});
+
+describe('pictures for review', () => {
+  const fakeJpeg = (size = 1024) => {
+    const b = new Uint8Array(size);
+    b.set([0xff, 0xd8, 0xff, 0xe0]);
+    return b;
+  };
+  const sendPicture = (alias: string, id: string, bytes: Uint8Array, token?: string, type = 'image/jpeg') =>
+    server.fetch(`/api/boards/${alias}/items/${id}/image`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': type,
+        'CF-Connecting-IP': nextIp(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: bytes,
+    });
+  const announced = (...ids: string[]) => items.map((it) => (ids.includes(it.id) ? { ...it, pic: 'pending' } : it));
+  const publishPics = async (list: unknown[]) => {
+    const res = await api('', { method: 'POST', body: { title: 'Photos', items: list, voter: AUTHOR } });
+    expect(res.status).toBe(201);
+    return (await res.json()) as { alias: string; owner: string };
+  };
+  const decide = (alias: string, id: string, decision: string) =>
+    adminApi(`/boards/${alias}/items/${id}/picture`, { method: 'POST', body: { decision } });
+
+  it('refuses announced pictures while they are off, and says so in its config', async () => {
+    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'off' });
+    const res = await api('', { method: 'POST', body: { title: 'Photos', items: announced('p0'), voter: AUTHOR } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'images_not_allowed' });
+  });
+
+  it('keeps a picture for review, shows it to the admin only, then to everyone once approved', async () => {
+    await server.update({
+      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { IMAGES_UPLOAD: 'review' } }],
+    });
+    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'review' });
+    const { alias, owner } = await publishPics(announced('p0'));
+    const first = (await view(alias)).body.items;
+    expect(first[0]).toMatchObject({ id: 'p0', img: null, pic: 'pending' });
+    expect(Object.keys(first[1] ?? {})).not.toContain('pic');
+    // Only the author, only for an item that announced one, only a JPEG within the limit.
+    expect((await sendPicture(alias, 'p0', fakeJpeg())).status).toBe(403);
+    expect((await sendPicture(alias, 'p1', fakeJpeg(), owner)).status).toBe(404);
+    expect((await sendPicture(alias, 'p0', fakeJpeg(), owner, 'image/png')).status).toBe(415);
+    expect((await sendPicture(alias, 'p0', fakeJpeg(LIMITS.picture + 1), owner)).status).toBe(413);
+    expect((await sendPicture(alias, 'p0', new Uint8Array([1, 2, 3, 4, 5]), owner)).status).toBe(400);
+    expect((await sendPicture(alias, 'p0', fakeJpeg(), owner)).status).toBe(201);
+    // Not public yet; the admin sees it.
+    expect((await server.fetch(`/img/b/${alias}/p0.jpg`)).status).toBe(404);
+    expect((await server.fetch(`/img/b/${alias}/p0.png`)).status).toBe(404);
+    expect((await server.fetch('/img/b/nope/p0.jpg')).status).toBe(404);
+    const mine = await adminApi(`/boards/${alias}/items/p0/image`);
+    expect(mine.status).toBe(200);
+    expect(mine.headers.get('Content-Type')).toBe('image/jpeg');
+    expect((await adminApi(`/boards/${alias}/items/p0/image`, { token: 'wrong' })).status).toBe(403);
+    expect((await adminApi(`/boards/${alias}/items/p0/other`)).status).toBe(404);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=pictures')).json()) as AdminList;
+        expect(list.boards.find((b) => b.alias === alias)).toMatchObject({ pictures: 1 });
+      },
+      { timeout: 5000, interval: 200 },
+    );
+    expect(((await (await adminApi('/stats')).json()) as AdminTotals).pictures).toBeGreaterThan(0);
+    // Approved: the item shows it from its public address, voters included, right away.
+    const voter = await Client.open(alias, 'voter-pic-1');
+    await voter.next('state');
+    expect((await decide(alias, 'p0', 'maybe')).status).toBe(400);
+    const ok = await decide(alias, 'p0', 'ok');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ id: 'p0', img: `/img/b/${alias}/p0.jpg` });
+    const pushed = await voter.next('state');
+    expect(pushed.board.items[0]).toMatchObject({ id: 'p0', img: `/img/b/${alias}/p0.jpg` });
+    expect(Object.keys(pushed.board.items[0] ?? {})).not.toContain('pic');
+    voter.close();
+    const shown = await server.fetch(`/img/b/${alias}/p0.jpg`);
+    expect(shown.status).toBe(200);
+    expect(shown.headers.get('Content-Type')).toBe('image/jpeg');
+    // Decided once; the board leaves the list of pictures to review.
+    expect((await decide(alias, 'p0', 'ok')).status).toBe(400);
+    await vi.waitFor(
+      async () => {
+        const list = (await (await adminApi('/boards?filter=pictures')).json()) as AdminList;
+        expect(list.boards.some((b) => b.alias === alias)).toBe(false);
+      },
+      { timeout: 5000, interval: 200 },
+    );
+  });
+
+  it('deletes a refused picture, needs one to approve, and drops them all with the board', async () => {
+    const { alias, owner } = await publishPics(announced('p1', 'p2', 'p3'));
+    expect((await sendPicture(alias, 'p1', fakeJpeg(), owner)).status).toBe(201);
+    expect((await sendPicture(alias, 'p2', fakeJpeg(), owner)).status).toBe(201);
+    const no = await decide(alias, 'p1', 'refused');
+    expect(await no.json()).toMatchObject({ id: 'p1', img: null, pic: 'refused' });
+    expect((await adminApi(`/boards/${alias}/items/p1/image`)).status).toBe(404);
+    expect((await view(alias)).body.items[1]).toMatchObject({ id: 'p1', img: null, pic: 'refused' });
+    // Nothing arrived for p3: nothing to approve.
+    expect((await decide(alias, 'p3', 'ok')).status).toBe(404);
+    // Removing an item takes its picture along; taking the board down takes the rest.
+    expect((await adminApi(`/boards/${alias}/items/p2`, { method: 'DELETE' })).status).toBe(200);
+    await vi.waitFor(async () => expect((await adminApi(`/boards/${alias}/items/p2/image`)).status).toBe(404), {
+      timeout: 5000,
+      interval: 200,
+    });
+    const { alias: other, owner: owner2 } = await publishPics(announced('p0'));
+    expect((await sendPicture(other, 'p0', fakeJpeg(), owner2)).status).toBe(201);
+    expect((await adminApi(`/boards/${other}`, { method: 'DELETE' })).status).toBe(200);
+    await vi.waitFor(async () => expect((await adminApi(`/boards/${other}/items/p0/image`)).status).toBe(404), {
+      timeout: 5000,
+      interval: 200,
+    });
   });
 });
 

@@ -2,12 +2,15 @@ import { DurableObject } from 'cloudflare:workers';
 import {
   addItem,
   addReport,
+  awaitsPicture,
   boardMeta,
   canSeeRanking,
   clearReports,
   createBoard,
   crowd,
   DEFAULT_MODERATION,
+  decidePicture,
+  type ImagePolicy,
   itemId,
   lastActivity,
   localCopy,
@@ -18,6 +21,7 @@ import {
   parseModeration,
   parseNewItem,
   parseReport,
+  pendingPictures,
   recentVotes,
   recolorItem,
   refill,
@@ -66,6 +70,7 @@ import type {
 } from '../../src/core/types';
 import { deleteCards } from './cards';
 import type { Env } from './env';
+import { deletePicture, deletePrefix, picturePath } from './pictures';
 import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
@@ -247,6 +252,7 @@ export class BoardObject extends DurableObject<Env> {
       votes: board.votes.size,
       voters: board.voters.size,
       reports: board.reports.size,
+      pictures: pendingPictures(board),
       hidden: board.mod.hidden,
       featured: board.mod.featured,
       template: board.template,
@@ -262,6 +268,11 @@ export class BoardObject extends DurableObject<Env> {
   private ttlMs(): number {
     const s = Number(this.env.BOARD_TTL_SECONDS);
     return (Number.isFinite(s) && s > 0 ? s : TTL_DAYS * 86_400) * 1000;
+  }
+
+  /** Whether authors may announce pictures for review (the IMAGES_UPLOAD variable). Visitors never may. */
+  private imagePolicy(): ImagePolicy {
+    return this.env.IMAGES_UPLOAD === 'review' ? 'review' : 'off';
   }
 
   /** Crowd ranking, recomputed at most once per BROADCAST_MS while votes keep coming. */
@@ -352,7 +363,7 @@ export class BoardObject extends DurableObject<Env> {
   async addItem(token: string, raw: unknown): Promise<Result<Item>> {
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
-    const input = parseNewItem(raw);
+    const input = parseNewItem(raw, this.imagePolicy());
     if (!input.ok) return input;
     const r = addItem(board.value, input.value, this.newItemId(board.value), Date.now());
     if (r.ok) this.itemsChanged(board.value, []);
@@ -441,6 +452,25 @@ export class BoardObject extends DurableObject<Env> {
     return { ok: true, value: n };
   }
 
+  // ─── Pictures (docs/published-boards.md#images) ──────────────────────────
+
+  /** Whether the author may send this item's picture now: theirs, announced at publication, still waiting. */
+  async pictureSlot(token: string, id: string): Promise<Result<true>> {
+    const board = await this.ownedBoard(token);
+    if (!board.ok) return board;
+    return awaitsPicture(board.value, id) ? { ok: true, value: true } : { ok: false, error: 'not_found' };
+  }
+
+  /** The admin's decision on an item's picture; approved, the item shows it from its public address. */
+  adminPicture(id: string, decision: 'ok' | 'refused'): Result<Item> {
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    const r = decidePicture(board, id, decision, picturePath(this.alias, id));
+    if (!r.ok) return r;
+    this.itemsChanged(board, []);
+    return r;
+  }
+
   /** Takedown: deletes the board without a copy for anyone. */
   async adminDelete(): Promise<Result<true>> {
     if (!this.board) return { ok: false, error: 'not_found' };
@@ -460,6 +490,9 @@ export class BoardObject extends DurableObject<Env> {
     const r = removeItem(board, id, Date.now());
     if (!r.ok) return r;
     this.itemsChanged(board, r.value);
+    // Its picture, if any, goes with it.
+    const images = this.env.IMAGES;
+    if (images && this.alias) this.ctx.waitUntil(deletePicture(images, this.alias, id).catch(() => {}));
     return { ok: true, value: r.value.length };
   }
 
@@ -505,7 +538,10 @@ export class BoardObject extends DurableObject<Env> {
     if (db && this.alias) this.ctx.waitUntil(deleteBoard(db, this.alias).catch(() => {}));
     // The cards its links unfurled with go too.
     const images = this.env.IMAGES;
-    if (images && this.alias) this.ctx.waitUntil(deleteCards(images, this.alias).catch(() => {}));
+    if (images && this.alias) {
+      this.ctx.waitUntil(deleteCards(images, this.alias).catch(() => {}));
+      this.ctx.waitUntil(deletePrefix(images, `img/${this.alias}/`).catch(() => {}));
+    }
     this.board = null;
     this.cache = null;
     this.ownerHash = '';

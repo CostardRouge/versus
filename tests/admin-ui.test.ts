@@ -32,6 +32,7 @@ const row = (over: Partial<AdminRow> = {}): AdminRow => ({
   votes: 12,
   voters: 4,
   reports: 2,
+  pictures: 0,
   hidden: false,
   featured: false,
   template: '',
@@ -41,7 +42,16 @@ const row = (over: Partial<AdminRow> = {}): AdminRow => ({
   active: 1_790_000_100_000,
   ...over,
 });
-const totals: AdminTotals = { boards: 1, open: 1, votes: 12, voters: 4, reported: 1, featured: 0, hidden: 0 };
+const totals: AdminTotals = {
+  boards: 1,
+  open: 1,
+  votes: 12,
+  voters: 4,
+  reported: 1,
+  pictures: 0,
+  featured: 0,
+  hidden: 0,
+};
 const detail = (over: Partial<AdminBoardView> = {}): AdminBoardView => ({
   alias: ALIAS,
   title: 'Pizzas',
@@ -255,6 +265,38 @@ describe('the page', () => {
     expect(confirm).toHaveBeenLastCalledWith(adminText('en', 'confirmTakeDown', { title: 'Pizzas' }));
     expect(requests('DELETE').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}`);
     expect($('.ad-panel')).toBeNull();
+  });
+
+  it('lists the pictures to review and sends each decision', async () => {
+    const withPic = detail({ items: [{ ...(items[0] as (typeof items)[number]), pic: 'pending' }, ...items.slice(1)] });
+    respond = (c) => {
+      if (c.auth !== 'Bearer good') return ok(c);
+      if (/\/boards\?/.test(c.url)) {
+        return {
+          status: 200,
+          body: { boards: [row({ pictures: 1 })], limit: 50, offset: 0, filter: 'pictures', q: '' },
+        };
+      }
+      if (c.method === 'GET' && c.url === `/api/admin/boards/${ALIAS}`) return { status: 200, body: withPic };
+      return ok(c);
+    };
+    mount('', 'good');
+    await flush();
+    expect($('.ad-flags')?.textContent).toContain('Pictures to review: 1');
+    expect($('[data-filter="pictures"]')?.textContent).toBe('Pictures');
+    click(`[data-act="inspect"][data-alias="${ALIAS}"]`);
+    await flush();
+    expect($('.ad-pics li')?.textContent).toContain('Margherita');
+    expect($('img[data-pic="p0"]')).not.toBeNull();
+    click('[data-act="approve-pic"][data-id="p0"]');
+    await flush();
+    expect(requests('POST').at(-1)).toMatchObject({
+      url: `/api/admin/boards/${ALIAS}/items/p0/picture`,
+      body: { decision: 'ok' },
+    });
+    click('[data-act="refuse-pic"][data-id="p0"]');
+    await flush();
+    expect(requests('POST').at(-1)?.body).toEqual({ decision: 'refused' });
   });
 
   it('does nothing when a confirmation is refused, and says when the server is away', async () => {

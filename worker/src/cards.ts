@@ -1,6 +1,7 @@
 import type { Unfurl } from '../../src/core/protocol';
 import { CARD_LIMIT, cardKey, cardPath, isCardImage, parseCardPath, parseDuelQuery } from '../../src/core/share';
 import { type UnfurlLang, unfurlPlural, unfurlText } from '../../src/i18n/unfurl';
+import { deletePrefix } from './pictures';
 
 /**
  * The cards a board's links unfurl with (docs/seo.md): drawn by the app that shares (src/app/share.ts), stored
@@ -39,16 +40,7 @@ export async function storeCard(
 }
 
 /** Deletes every card of a board (when the board goes). */
-export async function deleteCards(bucket: R2Bucket, alias: string): Promise<void> {
-  const keys: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await bucket.list({ prefix: `og/${alias}`, cursor });
-    keys.push(...page.objects.map((o) => o.key));
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
-  if (keys.length) await bucket.delete(keys);
-}
+export const deleteCards = (bucket: R2Bucket, alias: string): Promise<void> => deletePrefix(bucket, `og/${alias}`);
 
 /** The stored card a `/og/b/…` address names, or null (the caller then serves the site's card). */
 export async function readCard(bucket: R2Bucket | undefined, parts: readonly string[]): Promise<Response | null> {

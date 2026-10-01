@@ -347,7 +347,14 @@ function itemsHTML(v: BoardView): string {
     .map((it) => {
       const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
       const warn = twin ? `<small class="b-twin">${esc(t('sameColor', { label: twin.label }))}</small>` : '';
-      return `<li>${itemThumbHTML(it, open)}<span class="b-item"><span class="rlabel">${esc(it.label)}</span>${warn}</span>
+      // A picture sent for review, or refused: the author sees why the item shows as text.
+      const pic =
+        it.pic === 'pending'
+          ? `<small class="b-pic">${t('picPending')}</small>`
+          : it.pic === 'refused'
+            ? `<small class="b-pic b-pic-no">${t('picRefused')}</small>`
+            : '';
+      return `<li>${itemThumbHTML(it, open)}<span class="b-item"><span class="rlabel">${esc(it.label)}</span>${warn}${pic}</span>
         <button class="icon-btn" type="button" data-action="b-remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">${trashSvg}</button></li>`;
     })
     .join('');

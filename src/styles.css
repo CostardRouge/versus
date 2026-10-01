@@ -2330,6 +2330,15 @@ body.dropping .drop-overlay {
   font-weight: 600;
   color: var(--bad);
 }
+/* An item's picture, sent for review or refused: why the item shows as text, for the author. */
+.b-pic {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.b-pic-no {
+  color: var(--bad);
+}
 .b-suggest {
   background: var(--surface);
   border: 1px solid var(--line);

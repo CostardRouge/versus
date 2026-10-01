@@ -113,10 +113,12 @@ src/legal/            the legal notice (publisher, hosting, privacy, measurement
 src/admin/            the moderation page (/admin/, D103): page.ts renders it and calls /api/admin with the token typed on it (kept in
                       sessionStorage), admin.ts is the entry (its bundle is named admin-*, kept out of the precache), admin.css; no measurement
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
-                      cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), templates.ts (official templates: publication on
-                      demand, the /t/<slug>/ pages in the legal shell, the sitemap completed), registry.ts + migrations/ (D1 registry: the admin
-                      list's rows, flags, report counts, template key, recent votes, top labels), random.ts, turnstile.ts; own tsconfig; secrets
-                      ADMIN_TOKEN, TURNSTILE_SECRET; bindings BOARDS, REGISTRY, IMAGES (R2 bucket versus-images); `run_worker_first` for /sitemap.xml
+                      cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), pictures.ts (items' pictures: sent for review to R2,
+                      public under /img/ once approved, the admin's decision), templates.ts (official templates: publication on demand, the
+                      /t/<slug>/ pages in the legal shell, the sitemap completed), registry.ts + migrations/ (D1 registry: the admin list's rows,
+                      flags, report and picture counts, template key, recent votes, top labels), random.ts, turnstile.ts; own tsconfig; secrets
+                      ADMIN_TOKEN, TURNSTILE_SECRET; variable IMAGES_UPLOAD (`review` turns pictures on); bindings BOARDS, REGISTRY, IMAGES (R2
+                      bucket versus-images); `run_worker_first` for /sitemap.xml
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + board-ui.test.ts, votes-ui.test.ts, share-ui.test.ts and
                       admin-ui.test.ts (published boards, "Your votes", the share panel and the moderation page against a fake API and a fake
                       canvas, tests/helpers/) + worker.test.ts (end to end in workerd via Wrangler's test harness)
@@ -133,6 +135,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Addresses:** every view has a path under `app/` (D92, `core/route.ts`): open views through `open()` / `openBoard()` / `goBack()` / `setTab()`, which keep the address bar in step, never with `history` directly. Links the app builds come from `routeURL()`; an author's token only ever goes in the fragment. A duel link adds `?duel=<a>.<b>` (`core/share.ts`), read once and dropped from the address.
 - **Sharing (D98 to D102):** images are drawn in the browser (`app/share.ts`), never on the Worker; a board's link preview card is the landscape one, sent with `putCard()` and served by `worker/src/cards.ts`. New share entry points build a `CardSpec` in `core/share.ts` and call `openShare()`.
 - **Official templates and public lists (D106 to D108):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
+- **Pictures (D109, D110, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author panel does (text until approved).
 - **Moderation (D103 to D105, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
@@ -153,7 +156,7 @@ docs/                 decisions, roadmap, published boards model, online archite
   - `sort` **Exact sort**: binary insertion sort replayed from recorded duels; no ties, no skips; finishes in ≤ Σ ceil(log2(k+1)) duels.
 - Stability for rating methods = duels / `max(n, round(n·log2(n)·1.2))`; for exact sort = placed items.
 - Pair selection favors items with few duels, close positions and unseen pairs, and avoids the previous duel's items.
-- Items: text, image (downscaled to 640 px JPEG 0.82 data URL), or fill (`solid` | `gradient`, 2–3 hex stops). Typing or pasting `#hex` creates a color item. A color item whose label equals its code follows the color when edited.
+- Items: text, image (downscaled to 640 px JPEG 0.82 data URL), or fill (`solid` | `gradient`, 2–3 hex stops). Typing or pasting `#hex` creates a color item. A color item whose label equals its code follows the color when edited. On a published board an image is a picture sent for review (`pic`), then an address under `/img/`.
 
 ## Where to look next
 

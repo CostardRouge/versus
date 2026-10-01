@@ -149,14 +149,17 @@ afterEach(() => {
 });
 
 describe('publishing', () => {
-  it('refuses a ranking with images, saying why', () => {
+  it('refuses a ranking with images, saying why', async () => {
     click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
     click('[data-action="publish"]');
+    // The server is asked first whether it takes pictures.
+    await flush();
     expect($('#m-title')?.textContent).toBe('Can’t publish yet');
     expect($('#m-body')?.textContent).toContain('Remove the images');
     expect($('#m-cancel')?.hidden).toBe(true);
     click('#m-ok');
-    expect(calls).toHaveLength(0);
+    // The server was asked whether it takes pictures (it doesn't here), nothing else.
+    expect(calls.map((c) => c.url)).toEqual(['/api/config']);
     click('[data-action="back"]');
   });
 
@@ -719,6 +722,57 @@ describe('reporting', () => {
   it('shows no report link to the author', () => {
     FakeSocket.last().receive(state({}, true));
     expect($('[data-action="b-report"]')).toBeNull();
+    click('[data-action="back"]');
+  });
+});
+
+describe('pictures for review', () => {
+  const PICS = 'P1cTuReS7b';
+
+  it('announces the pictures and sends them after publishing, when the server reviews them', async () => {
+    respond = (c) => {
+      if (c.url === '/api/config') return { status: 200, body: { images: 'review' } };
+      if (c.method === 'POST') return { status: 201, body: { alias: PICS, owner: OWNER } };
+      return { status: 201, body: { url: `http://localhost:3000/og/b/${PICS}/1.png`, ok: true } };
+    };
+    click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
+    click('[data-action="publish"]');
+    await flush();
+    expect($('#m-title')?.textContent).toBe('Publish this ranking?');
+    expect($('.pub-pictures')?.textContent).toContain('Your 1 picture will be sent to the moderator');
+    click('#m-ok');
+    await flush();
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/boards');
+    const sent = (post?.body as { items: { id: string; img: string | null; pic?: string }[] } | undefined)?.items;
+    expect(sent).toEqual([
+      { id: 'i1', label: 'Beach', img: null, fill: null, h: 1, pic: 'pending' },
+      { id: 'i2', label: 'Hills', img: null, fill: null, h: 2 },
+    ]);
+    await flush();
+    await flush();
+    expect(calls.find((c) => c.method === 'PUT' && c.url.endsWith('/image'))).toMatchObject({
+      url: `/api/boards/${PICS}/items/i1/image`,
+      body: { blob: 'image/jpeg' },
+      auth: `Bearer ${OWNER}`,
+    });
+    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
+    // The author panel says the picture waits.
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(
+      state(
+        {
+          title: 'Photos',
+          items: [
+            { id: 'i1', label: 'Beach', img: null, fill: null, h: 1, pic: 'pending' },
+            { id: 'i2', label: 'Hills', img: null, fill: null, h: 2 },
+          ],
+          ranking: null,
+        },
+        true,
+      ),
+    );
+    expect($('#b-admin .b-pic')?.textContent).toBe('Picture awaiting review');
     click('[data-action="back"]');
   });
 });

@@ -1,6 +1,6 @@
 export type Vars = Record<string, string | number>;
 export type Entry = string | ((v: Vars) => string);
-export type PluralKey = 'item' | 'duel' | 'image' | 'vote' | 'voter' | 'pair' | 'duplicate';
+export type PluralKey = 'item' | 'duel' | 'image' | 'vote' | 'voter' | 'pair' | 'duplicate' | 'picture';
 
 export const en = {
   tagline: 'Rank anything, two at a time',
@@ -237,6 +237,12 @@ export const en = {
   allowChange: 'Voters can change their votes',
   cantPublish: 'Can’t publish yet',
   blockImages: 'Published rankings take text and colors only for now. Remove the images to publish this one.',
+  publishPictures:
+    'Your {pictures} will be sent to the moderator and show once approved. Meanwhile the items show as text.',
+  picturesSent: '{pictures} sent for review.',
+  picturesFailed: 'The pictures couldn’t be sent. The items show as text.',
+  picPending: 'Picture awaiting review',
+  picRefused: 'Picture refused by the moderator',
   blockTooFew: 'Add at least 2 items to publish.',
   blockTooMany: 'A published ranking holds up to {n} items.',
   gotIt: 'OK',
@@ -418,4 +424,5 @@ export const enPlurals: Record<PluralKey, [string, string]> = {
   voter: ['voter', 'voters'],
   pair: ['pair', 'pairs'],
   duplicate: ['duplicate', 'duplicates'],
+  picture: ['picture', 'pictures'],
 };

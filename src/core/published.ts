@@ -46,21 +46,51 @@ export interface PublishRequest {
   lang: BoardLang;
 }
 
+/**
+ * What the app sends to publish. Pictures never travel here: with `pictures`, an item that has one announces it
+ * (`pic: 'pending'`) and the app sends the picture itself right after, for the moderator's review.
+ */
 export function publishRequest(
   r: Ranking,
   voter: string,
   settings: Partial<BoardSettings>,
   withVotes: boolean,
   lang: BoardLang = 'en',
+  pictures = false,
 ): PublishRequest {
   return {
     title: r.title.slice(0, LIMITS.title),
-    items: r.items.map(({ id, label, fill, h }) => ({ id, label: label.slice(0, LIMITS.label), img: null, fill, h })),
+    items: r.items.map(({ id, label, fill, h, img }) => ({
+      id,
+      label: label.slice(0, LIMITS.label),
+      img: null,
+      fill,
+      h,
+      ...(pictures && img ? { pic: 'pending' as const } : {}),
+    })),
     settings,
     voter,
     duels: withVotes ? lastDuelPerPair(r) : [],
     lang,
   };
+}
+
+/** The items whose picture the app has to send after publishing. */
+export const pictureItems = (r: Ranking): (Item & { img: string })[] =>
+  r.items.filter((i): i is Item & { img: string } => !!i.img);
+
+/** The bytes of a picture kept as a data URL (what the app stores), for the upload. */
+export function dataURLBytes(dataURL: string): { type: string; bytes: Uint8Array<ArrayBuffer> } | null {
+  const m = /^data:([\w/+.-]+);base64,([A-Za-z0-9+/=]*)$/.exec(dataURL);
+  if (!m) return null;
+  try {
+    const bin = atob(m[2] ?? '');
+    const bytes = new Uint8Array(new ArrayBuffer(bin.length));
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { type: m[1] ?? '', bytes };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Links ──────────────────────────────────────────────────────────────────

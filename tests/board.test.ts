@@ -471,7 +471,7 @@ describe('assignPairs', () => {
 
 describe('items after publication', () => {
   it('validates new items like published ones', () => {
-    expect(value(parseNewItem({ label: '  Hawaii  ' }))).toEqual({ label: 'Hawaii', fill: null });
+    expect(value(parseNewItem({ label: '  Hawaii  ' }))).toEqual({ label: 'Hawaii', fill: null, img: null });
     expect(value(parseNewItem({ label: '', fill: { type: 'solid', colors: ['#ff8800'] } })).fill?.colors).toEqual([
       '#ff8800',
     ]);
@@ -484,15 +484,15 @@ describe('items after publication', () => {
 
   it('adds items to an open board, once per label, up to the limit', () => {
     const b = board(3);
-    const item = value(addItem(b, { label: 'Hawaii', fill: null }, 'new1', T0 + 5));
+    const item = value(addItem(b, { label: 'Hawaii', fill: null, img: null }, 'new1', T0 + 5));
     expect(item).toEqual({ id: 'new1', label: 'Hawaii', img: null, fill: null, h: hueOf('Hawaii') });
     expect(b.items).toHaveLength(4);
     expect(lastActivity(b)).toBe(T0 + 5);
-    expect(errorOf(addItem(b, { label: 'HAWAII', fill: null }, 'new2', T0))).toBe('exists');
+    expect(errorOf(addItem(b, { label: 'HAWAII', fill: null, img: null }, 'new2', T0))).toBe('exists');
     const full = board(LIMITS.items);
-    expect(errorOf(addItem(full, { label: 'One more', fill: null }, 'x', T0))).toBe('full');
+    expect(errorOf(addItem(full, { label: 'One more', fill: null, img: null }, 'x', T0))).toBe('full');
     setStatus(b, 'closed', T0);
-    expect(errorOf(addItem(b, { label: 'Late', fill: null }, 'x', T0))).toBe('closed');
+    expect(errorOf(addItem(b, { label: 'Late', fill: null, img: null }, 'x', T0))).toBe('closed');
   });
 
   it('removes an item with every vote that involves it, keeping at least 2 items', () => {
@@ -554,7 +554,7 @@ describe('items after publication', () => {
     const b = board(3);
     const visitor = openSession(b, V2, false, crowd(b), mulberry32(1));
     const author = openSession(b, V1, true, crowd(b), mulberry32(1));
-    const item = (label: string) => ({ label, fill: null });
+    const item = (label: string) => ({ label, fill: null, img: null });
     expect(errorOf(sessionAdd(b, visitor, item('A'), 'a', T0))).toBe('forbidden');
     value(sessionAdd(b, author, item('B'), 'b', T0));
     updateSettings(b, { visitorsAddItems: true }, T0);

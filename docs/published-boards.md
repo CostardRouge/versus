@@ -22,7 +22,7 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 - While published, the author's gallery shows the board with a "Published" or "Closed" badge; its content lives on the server.
 - **Links** are paths of the app (D92): `…/app/b/<alias>` to share, `…/app/b/<alias>#owner=<token>` as the admin link, the token in the fragment so it never reaches a server. Opening an admin link stores the token in this browser and removes it from the address bar. Links from before (`#/b/<alias>`, `?owner=`) still open and are rewritten to the path form.
 - If a board turns out to be gone (withdrawn elsewhere or expired), nothing is deleted automatically: the author's page offers to go back to the local version, which also forgets the owner token.
-- v1: text and color items only. A ranking containing images can't be published (the modal says why). Images come later, with R2 storage and moderation.
+- Text and color items; pictures only through review, when the server allows them (Images below). Otherwise a ranking containing images can't be published (the modal says why).
 - **Link previews** (D100): the board's page carries its title, a description in the board's language (stored at publication) and a card drawn by the app (title, podium or items, 1200×630), so the link pasted in a chat or a feed shows the board. A duel link (`?duel=a.b`) shows its two items as the app's cards. The card is sent when the board is published and each time someone shares from the app; the server keeps one per board and up to 40 per board's duels, and deletes them with the board.
 
 ## Sharing
@@ -40,6 +40,16 @@ Decided on 2026-09-30 (D103 to D105), built in `worker/`, `src/admin/` and the b
 - **Hidden**: the board keeps working for whoever has its link, and its link previews too, but it appears in no public list: the Popular section, and for an official template its page leaves the sitemap and goes `noindex`. **Featured**: it comes first in the Popular section. Voters see neither flag; the author isn't told. Neither counts as activity for the TTL.
 - **Take down** deletes the board for everyone, with its cards and registry row, and leaves no copy; the author's page says the board is gone. Remove an item drops its votes, as the author's own removal does.
 - The legal notice tells reporters what a report sends and gives the contact address for what the button can't say.
+
+## Images
+
+Decided on 2026-09-30 (D109, D110), built in `worker/src/pictures.ts`, the publish flow and the moderation page.
+
+- **Off by default.** The Worker's `IMAGES_UPLOAD` variable set to `review` turns pictures on; the app asks `GET /api/config` when a ranking with images is about to be published, and keeps refusing it (with the same message as before) while they are off.
+- **Announced, sent, reviewed.** When they are on, the publish modal says that the pictures will be sent to the moderator and show once approved. The request announces each picture (`pic: 'pending'` on the item, never the bytes); right after publishing, the app sends each picture (the 640 px JPEG it keeps, under 250 KB) with the author's token. Meanwhile the item shows as text to everyone; the author panel says "Picture awaiting review" next to it.
+- **The moderation page** lists the boards with pictures to review (a filter, a count in the totals) and shows the pictures with their item's label, Approve or Refuse. Approved, the picture becomes public at `/img/b/<alias>/<item>.jpg`, the item shows it at once (every open board is pushed the new state) and the link preview cards drawn later carry it. Refused, the picture is deleted and the author panel says "Picture refused by the moderator"; the item stays as text.
+- **Lifecycle.** A picture goes with its item (removed by the author or the admin) and with the board (withdrawn, taken down, expired). Items added after publication by the author may announce a picture too; visitors' suggestions never carry one.
+- The site's own boards (official templates) may carry picture addresses directly, as the site's content.
 
 ## Official templates and the Popular section
 
@@ -142,5 +152,5 @@ To keep publishing light, the modal shows four things: the warning, "push my vot
 ## Still open
 
 - Anti-abuse beyond per-IP limits and Turnstile at publication: an author option to require a check (Turnstile) per voter?
-- Moderation of images, once items can carry them on published boards (a validation queue is the plan).
+- Pictures for every author, or by author: today one variable turns the review queue on for everyone; a condition per author (an account, a track record) would need accounts.
 - TTL of inactive published boards (proposal: 60 days without a vote) and warning the author before deletion.

@@ -13,6 +13,8 @@ export interface Env {
   API_LIMIT?: RateLimit;
   /** Secret for the admin routes. Unset: the admin API is off. */
   ADMIN_TOKEN?: string;
+  /** `review`: authors may publish pictures, shown once the admin approved them. Unset or anything else: no pictures. */
+  IMAGES_UPLOAD?: string;
   /** Turnstile secret key. Unset: publishing needs no check (local development). */
   TURNSTILE_SECRET?: string;
   /** Inactivity TTL override, in seconds (tests use a few seconds). Defaults to TTL_DAYS. */

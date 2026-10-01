@@ -34,7 +34,7 @@ export const legalEn = {
 
   boardsTitle: 'Published rankings',
   boards1:
-    'When you publish a ranking, its title, its items (text and colors: images can’t be published) and its settings are sent to the server so that others can vote, along with a picture of it (its title and items, drawn by your browser) that shows when its link is pasted somewhere; sharing a duel draws one of that duel too. Each vote is stored with the anonymous voter id of the browser that cast it, the pair, the choice and the time: no name, no email, no IP address.',
+    'When you publish a ranking, its title, its items (text and colors) and its settings are sent to the server so that others can vote, along with a picture of it (its title and items, drawn by your browser) that shows when its link is pasted somewhere; sharing a duel draws one of that duel too. When the publisher allows it, your items’ images are sent as well, kept for the publisher’s review and shown to voters only once approved; a refused image is deleted. Each vote is stored with the anonymous voter id of the browser that cast it, the pair, the choice and the time: no name, no email, no IP address.',
   boards2:
     'A published ranking is deleted when its author withdraws it, or after {days} days without activity. Anyone with its link can see it and vote, so don’t publish anything personal. The author’s link carries a key after the <code>#</code>, which browsers never send to a server: keep it to yourself.',
   boards3:
