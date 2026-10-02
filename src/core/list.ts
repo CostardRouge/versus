@@ -91,3 +91,31 @@ export function freshLabels(labels: string[], taken: string[]): { fresh: string[
   });
   return { fresh, dupes: labels.length - fresh.length };
 }
+
+/** What another app shares (Web Share Target): a title, a text, a link, any of them empty. */
+export interface Shared {
+  title: string;
+  text: string;
+  url: string;
+}
+
+const LINK_RE = /^https?:\/\/\S+$/i;
+
+/**
+ * The labels in what another app shared to Versus (docs/pwa.md). A list (a note, lines of text) gives its items,
+ * read like a paste. Otherwise one label: the text, or, when the text is only a link, as browsers share a page,
+ * the page's title.
+ */
+export function sharedLabels(s: Shared): string[] {
+  const text = s.text.trim();
+  const title = s.title.trim();
+  if (text && !LINK_RE.test(text)) return parseList(text);
+  const one = title || text || s.url.trim();
+  return one ? parseList(one).slice(0, 1) : [];
+}
+
+/** A title for a new ranking made from a shared list: the shared title, unless it is only a link. */
+export function sharedTitle(s: Shared): string | null {
+  const title = s.title.trim();
+  return title && !LINK_RE.test(title) ? Array.from(title).slice(0, 80).join('') : null;
+}

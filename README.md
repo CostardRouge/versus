@@ -25,6 +25,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Export and import:** save your rankings and votes in a file, or one ranking to send, and open them in another browser, on another device or in the installed app.
 - Rankings stay in the browser (`localStorage`); only what you publish is sent. Visits are counted with a self-hosted, cookie-free Umami, never loaded for visitors who decline (a switch on the [legal notice](https://versus.steevepommier.com/legal/), Do Not Track, Global Privacy Control), and never with a ranking's content or id (see [`docs/analytics.md`](docs/analytics.md)).
 - **Published boards**: publish a ranking, share the link, and let a crowd vote in real time (on versus.steevepommier.com; the GitHub Pages copy has no backend). See [`docs/published-boards.md`](docs/published-boards.md).
+- **Notifications** (Web Push, sent by the Worker with WebCrypto only): a voter is told when a vote closes, an author as voters come in and when a picture is reviewed; asked on a tap, never on arrival (see [`docs/published-boards.md#notifications`](docs/published-boards.md#notifications)).
 - **Share as an image**: your ranking, the crowd's, you against the crowd, or a single duel, drawn in the browser in post, story or landscape format and handed to the system share sheet, the clipboard or a download. A board's link unfurls with its own card, a duel link with its two items.
 - **Moderation**: visitors report a board (anonymously, with a reason); the publisher's page at `/admin/` lists boards with their reports, hides or features them, removes items and takes boards down (see [`docs/published-boards.md#moderation`](docs/published-boards.md#moderation)).
 - **Pictures through review** (off by default): when the publisher turns them on, a published ranking's pictures are sent for review and shown once approved from the moderation page; until then the items show as text.
@@ -52,6 +53,9 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run worker:dev` | The whole app and the published boards API on http://localhost:8787 (`npm run dev` proxies `/api` to it) |
 | `npm run worker:deploy` | Build, deploy to Cloudflare and apply the D1 migrations (needs a Cloudflare account) |
 | `npm run icons` | Redraw the favicons, app icons and social card into `public/` from `build/site.ts` |
+| `npm run screenshots` | Take the install dialog's screenshots of the app into `public/` (needs Playwright's Chromium: `npx playwright install chromium`, or `CHROMIUM_PATH`) |
+| `npm run e2e` | End-to-end tests: Playwright's Chromium against the app and the Worker run locally (`npx playwright install chromium` once, or `CHROMIUM_PATH`) |
+| `npm run vapid` | Print a key pair for notifications, to set as the Worker's secrets `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` |
 
 ## Project structure
 
@@ -86,7 +90,7 @@ tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Work
 
 ## CI and deployment
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, a production build, and the end-to-end tests (Playwright). On `main`, once both pass, the build is deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
 
 The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 

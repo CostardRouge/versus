@@ -1,5 +1,16 @@
-import { ALIAS_RE, DEFAULT_SETTINGS, isOutcome, isRecord, parseFill, patchSettings, TOKEN_RE, VOTER_RE } from './board';
+import {
+  ALIAS_RE,
+  DEFAULT_SETTINGS,
+  IMAGE_URL_RE,
+  isOutcome,
+  isRecord,
+  parseFill,
+  patchSettings,
+  TOKEN_RE,
+  VOTER_RE,
+} from './board';
 import { DEMOS } from './demos';
+import { IMG_RE } from './images';
 import { parseJoined } from './joined';
 import { LABEL_MAX } from './list';
 import { METHOD_KEYS } from './scoring';
@@ -95,8 +106,6 @@ export type ImportError = 'not-versus' | 'newer' | 'empty';
 export type Parsed = { ok: true; value: Backup } | { ok: false; error: ImportError };
 
 const ID_RE = /^[\w-]{1,40}$/;
-/** Images are stored as data URLs (items.ts downscales them to JPEG); nothing else may reach an src or url(). */
-const IMG_RE = /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 const TITLE_MAX = 80;
 
 const clip = (s: string, max: number): string => Array.from(s.trim()).slice(0, max).join('').trim();
@@ -104,14 +113,17 @@ const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFin
 
 /**
  * An item from a file. A doubtful image or color is dropped and the item kept for its label; `strict` refuses
- * the item instead (items that came from the server: they never carry an image).
+ * the item instead (items that came from the server: their only pictures are published ones).
  */
 function parseItem(x: unknown, strict: boolean): Item | null {
   if (!isRecord(x) || typeof x.id !== 'string' || !ID_RE.test(x.id)) return null;
   const parsed = parseFill(x.fill);
-  if (strict && (parsed === undefined || (x.img !== null && x.img !== undefined))) return null;
+  const url = typeof x.img === 'string' && IMAGE_URL_RE.test(x.img);
+  if (strict && (parsed === undefined || (x.img !== null && x.img !== undefined && !url))) return null;
   const label = typeof x.label === 'string' ? clip(x.label, LABEL_MAX) : '';
-  const img = typeof x.img === 'string' && IMG_RE.test(x.img) ? x.img : null;
+  // Only image data URLs, and the picture addresses published boards use (the server's rule), may reach an src
+  // or url(): a reference to another browser's storage means nothing here.
+  const img = typeof x.img === 'string' && (IMG_RE.test(x.img) || url) ? x.img : null;
   const fill = parsed ?? null;
   if (!label && !img && !fill) return null;
   const h = isNum(x.h) ? ((Math.round(x.h) % 360) + 360) % 360 : hueOf(label);

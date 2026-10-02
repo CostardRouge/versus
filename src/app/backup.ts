@@ -13,8 +13,8 @@ import { uid } from '../core/util';
 import { type MsgKey, plural, t } from '../i18n';
 import { $, doc, toast } from './dom';
 import { goBack, render } from './rankings';
-import { localData, S } from './state';
-import { saveJoined, saveOwners, saveRanks, saveVoter } from './storage';
+import { localData, S, saveSettled } from './state';
+import { saveJoined, saveOwners, saveVoter } from './storage';
 
 /**
  * Export and import (docs/pwa.md). Export makes a file: through the share sheet on phones (Save to Files,
@@ -103,7 +103,7 @@ export async function importFile(file: File): Promise<void> {
     return;
   }
   // Rankings first: when they don't fit, nothing changes.
-  if (!saveRanks(m.local.ranks)) {
+  if (!(await saveSettled(m.local.ranks))) {
     toast(t('importTooBig'));
     return;
   }

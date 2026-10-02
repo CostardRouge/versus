@@ -7,6 +7,7 @@ import type {
   ServerMessage,
 } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
+import { PUBLIC_KEY_RE, type PushRole } from '../core/push';
 import { duelQuery } from '../core/share';
 import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking, ReportReason } from '../core/types';
 
@@ -84,27 +85,40 @@ export async function fetchPopular(lang: string): Promise<PopularBoard[]> {
   const data = await call<{ boards?: unknown }>('GET', `?lang=${lang}`, undefined, undefined, '/api/popular');
   return Array.isArray(data?.boards) ? (data.boards as PopularBoard[]) : [];
 }
+/** Asks a board to notify this browser (a voter at the closing, the author of milestones and pictures). */
+export const subscribePush = (
+  alias: string,
+  body: { subscription: PushSubscriptionJSON; role: PushRole; lang: string },
+  token?: string,
+) => call<true>('POST', `/${alias}/push`, body, token);
+/** Asks a board to stop notifying this browser, for one role. */
+export const unsubscribePush = (alias: string, body: { endpoint: string; role: PushRole }) =>
+  call<true>('DELETE', `/${alias}/push`, body);
 /** Reports a board to the moderator: a reason and a few words, with this browser's anonymous voter id. */
 export const reportBoard = (alias: string, report: { voter: string; reason: ReportReason; note: string }) =>
   call<true>('POST', `/${alias}/report`, report);
 
 let configCache: Promise<ServerConfig> | null = null;
+const OFF: ServerConfig = { images: 'off', push: null };
 
 /**
- * What the server allows: pictures for review, or not (`off`, also when it can't be reached). A yes is kept for the
- * session; a no is asked again next time (the browser keeps the answer five minutes), so pictures turned on show up
- * without a reload.
+ * What the server allows: pictures for review, or not (`off`, also when it can't be reached), and notifications
+ * (its public key), or not. An answer with both on is kept for the session; otherwise it is asked again next time
+ * (the browser keeps the answer five minutes), so what gets turned on shows up without a reload.
  */
 export function fetchConfig(): Promise<ServerConfig> {
-  configCache ??= call<ServerConfig | null>('GET', '', undefined, undefined, '/api/config').then(
+  configCache ??= call<Partial<ServerConfig> | null>('GET', '', undefined, undefined, '/api/config').then(
     (c): ServerConfig => {
-      if (c?.images === 'review') return { images: 'review' };
-      configCache = null;
-      return { images: 'off' };
+      const config: ServerConfig = {
+        images: c?.images === 'review' ? 'review' : 'off',
+        push: typeof c?.push === 'string' && PUBLIC_KEY_RE.test(c.push) ? c.push : null,
+      };
+      if (config.images !== 'review' || !config.push) configCache = null;
+      return config;
     },
     (): ServerConfig => {
       configCache = null;
-      return { images: 'off' };
+      return OFF;
     },
   );
   return configCache;

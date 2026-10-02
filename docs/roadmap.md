@@ -11,7 +11,7 @@ Last updated 2026-10-02.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (233 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (561 tests), Playwright end-to-end tests (16 scenarios, D128), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
 - Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
@@ -23,6 +23,12 @@ Last updated 2026-10-02.
 - SEO pass, ported from steevepommier.com (`docs/seo.md`): head generated from `build/site.ts` (canonical, robots, Open Graph, X card, JSON-LD graph), 1200×630 social card, favicons for Google, iOS and Android (ico, SVG, 96/192/512, maskable, apple-touch), web app manifest, robots.txt, sitemap, llms.txt, `<noscript>` fallback, Cloudflare headers; fonts self-hosted and preloaded.
 - Installable, offline app (PWA, `docs/pwa.md`): hand-written service worker precaching the app at build time, new versions offered with Reload / Later, install button when the browser offers one, persistent storage for the installed app.
 - Export and import (`docs/pwa.md`): a backup file of every ranking and vote, or one ranking to send; import by picking or dropping a file, never replacing anything; the manifest in `standalone`, the iOS home-screen app explaining how to bring the rankings from Safari.
+- Images in IndexedDB (`docs/pwa.md`, D118–D120): `localStorage` keeps references, so photos are no longer capped at a few dozen; read before the first render, moved over from older saves on the first load, unused ones cleaned up.
+- Share target (`docs/pwa.md`, D121, D122): the installed app in the system's share sheet; photos, a list or a Versus file shared from another app go into a new ranking or one the user picks (Android, installed Chrome).
+- Icon shortcuts (`docs/pwa.md`, D123): New ranking and Resume your ranking on the installed app's icon, with their own icons.
+- Install screenshots (`docs/pwa.md`, D124): six pictures of the app on the demos in the manifest for the richer install dialog, taken by `npm run screenshots` (Playwright).
+- End-to-end tests (D128, `npm run e2e`): Playwright against the real Worker run locally, on desktop and as a phone; duels by button, key, mouse swipe and finger, a pasted list, the color popover, files dropped (images, a Versus file), export, addresses and Back, offline, notifications shown and opened, voters live on a board, closing, the admin link, withdrawal, a report taken down from the moderation page, no sideways scroll on a phone. In CI on every pull request; deploys wait for them.
+- Notifications of published boards (Web Push, D125–D127, `docs/published-boards.md#notifications`): a voter's bell (told when the vote closes, with the final ranking), the author's notifications (voters coming in, pictures reviewed), sent by the Worker with WebCrypto only, in batches by the board's alarm; off until the Worker has its keys (`npm run vapid`).
 - Backend completed: items added and removed after publication (author, and visitors when allowed, 5 s apart; removing drops the item's votes), D1 registry and admin API (list, totals, inspect, close, remove an item, take down), per-IP rate limits, optional Turnstile at publication, the app served by the same Worker (`npm run worker:dev` runs the whole thing on :8787).
 - SEO audit fixes (SEOptimer, Seobility): canonical on versus.steevepommier.com, a 55-character title, and the page text (how it works, the four methods, privacy, links) in the static HTML with a single h1, shown under the gallery in the visitor's language.
 - Your votes: published boards a visitor voted on get a card in their gallery (own section, first for someone with no ranking of their own), refreshed in one request, with what changed since their last visit; forget with undo, keep a copy of a withdrawn board (`docs/published-boards.md#your-votes-the-voters-gallery`).
@@ -39,10 +45,10 @@ Last updated 2026-10-02.
 
 ## Next (suggested order)
 
-1. **PWA, next steps** (web first, D75): images in IndexedDB, share target, manifest shortcuts; list and order in `docs/pwa.md`.
-2. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
+1. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets (the notifications' keys among them) and a custom domain (steps in `docs/online-architecture.md#deploying`).
+2. **Notifications, by hand on real devices**: an Android phone, an iPhone with the home-screen app, a desktop browser (steps in `docs/online-architecture.md#notifications`).
 3. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
-4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point, and so is the offline and update scenario in `docs/pwa.md`.
+4. **End-to-end tests, next**: the same scenarios in Playwright's WebKit (closer to Safari), the update scenario of `docs/pwa.md` (two builds), sharing as an image (the canvas, its fonts) and the share target.
 
 ## Later / ideas
 
@@ -54,7 +60,6 @@ Last updated 2026-10-02.
 - Search Console for versus.steevepommier.com: verify, submit the sitemap, request indexing of `/` and `/fr/`.
 - Content pages (one per scoring method, a pairwise ranking guide): internal links and long-tail queries a single page can't reach. More official templates, driven by what people vote on and search for; a routine that drafts new ones.
 - Accessibility audit (WCAG 2.1 AA) of the duel stage and popovers.
-- Images: warn when approaching the localStorage quota (~5 MB), or move images to IndexedDB.
 - Pictures by author rather than for everyone (an account or a track record), and pictures on items visitors suggest.
 - Crowd ranking by aggregating each voter's own ranking (Borda, Kemeny) as an alternative to pooled votes.
 - Publish presets ("Open", "Blind contest") if the publish modal still feels heavy.

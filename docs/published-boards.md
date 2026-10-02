@@ -52,6 +52,17 @@ Decided on 2026-09-30 (D113, D114), built in `worker/src/pictures.ts`, the publi
 - **Lifecycle.** A picture goes with its item (removed by the author or the admin) and with the board (withdrawn, taken down, expired). The author can add images after publication too (dropped, pasted or chosen in the items pane): they are added as items that announce a picture, then sent the same way; the pane offers images only when the server reviews them. Visitors' suggestions never carry one.
 - The site's own boards (official templates) may carry picture addresses directly, as the site's content.
 
+## Notifications
+
+Decided on 2026-10-02 (D125 to D127), built in `src/core/push.ts`, `worker/src/webpush.ts`, the board's Durable Object, `src/app/push.ts` and the service worker.
+
+- **Off until the Worker has its keys** (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, made by `npm run vapid`); `GET /api/config` gives the app the public one, or `null`. Offered only where the browser has push and the app's service worker runs: Chrome, Edge, Firefox and Safari on desktop, Chrome and Firefox on Android, and on iPhone and iPad only the app added to the home screen. Elsewhere, nothing shows.
+- **Voters**: a **Notify me** bell next to Copy link on the board, and on the end-of-vote page while the vote is open. The first tap brings the browser's permission prompt; the board then keeps this browser's subscription. When the vote closes (by the author or the moderator), each one gets "The vote is closed: see the crowd's final ranking." under the board's title, and the board forgets them. A second tap turns it off. No bell on the site's own boards (official templates): they never close.
+- **The author**: a box in the board's settings, "Notify me as voters come in", plus "and when a picture is reviewed" when pictures are on. Then a notification when the crowd reaches 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000 and 10,000 voters (each once, the author included; turned on later, it starts from the next one), and when the moderator approves or refuses a picture. Closing isn't news to the author.
+- **The message** is the board's title, one line in the language the app had when the subscription was made, and the board's address: a tap opens it in the open app (no reload) or in a new window. A newer notification of the same kind for the same board replaces the older one.
+- **What is kept**: per board, the subscription (the push service's address and the browser's two public keys), its role and language, until it has served (voters), is turned off, the push service refuses it, or the board is gone. In the browser, `versus-push`: which bells are on. The push services (Google, Mozilla, Apple, Microsoft) carry encrypted bytes only. Turning on counts as an anonymous event (`notify-on`, with the role).
+- **Limits**: 1000 subscriptions per board; the author's role needs their token; only the browsers' push services are accepted as addresses.
+
 ## Official templates and the Popular section
 
 Decided on 2026-09-30 (D110 to D112), built in `src/core/templates.ts`, `worker/src/templates.ts` and `src/app/popular.ts`.
@@ -155,4 +166,4 @@ To keep publishing light, the modal shows four things: the warning, "push my vot
 
 - Anti-abuse beyond per-IP limits and Turnstile at publication: an author option to require a check (Turnstile) per voter?
 - Pictures for every author, or by author: today one variable turns the review queue on for everyone; a condition per author (an account, a track record) would need accounts.
-- TTL of inactive published boards (proposal: 60 days without a vote) and warning the author before deletion.
+- TTL of inactive published boards (proposal: 60 days without a vote) and warning the author before deletion (a notification, for an author who turned them on).

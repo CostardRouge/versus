@@ -22,6 +22,7 @@ import {
   typedItems,
 } from './editor';
 import { optionsHTML, readSettings, visibilityHTML } from './publish';
+import { pushAsked, pushReady, togglePush } from './push';
 import {
   addBoardItem,
   addBoardItems,
@@ -260,6 +261,7 @@ export function authorSettings(): void {
     </div>
     ${visibilityHTML('b', v.settings)}
     <fieldset class="set"><legend>${t('moreOptions')}</legend>${optionsHTML('b', v.settings)}</fieldset>
+    ${notifyHTML(b)}
     <div class="b-set-row">
       <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
       <button class="btn sm danger" type="button" data-action="b-withdraw">${t('withdraw')}</button>
@@ -268,10 +270,24 @@ export function authorSettings(): void {
   void ask({ title: t('boardSettings'), html, ok: t('done'), cancel: false });
 }
 
+/** The author's notifications (src/app/push.ts): voters coming in, pictures reviewed. Where they can be offered. */
+function notifyHTML(b: Authored): string {
+  if (!pushReady()) return '';
+  const on = pushAsked(b.alias, 'owner');
+  const label = t(b.pictures ? 'notifyOwnerPictures' : 'notifyOwner');
+  return `<label class="opt b-notify"><input type="checkbox" id="b-push" ${on ? 'checked' : ''}> ${label}</label>`;
+}
+
 /** The author's fields: title, items, files, settings. True when the change was theirs. */
 export function authorChange(tg: HTMLInputElement): boolean {
-  if (!authored()) return false;
-  if (tg.id === 'rank-title') void authorRetitle(tg);
+  const b = authored();
+  if (!b) return false;
+  if (tg.id === 'b-push') {
+    // Straight from the tap: the browser's permission prompt needs it.
+    void togglePush(b.alias, 'owner', b.owner).then((on) => {
+      tg.checked = on;
+    });
+  } else if (tg.id === 'rank-title') void authorRetitle(tg);
   else if (tg.classList.contains('row-label')) void authorRename(tg);
   else if (tg.id === 'file-input') {
     if (tg.files) void authorAddFiles([...tg.files]);

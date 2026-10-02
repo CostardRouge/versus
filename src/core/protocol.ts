@@ -49,6 +49,8 @@ export interface BoardView {
   counts: Counts;
   /** Null when this viewer isn't entitled to see the crowd ranking yet. */
   ranking: RankingView | null;
+  /** The site's own board (an official template): it never closes, so nobody waits for its closing. */
+  official?: true;
 }
 
 export type ClientMessage =
@@ -100,6 +102,7 @@ export function boardView(board: SharedBoard, C: Computed, online: number, visib
     created: board.created,
     counts: countsOf(board, online),
     ranking: visible ? rankingView(C) : null,
+    ...(board.official ? { official: true as const } : {}),
   };
 }
 
@@ -108,9 +111,13 @@ export const myDuels = (board: SharedBoard, voter: string): Duel[] =>
 
 // ─── Admin ──────────────────────────────────────────────────────────────────
 
-/** What the server lets the app do, besides voting: whether pictures may be published (sent for review). */
+/**
+ * What the server lets the app do, besides voting: whether pictures may be published (sent for review), and the
+ * server's public key for notifications (`applicationServerKey`), or null when they are off.
+ */
 export interface ServerConfig {
   images: 'off' | 'review';
+  push: string | null;
 }
 
 /** What the admin page can narrow the list of boards to. */

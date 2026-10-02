@@ -16,6 +16,7 @@ import {
   boardChange,
   boardKeydown,
   boardMakeMine,
+  boardNotify,
   boardPick,
   boardRefresh,
   boardReport,
@@ -201,6 +202,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-report':
       void boardReport();
+      break;
+    case 'b-notify':
+      boardNotify();
       break;
     case 'end-see':
       endSee();

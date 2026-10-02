@@ -66,3 +66,17 @@ export const ownerFragment = (token: string): string => `#owner=${token}`;
 export function parseOwnerFragment(hash: string): string | null {
   return /^#owner=([0-9a-f]{64})$/.exec(hash)?.[1] ?? null;
 }
+
+/** A shortcut on the installed app's icon (SHORTCUTS in build/site.ts) opens the app with `?shortcut=<key>`. */
+export type Shortcut = 'new' | 'last';
+export function parseShortcut(search: string): Shortcut | null {
+  const v = new URLSearchParams(search).get('shortcut');
+  return v === 'new' || v === 'last' ? v : null;
+}
+
+/** The ranking "Resume" opens: the one of this browser changed last, demos aside. */
+export function lastRanking<R extends { demo?: boolean; updated: number }>(ranks: readonly R[]): R | null {
+  let last: R | null = null;
+  for (const r of ranks) if (!r.demo && (!last || r.updated > last.updated)) last = r;
+  return last;
+}

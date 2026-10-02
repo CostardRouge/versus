@@ -216,6 +216,20 @@ describe('addresses', () => {
     expect($('h1')?.textContent).toBe('Your rankings');
   });
 
+  it('runs an icon shortcut once: a new ranking, or the last one', () => {
+    const before = JSON.parse(localStorage.getItem('versus-v1') ?? '[]').length;
+    back('/?shortcut=new');
+    expect(title()).toBe('New ranking');
+    expect(location.search).toBe('');
+    expect(JSON.parse(localStorage.getItem('versus-v1') ?? '[]')).toHaveLength(before + 1);
+    const last = JSON.parse(localStorage.getItem('versus-v1') ?? '[]')
+      .filter((r: { demo?: boolean }) => !r.demo)
+      .sort((a: { updated: number }, b: { updated: number }) => b.updated - a.updated)[0];
+    back('/?shortcut=last');
+    expect(location.pathname).toBe(`/r/${last.id}`);
+    expect(location.search).toBe('');
+  });
+
   it('shows the gallery for an address that names nothing', () => {
     back('/nowhere/at/all');
     expect(location.pathname).toBe('/');

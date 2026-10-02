@@ -1,4 +1,5 @@
 import { fillCode, fillCSS, fillInk } from '../core/colors';
+import { shownImage } from '../core/images';
 import { getItem } from '../core/model';
 import {
   compute,
@@ -30,11 +31,12 @@ let busy = false;
 export function cardHTML(it: Item, side: 'a' | 'b'): string {
   const label = esc(it.label);
   let inner: string;
+  const img = shownImage(it.img);
   if (it.fill) {
     const code = fillCode(it.fill);
     inner = `<span class="fillbg" style="background:${fillCSS(it.fill)}"></span><span class="cap" style="color:${fillInk(it.fill)}">${label}${it.label.toUpperCase() !== code ? `<small>${code}</small>` : ''}</span>`;
-  } else if (it.img)
-    inner = `<img src="${it.img}" alt="" draggable="false"><span class="shade"></span><span class="cap">${label}</span>`;
+  } else if (img)
+    inner = `<img src="${img}" alt="" draggable="false"><span class="shade"></span><span class="cap">${label}</span>`;
   else inner = `<span class="txt ${sizeClass(it.label)}">${label}</span>`;
   return `<div class="card card-${side}" role="button" tabindex="0" data-side="${side}" data-id="${it.id}" style="--h:${it.h}" aria-label="${esc(t('chooseAria', { label: it.label }))}"><span class="side-tag" aria-hidden="true">${side.toUpperCase()}</span>${inner}</div>`;
 }

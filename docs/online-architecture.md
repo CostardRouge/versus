@@ -49,6 +49,7 @@ Why each piece:
 - `worker/src/cards.ts`: link previews (D104). Stores the 1200×630 PNG the app drew for a board or one of its duels in R2 (`og/<alias>.png`, `og/<alias>/<a>.<b>.png`; 400 KB at most, 40 duel cards per board), serves it under `/og/b/…/<version>.png` (24 h cache; the site's `og.png` when there is none), and rewrites the head of `/app/b/<alias>[?duel=a.b]` with the board's title, a description in its language (`src/i18n/unfurl.ts`) and the card. The cards go with the board (withdrawal, takedown, expiry).
 - `worker/src/registry.ts` + `worker/migrations/`: the D1 registry, whose row is the admin list's (`AdminRow` in `src/core/protocol.ts`): alias, title, status, language, counts, report count, hidden and featured flags, the template key, the votes of the last 7 days, the crowd's first three labels, creation and activity. Each board writes its row on publication, status, item, flag and report changes, at each new voter up to 100 (the public lists and the index threshold watch the first voters), then at most once a day for votes; the row goes when the board does. `0002_moderation.sql` added the language, the flags and the report count; `0003_templates.sql` the template key, the recent votes, the top labels and the unique index on (template, language); `0004_pictures.sql` the count of pictures awaiting review. The registry also answers the Popular section (`popularBoards`), the template pages (`templateBoard`) and the sitemap (`indexableTemplates`), so no board wakes for a list.
 - Limits: the `PUBLISH_LIMIT` (5 publications per minute) and `API_LIMIT` (120 requests per minute, WebSocket connections included) rate limiting bindings, keyed by client IP; votes and skips are limited per connection (150 ms), item suggestions per connection (5 s).
+- `worker/src/webpush.ts`: notifications (D125 to D127, `docs/published-boards.md#notifications`). `encrypt()` (RFC 8291: an ECDH key pair per message, HKDF, one `aes128gcm` record), `vapidAuth()` (RFC 8292: an ES256 JWT for the push service's origin, valid 12 hours, kept for reuse) and `sendPush()`, all WebCrypto. The board's Durable Object keeps the subscriptions (`push` table, one row per endpoint and role) and the messages waiting (`outbox`); its alarm sends 40 per run, then sets the expiry alarm again. `POST`/`DELETE /api/boards/:alias/push` subscribe and unsubscribe; the `PUSH_LOCAL` variable lets `http://127.0.0.1` endpoints through, for the tests, whose fake push service decrypts what arrives.
 - `worker/src/turnstile.ts`: with `TURNSTILE_SECRET` set, publishing requires a Turnstile token (the app shows the widget when `VITE_TURNSTILE_SITE_KEY` is set).
 - `worker/src/board-object.ts`: `BoardObject`, a thin adapter around `src/core/board.ts`. Loads the board from SQLite when it wakes (synchronous reads; a `reports` table besides `meta` and `votes`, created on wake for older boards), keeps each voter's session (queue, skipped pairs, rate limit) in the WebSocket attachment so it survives hibernation, caches the crowd ranking for 1 s, broadcasts at most once per second. Moderation flags live in the board's meta, reports one row per voter.
 - Protocol (`src/core/protocol.ts`): the client sends `hello` (voter id, owner token for the author, the pair a duel link asked for), then `vote`, `skip`, `undo`, `reset`; the server answers `state`, `pairs`, `ranking` (null when not entitled) and `error`.
@@ -72,6 +73,8 @@ Paid plan: $5/month minimum, including 10 M Worker requests/month; DO includes 1
 **The binding free-tier limit is SQLite row writes, not requests.** Each vote is one upsert keyed by voter and pair (a `WITHOUT ROWID` table avoids an extra index write), so the free plan holds about 100,000 votes/day across all boards, fewer with extra indexes. Beyond that, the $5 plan covers ~1.6 M row writes/day.
 
 Example: 60,000 shared votes/day ≈ 3,000 billable DO requests (20:1) + 60,000 row writes → within the free plan.
+
+Notifications: subscribing is one request and one row write; a notification is one row write and one delete in the board's outbox, one alarm run per 40 messages (a Durable Object request) and one outgoing request each, which the plans don't bill. A closing with 1,000 subscribed voters costs about 3,000 row writes and 25 requests. Push services are free.
 
 Sources: [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/).
 
@@ -136,7 +139,8 @@ The `deploy-worker` job in `.github/workflows/ci.yml` runs `npm run worker:deplo
 3. **Deploy**: merge to `main`, or run the CI workflow by hand (*Actions* → *CI* → *Run workflow* on `main`). The first run creates the Worker, the Durable Object class, the R2 bucket `versus-images` (`npm run worker:bucket`, which needs the token to have *Workers R2 Storage* · *Edit*, and the account's R2 enabled once in the dashboard) and the D1 database, then applies the D1 migrations. The app answers at `https://versus.<account subdomain>.workers.dev`.
 4. **Secrets of the Worker** (once it exists), in *Workers & Pages* → `versus` → *Settings* → *Variables and Secrets*, type *Secret*, or with `npx wrangler secret put <NAME> -c worker/wrangler.jsonc`:
    - `ADMIN_TOKEN`: a long random string (`openssl rand -base64 32`); the admin API and the moderation page (`/admin/`) stay off without it. Then consider Cloudflare Access in front of both (Moderation above);
-   - `TURNSTILE_SECRET`: optional, see below.
+   - `TURNSTILE_SECRET`: optional, see below;
+   - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`: notifications (below).
    Deploys never delete secrets. One plain variable (type *Text*, or `vars` in `wrangler.jsonc`) turns pictures on: `IMAGES_UPLOAD` = `review` (D114); unset, published rankings take text and colors only.
 5. **Custom domain**: `versus` → *Settings* → *Domains & Routes* → *Add* → *Custom domain*, for example `versus.example.com` on a zone of the account. Cloudflare creates the DNS record and the certificate. Deploys keep it, since the config declares no routes. The workers.dev address stays on. Then set the GitHub variable `SITE_URL` to the new address (`https://versus.example.com/`): the canonical URL, social card, sitemap and llms.txt of both builds move to it on the next deploy (`docs/seo.md`).
 
@@ -148,6 +152,12 @@ Create a widget in *Turnstile* for the custom domain (and the workers.dev host i
 - set the secret key as the Worker secret `TURNSTILE_SECRET`.
 
 Set both, or neither. The server requires a token when `TURNSTILE_SECRET` is set, and the app shows the widget when the site key was set at build time.
+
+### Notifications
+
+On your computer, in the repository: `npm run vapid`. It prints a key pair (nothing is written). Set both values as secrets of the Worker, `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (step 4 above). Within five minutes the app offers the bells (`GET /api/config` now gives the public key). Keep the private key to yourself, and keep the pair: a new pair silences every subscription made with the old one until its browser turns the bell on again. To turn notifications off, delete the two secrets.
+
+To check: on a phone (Android: Chrome; iPhone: the app added to the home screen), open a board of yours as a visitor in another browser, tap **Notify me**, allow; close the vote from the author's settings: the notification arrives within seconds, and a tap opens the board.
 
 ### By hand
 

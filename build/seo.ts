@@ -26,7 +26,12 @@ import {
   type PageKind,
   pngIcon,
   REPOSITORY,
+  SCREEN_SIZES,
+  SCREENSHOTS,
+  SHORTCUT_SIZES,
+  SHORTCUTS,
   type SiteLang,
+  shortcutIcon,
   TITLES,
   VERIFICATION,
   VERSIONS,
@@ -300,6 +305,9 @@ export function noscriptHtml(): string {
  * export and an import (src/core/backup.ts), and the empty app says how (D98). It was `minimal-ui` until then
  * (D69), which iOS doesn't have: the icon opened Safari.
  * Colors are the light palette: the manifest is read once at install and cannot follow the theme.
+ * share_target puts the installed app in the system's share sheet (Android, installed Chrome): photos, text or
+ * a Versus file shared from another app are posted to the service worker, which sets them aside for the app
+ * (SHARE_PATH in src/sw/sw.ts, src/app/inbox.ts).
  */
 export function manifest(): Record<string, unknown> {
   return {
@@ -328,6 +336,39 @@ export function manifest(): Record<string, unknown> {
       // Its own file, not "any maskable": launchers crop to a circle, so the mark sits inside the safe zone.
       { src: `./${ICONS.maskable}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
+    screenshots: SCREENSHOTS.map((s) => {
+      const z = SCREEN_SIZES[s.form];
+      return {
+        src: `./${s.file}`,
+        sizes: `${z.width * z.scale}x${z.height * z.scale}`,
+        type: 'image/png',
+        form_factor: s.form,
+        label: s.label,
+      };
+    }),
+    shortcuts: SHORTCUTS.map((s) => ({
+      name: s.name,
+      short_name: s.short,
+      description: s.description,
+      url: `./app/?shortcut=${s.key}`,
+      icons: SHORTCUT_SIZES.map((size) => ({
+        src: `./${shortcutIcon(s.icon, size)}`,
+        sizes: `${size}x${size}`,
+        type: 'image/png',
+        purpose: 'any',
+      })),
+    })),
+    share_target: {
+      action: './app/share-target',
+      method: 'POST',
+      enctype: 'multipart/form-data',
+      params: {
+        title: 'title',
+        text: 'text',
+        url: 'url',
+        files: [{ name: 'files', accept: ['image/*', 'application/json', '.json'] }],
+      },
+    },
   };
 }
 

@@ -1,4 +1,5 @@
 import { fillCSS } from '../core/colors';
+import { shownImage } from '../core/images';
 import type { Item } from '../core/types';
 import { esc, initials } from '../core/util';
 import { t } from '../i18n';
@@ -33,6 +34,8 @@ export const trashSvg =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 export const castSvg =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2"/></svg>';
+export const bellSvg =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
 export const imgSvg =
   '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>';
 
@@ -115,7 +118,8 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export const thumbHTML = (it: Item): string =>
-  it.fill
-    ? `<span class="thumb" style="background:${fillCSS(it.fill)}"></span>`
-    : `<span class="thumb" style="--h:${it.h}">${it.img ? `<img src="${it.img}" alt="">` : esc(initials(it.label))}</span>`;
+export function thumbHTML(it: Item): string {
+  if (it.fill) return `<span class="thumb" style="background:${fillCSS(it.fill)}"></span>`;
+  const img = shownImage(it.img);
+  return `<span class="thumb" style="--h:${it.h}">${img ? `<img src="${img}" alt="">` : esc(initials(it.label))}</span>`;
+}

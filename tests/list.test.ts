@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { freshLabels, LABEL_MAX, labelKey, parseList } from '../src/core/list';
+import { freshLabels, LABEL_MAX, labelKey, parseList, sharedLabels, sharedTitle } from '../src/core/list';
 
 describe('parseList', () => {
   it('takes a single line as written', () => {
@@ -108,5 +108,41 @@ describe('labelKey and freshLabels', () => {
       dupes: 3,
     });
     expect(freshLabels([], ['Tea'])).toEqual({ fresh: [], dupes: 0 });
+  });
+});
+
+describe('sharedLabels and sharedTitle', () => {
+  const share = (over: Partial<{ title: string; text: string; url: string }>) => ({
+    title: '',
+    text: '',
+    url: '',
+    ...over,
+  });
+
+  it('reads a shared list like a paste', () => {
+    const s = share({ title: 'Restaurants', text: 'Restaurants\n- Chez Paul\n- Le Bouillon\n- Mimosa' });
+    expect(sharedLabels(s)).toEqual(['Chez Paul', 'Le Bouillon', 'Mimosa']);
+    expect(sharedTitle(s)).toBe('Restaurants');
+  });
+
+  it("takes a page's title when the text is only its link, as browsers share", () => {
+    const s = share({ title: 'Kyoto — Wikipedia', text: 'https://en.wikipedia.org/wiki/Kyoto' });
+    expect(sharedLabels(s)).toEqual(['Kyoto — Wikipedia']);
+    expect(sharedLabels(share({ text: 'https://example.com/a' }))).toEqual(['https://example.com/a']);
+    expect(sharedLabels(share({ url: 'https://example.com/b' }))).toEqual(['https://example.com/b']);
+  });
+
+  it('keeps one line of text as one label, and nothing as nothing', () => {
+    expect(sharedLabels(share({ title: 'Note', text: 'Lisbon in spring https://example.com' }))).toEqual([
+      'Lisbon in spring https://example.com',
+    ]);
+    expect(sharedLabels(share({ text: '  ' }))).toEqual([]);
+    expect(sharedLabels(share({ text: 'x'.repeat(200) }))[0]).toHaveLength(LABEL_MAX);
+  });
+
+  it('gives no title when the shared one is empty or a link', () => {
+    expect(sharedTitle(share({}))).toBeNull();
+    expect(sharedTitle(share({ title: 'https://example.com' }))).toBeNull();
+    expect(sharedTitle(share({ title: 'T'.repeat(100) }))).toHaveLength(80);
   });
 });

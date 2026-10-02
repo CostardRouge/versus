@@ -1,8 +1,10 @@
 import { VOTER_RE } from '../core/board';
 import { parseJoined } from '../core/joined';
+import { type PushPrefs, parsePushPrefs } from '../core/push';
 import type { Joined, Ranking } from '../core/types';
 import type { Lang } from '../i18n';
 
+/** Rankings. An item's image is a data URL, or a reference `idb:<key>` to one kept in IndexedDB (src/app/images.ts, D118). */
 export const STORE_KEY = 'versus-v1';
 export const PREF_KEY = 'versus-prefs';
 /** Keys used by the earlier prototypes; user-made rankings are carried over once. */
@@ -66,7 +68,7 @@ export function loadLegacyRanks(): Ranking[] {
 }
 
 /** Returns false when the write failed (quota exceeded or storage unavailable); the stored rankings are then unchanged. */
-export function saveRanks(ranks: Ranking[]): boolean {
+export function saveRanks(ranks: readonly Ranking[]): boolean {
   try {
     const s = storage();
     if (!s) return false;
@@ -152,5 +154,19 @@ export function saveJoined(list: Joined[]): void {
     storage()?.setItem(JOINED_KEY, JSON.stringify(list));
   } catch {
     /* the cards come back on the next vote */
+  }
+}
+
+export const PUSH_KEY = 'versus-push';
+
+/** The boards this browser asked notifications of (src/app/push.ts). */
+export const loadPush = (): PushPrefs => parsePushPrefs(readJSON(PUSH_KEY));
+
+export function savePush(p: PushPrefs): void {
+  try {
+    if (Object.keys(p.boards).length) storage()?.setItem(PUSH_KEY, JSON.stringify(p));
+    else storage()?.removeItem(PUSH_KEY);
+  } catch {
+    /* the bells show off; the boards still notify */
   }
 }
