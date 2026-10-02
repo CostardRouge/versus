@@ -3,8 +3,10 @@ import { errorText, log } from './log';
 /** Cloudflare Turnstile check for publications (https://developers.cloudflare.com/turnstile/). */
 
 export const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+/** How long Turnstile has to answer: past it, the check counts as refused (a hung request must hold nothing up). */
+export const TIMEOUT_MS = 5000;
 
-/** True when Turnstile accepts the token. Any failure (network included) counts as a refusal. */
+/** True when Turnstile accepts the token. Any failure (network or timeout included) counts as a refusal. */
 export async function verifyTurnstile(
   token: unknown,
   ip: string | null,
@@ -17,7 +19,7 @@ export async function verifyTurnstile(
   form.append('response', token);
   if (ip) form.append('remoteip', ip);
   try {
-    const res = await fetcher(SITEVERIFY, { method: 'POST', body: form });
+    const res = await fetcher(SITEVERIFY, { method: 'POST', body: form, signal: AbortSignal.timeout(TIMEOUT_MS) });
     const data = (await res.json()) as { success?: unknown; 'error-codes'?: unknown };
     if (data.success === true) return true;
     // A refusal (a bot, an expired or reused token) is not an outage: the two get lines of their own.

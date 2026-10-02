@@ -33,6 +33,8 @@ export interface AdminOpts {
 
 const TOKEN_KEY = 'versus-admin';
 const PAGE = 50;
+/** How long a request may take before the page says the server didn't answer. */
+const TIMEOUT_MS = 15_000;
 
 const FILTER_KEYS: Record<AdminFilter, AdminKey> = {
   all: 'fAll',
@@ -115,6 +117,7 @@ export function mountAdmin(opts: AdminOpts): void {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${st.token}` },
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {
       throw new AdminError('network');
@@ -361,9 +364,7 @@ export function mountAdmin(opts: AdminOpts): void {
       try {
         const res = await opts.fetch(
           `${opts.api ?? ''}/api/admin/boards/${alias}/items/${encodeURIComponent(id)}/image`,
-          {
-            headers: { Authorization: `Bearer ${st.token}` },
-          },
+          { headers: { Authorization: `Bearer ${st.token}` }, signal: AbortSignal.timeout(TIMEOUT_MS) },
         );
         if (!res.ok || st.open !== alias) continue;
         const url = URL.createObjectURL(await res.blob());

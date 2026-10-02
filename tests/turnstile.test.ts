@@ -30,10 +30,17 @@ describe('verifyTurnstile', () => {
       throw new Error('offline');
     });
     expect(await verifyTurnstile('tok', null, 'secret', down)).toBe(false);
+    // A request that hangs is cut short: the same as no answer.
+    const hung = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException('The operation timed out.', 'TimeoutError');
+    });
+    expect(await verifyTurnstile('tok', null, 'secret', hung as unknown as typeof fetch)).toBe(false);
     expect(lines.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual([
       { event: 'turnstile_refused', codes: 'timeout-or-duplicate' },
       { event: 'turnstile_refused', codes: '' },
       { event: 'turnstile_unreachable', error: 'offline' },
+      { event: 'turnstile_unreachable', error: 'The operation timed out.' },
     ]);
     lines.mockRestore();
   });

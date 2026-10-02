@@ -312,5 +312,11 @@ describe('the page', () => {
     click('[data-act="refresh"]');
     await flush();
     expect($('.ad-error')?.textContent).toBe(adminEn.offline);
+    // A request that hangs is cut short, and says the same.
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    fetchMock.mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
+    click('[data-act="refresh"]');
+    await flush();
+    expect($('.ad-error')?.textContent).toBe(adminEn.offline);
   });
 });

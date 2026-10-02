@@ -21,6 +21,9 @@ const API: string | null = configured !== undefined ? configured.replace(/\/+$/,
 
 export const online = (): boolean => API !== null;
 
+/** How long a request may take before it counts as a network failure (a hung connection must not hang the app). */
+export const TIMEOUT_MS = 15_000;
+
 export class ApiError extends Error {
   constructor(readonly code: ErrorCode | 'network') {
     super(code);
@@ -36,6 +39,7 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
     throw new ApiError('network');
@@ -116,7 +120,7 @@ async function upload<T>(path: string, body: Blob, token?: string): Promise<T> {
   if (token) headers.Authorization = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`${API ?? ''}${path}`, { method: 'PUT', headers, body });
+    res = await fetch(`${API ?? ''}${path}`, { method: 'PUT', headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch {
     throw new ApiError('network');
   }
