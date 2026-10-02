@@ -373,6 +373,28 @@ describe('voting', () => {
     ws.receive(state());
     expect($('#add-input')).toBeNull();
   });
+
+  it('draws a skipped duel once, even when the server confirms it late', () => {
+    const ws = FakeSocket.last();
+    click('[data-action="b-skip"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'skip', a: 'p0', b: 'p1' });
+    const stage = $('#stage');
+    expect($('#stage .card-a')?.dataset.id).toBe('p1');
+    // The same pair from the server: the cards keep entering, they don't start over.
+    ws.receive({
+      t: 'pairs',
+      pairs: [
+        ['p1', 'p2'],
+        ['p0', 'p2'],
+      ],
+      mine: 0,
+    });
+    expect($('#stage')).toBe(stage);
+    // Another pair does show.
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p2']], mine: 0 });
+    expect($('#stage')).not.toBe(stage);
+    expect($('#stage .card-a')?.dataset.id).toBe('p0');
+  });
 });
 
 describe('author', () => {

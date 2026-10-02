@@ -223,7 +223,9 @@ function onMessage(board: Board, m: ServerMessage): void {
     board.pairs = m.pairs;
     board.count = m.mine;
     note(board, head?.kind === 'vote');
-    if (!board.busy) renderDuel();
+    // Mostly the server confirming a skip, a vote or an undo already on screen: drawing the same duel again would
+    // replay the cards' entrance, halfway through it on a slow (mobile) connection.
+    if (!board.busy && $('#b-main')?.dataset.duel !== duelKey(board)) renderDuel();
     renderRanking();
   } else if (m.t === 'ranking') {
     board.counts = m.counts;
@@ -271,6 +273,9 @@ function note(b: Board, voted = false, lazy = false): void {
 // ─── Rendering ──────────────────────────────────────────────────────────────
 
 const orderOf = (r: RankingView | null): string => r?.order.join(' ') ?? '';
+
+/** What the duel shows of my queue and my votes, kept on the pane that shows it. */
+const duelKey = (b: Board): string => [b.pairs[0]?.join('.') ?? '', b.count, b.mine.length].join(' ');
 
 export const countsText = (c: Counts): string =>
   t('boardCounts', { votes: plural(c.votes, 'vote'), voters: plural(c.voters, 'voter'), online: c.online });
@@ -386,6 +391,7 @@ export function renderDuel(): void {
   const b = B;
   if (!main || !b?.view) return;
   main.innerHTML = duelHTML(b, b.view);
+  main.dataset.duel = duelKey(b);
   bindStage(boardPick, () => B?.busy ?? true);
   if (authoring(b)) markAuthorPair();
 }
