@@ -54,9 +54,9 @@ export interface BoardView {
 export type ClientMessage =
   /**
    * First message on a connection; `owner` is the owner token, for the author; `pair` the duel a shared link
-   * asked for, served first when the voter can still vote on it.
+   * asked for, served first when the voter can still vote on it; `v` the protocol the app speaks (1 when absent).
    */
-  | { t: 'hello'; voter: string; owner?: string; pair?: [string, string] }
+  | { t: 'hello'; voter: string; owner?: string; pair?: [string, string]; v?: number }
   | { t: 'vote'; a: string; b: string; s: Outcome }
   | { t: 'skip'; a: string; b: string }
   /** Deletes one of my votes; its pair comes back first in my queue. */
@@ -74,6 +74,16 @@ export type ServerMessage =
 
 /** Largest client message accepted, in characters. */
 export const MAX_MESSAGE = 4096;
+
+/** The protocol this app speaks, sent in its hello. A change that apps already out there can't follow raises it. */
+export const PROTOCOL_VERSION = 1;
+/**
+ * The oldest protocol the server still serves: a hello below it gets the `upgrade` error, and the app says a new
+ * version is available. Apps from before versions send none: they speak 1.
+ */
+export const MIN_PROTOCOL_VERSION = 1;
+
+export const protocolSupported = (v: number | undefined): boolean => (v ?? 1) >= MIN_PROTOCOL_VERSION;
 
 const round = (x: number): number => Math.round(x * 1000) / 1000;
 
@@ -292,11 +302,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (m.owner !== undefined && typeof m.owner !== 'string') return null;
       const pair = m.pair;
       if (pair !== undefined && !(Array.isArray(pair) && pair.length === 2 && pair.every(isId))) return null;
+      const v = m.v;
+      if (v !== undefined && !(typeof v === 'number' && Number.isInteger(v) && v >= 1)) return null;
       return {
         t: 'hello',
         voter: m.voter,
         ...(m.owner === undefined ? {} : { owner: m.owner }),
         ...(pair === undefined ? {} : { pair: [pair[0], pair[1]] as [string, string] }),
+        ...(v === undefined ? {} : { v }),
       };
     }
     case 'vote':

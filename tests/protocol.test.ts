@@ -7,9 +7,12 @@ import {
   countsOf,
   isAdminFilter,
   MAX_MESSAGE,
+  MIN_PROTOCOL_VERSION,
   myDuels,
+  PROTOCOL_VERSION,
   parseClientMessage,
   parseSummaryRequest,
+  protocolSupported,
   rankingView,
   unfurlOf,
 } from '../src/core/protocol';
@@ -42,6 +45,14 @@ describe('parseClientMessage', () => {
       { t: 'hello', voter: VOTER, pair: ['x', 'y'] },
     ],
     [
+      { t: 'hello', voter: VOTER, v: 1 },
+      { t: 'hello', voter: VOTER, v: 1 },
+    ],
+    [
+      { t: 'hello', voter: VOTER, v: 7, extra: true },
+      { t: 'hello', voter: VOTER, v: 7 },
+    ],
+    [
       { t: 'vote', a: 'x', b: 'y', s: 0.5, extra: 1 },
       { t: 'vote', a: 'x', b: 'y', s: 0.5 },
     ],
@@ -70,6 +81,9 @@ describe('parseClientMessage', () => {
     ['an owner token that is not a string', JSON.stringify({ t: 'hello', voter: VOTER, owner: 1 })],
     ['a pair of one', JSON.stringify({ t: 'hello', voter: VOTER, pair: ['x'] })],
     ['a pair with an empty id', JSON.stringify({ t: 'hello', voter: VOTER, pair: ['x', ''] })],
+    ['a version that is not a whole number', JSON.stringify({ t: 'hello', voter: VOTER, v: 1.5 })],
+    ['a version below 1', JSON.stringify({ t: 'hello', voter: VOTER, v: 0 })],
+    ['a version as text', JSON.stringify({ t: 'hello', voter: VOTER, v: '1' })],
     ['a bad outcome', JSON.stringify({ t: 'vote', a: 'x', b: 'y', s: 2 })],
     ['an add without an item', JSON.stringify({ t: 'add', item: 'x' })],
     ['an empty id', JSON.stringify({ t: 'skip', a: '', b: 'y' })],
@@ -77,6 +91,16 @@ describe('parseClientMessage', () => {
     ['a huge message', JSON.stringify({ t: 'reset', pad: 'x'.repeat(MAX_MESSAGE) })],
   ])('rejects %s', (_, raw) => {
     expect(parseClientMessage(raw)).toBeNull();
+  });
+});
+
+describe('protocol versions', () => {
+  it('serves this app, and apps from before versions (they speak 1)', () => {
+    expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(MIN_PROTOCOL_VERSION);
+    expect(protocolSupported(PROTOCOL_VERSION)).toBe(true);
+    expect(protocolSupported(undefined)).toBe(MIN_PROTOCOL_VERSION <= 1);
+    expect(protocolSupported(MIN_PROTOCOL_VERSION - 1)).toBe(false);
+    expect(protocolSupported(MIN_PROTOCOL_VERSION + 1)).toBe(true);
   });
 });
 

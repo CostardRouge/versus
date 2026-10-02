@@ -448,6 +448,7 @@ export const en = {
   m_sort_tech: 'Insertion sort',
   m_sort_col: 'Status',
   m_sort_desc: 'Places each item by binary search: the fewest duels possible and a guaranteed end. No ties or skips.',
+  appOutdated: 'A new version of Versus is out: reload the page to keep voting.',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

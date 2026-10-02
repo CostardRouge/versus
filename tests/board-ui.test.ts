@@ -395,6 +395,11 @@ describe('voting', () => {
     expect($('#stage')).not.toBe(stage);
     expect($('#stage .card-a')?.dataset.id).toBe('p0');
   });
+
+  it('says a new version is out when the server no longer serves this one', () => {
+    FakeSocket.last().receive({ t: 'error', code: 'upgrade' });
+    expect($('#toast')?.textContent).toBe('A new version of Versus is out: reload the page to keep voting.');
+  });
 });
 
 describe('author', () => {
@@ -810,7 +815,7 @@ describe('sharing', () => {
     expect(location.search).toBe('');
     const ws = FakeSocket.last();
     ws.open();
-    expect(ws.sent[0]).toEqual({ t: 'hello', voter: expect.any(String), pair: ['p1', 'p2'] });
+    expect(ws.sent[0]).toEqual({ t: 'hello', v: 1, voter: expect.any(String), pair: ['p1', 'p2'] });
     ws.receive({
       ...state(),
       pairs: [

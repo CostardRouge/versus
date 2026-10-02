@@ -457,6 +457,7 @@ export const fr: Messages = {
   m_sort_col: 'Statut',
   m_sort_desc:
     'Place chaque élément par dichotomie : le moins de duels possible et une fin garantie. Pas d’égalité ni de « passer ».',
+  appOutdated: 'Une nouvelle version de Versus est sortie : recharge la page pour continuer à voter.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

@@ -53,6 +53,7 @@ import {
   countsOf,
   myDuels,
   parseClientMessage,
+  protocolSupported,
   rankingView,
   type ServerMessage,
   type Unfurl,
@@ -612,6 +613,7 @@ export class BoardObject extends DurableObject<Env> {
     if (!board) return ws.close(GONE, 'not_found');
 
     if (msg.t === 'hello') {
+      if (!protocolSupported(msg.v)) return send(ws, { t: 'error', code: 'upgrade' });
       const owner = msg.owner !== undefined && (await this.isOwner(msg.owner));
       board = this.board;
       if (!board) return ws.close(GONE, 'not_found');

@@ -12,6 +12,7 @@ import type {
   PopularBoard,
   ServerMessage,
 } from '../src/core/protocol';
+import { PROTOCOL_VERSION } from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
 import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
 import { TEMPLATES } from '../src/core/templates';
@@ -270,11 +271,16 @@ describe('voting', () => {
     await new Promise((resolve) => ws.addEventListener('open', resolve));
     ws.send(JSON.stringify({ t: 'reset' }));
     ws.send('not json');
-    await vi.waitFor(() => expect(replies).toHaveLength(2));
-    expect(replies).toEqual([
+    // A protocol version must be a whole number from 1; this app's is served.
+    ws.send(JSON.stringify({ t: 'hello', voter: 'voter-one-1', v: 0 }));
+    ws.send(JSON.stringify({ t: 'hello', voter: 'voter-one-1', v: PROTOCOL_VERSION }));
+    await vi.waitFor(() => expect(replies).toHaveLength(4));
+    expect(replies.slice(0, 3)).toEqual([
       { t: 'error', code: 'hello_first' },
       { t: 'error', code: 'bad_request' },
+      { t: 'error', code: 'bad_request' },
     ]);
+    expect(replies[3]?.t).toBe('state');
     ws.close();
     expect((await api(`/${alias}`, { method: 'GET' })).status).toBe(200);
   });

@@ -1,6 +1,7 @@
 import { trackEvent } from '../audience';
 import { LIMITS, REPORT_REASONS, revealAt } from '../core/board';
 import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
+import { PROTOCOL_VERSION } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
@@ -89,6 +90,7 @@ export const boardState = (): Board | null => B;
 
 /** What to tell the user when the server refuses an action. */
 function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
+  if (code === 'upgrade') return 'appOutdated';
   if (code === 'closed') return 'voteClosed';
   if (code === 'final') return 'finalVotes';
   if (kind !== 'add') return null;
@@ -154,6 +156,7 @@ export function enterBoard(alias: string, available: boolean, wanted: [string, s
   if (!available) return;
   const hello: ClientMessage = {
     t: 'hello',
+    v: PROTOCOL_VERSION,
     voter: S.voter,
     ...(owner ? { owner } : {}),
     ...(wanted ? { pair: wanted } : {}),

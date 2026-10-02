@@ -203,6 +203,8 @@ export type ErrorCode =
   | 'full'
   | 'too_few'
   | 'captcha'
-  | 'rate_limited';
+  | 'rate_limited'
+  /** The app speaks a protocol the server no longer serves: a new version of the app is needed. */
+  | 'upgrade';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: ErrorCode };
