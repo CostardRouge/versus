@@ -28,7 +28,8 @@ export default defineConfig({
     colorScheme: 'light',
     reducedMotion: 'reduce',
     trace: 'retain-on-failure',
-    ...(executablePath ? { launchOptions: { executablePath } } : {}),
+    // The full Chromium in its new headless mode, not the headless shell: the shell shows no notifications.
+    ...(executablePath ? { launchOptions: { executablePath } } : { channel: 'chromium' }),
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] }, testIgnore: /phone\.spec\.ts/ },
