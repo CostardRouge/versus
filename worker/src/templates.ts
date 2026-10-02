@@ -13,6 +13,7 @@ import { esc } from '../../src/core/util';
 import { type UnfurlKey, unfurlPlural, unfurlText } from '../../src/i18n/unfurl';
 import { preview } from './cards';
 import type { Env } from './env';
+import { log } from './log';
 import { newAlias, newOwnerToken } from './random';
 import { indexableTemplates, type RegistryRow, templateBoard, templateKeys, upsertBoard } from './registry';
 
@@ -66,6 +67,7 @@ export async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Pr
       return row;
     } catch {
       // Another request published this template meanwhile: this copy goes, theirs stays.
+      log('template_published_twice', { template: t.key, lang, alias });
       await stub.adminDelete();
       return templateBoard(db, t.key, lang);
     }

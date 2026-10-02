@@ -1,3 +1,5 @@
+import { errorText, log } from './log';
+
 /** Cloudflare Turnstile check for publications (https://developers.cloudflare.com/turnstile/). */
 
 export const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
@@ -16,9 +18,14 @@ export async function verifyTurnstile(
   if (ip) form.append('remoteip', ip);
   try {
     const res = await fetcher(SITEVERIFY, { method: 'POST', body: form });
-    const data = (await res.json()) as { success?: unknown };
-    return data.success === true;
-  } catch {
+    const data = (await res.json()) as { success?: unknown; 'error-codes'?: unknown };
+    if (data.success === true) return true;
+    // A refusal (a bot, an expired or reused token) is not an outage: the two get lines of their own.
+    const codes = data['error-codes'];
+    log('turnstile_refused', { codes: Array.isArray(codes) ? codes.join(' ') : '' });
+    return false;
+  } catch (e) {
+    log('turnstile_unreachable', { error: errorText(e) });
     return false;
   }
 }

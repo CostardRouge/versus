@@ -4,6 +4,7 @@ import { CARD_MAX_BYTES, parseDuelQuery } from '../../src/core/share';
 import type { BoardLang, ErrorCode, Result } from '../../src/core/types';
 import { cardURL, preview, readCard, rewriteHead, storeCard } from './cards';
 import type { Env } from './env';
+import { log } from './log';
 import { approvePicture, deletePicture, parsePicturePath, readPicture, storePicture } from './pictures';
 import { newAlias, newOwnerToken } from './random';
 import { isFilter, listBoards, popularBoards, totals } from './registry';
@@ -252,9 +253,17 @@ async function isAdmin(req: Request, env: Env): Promise<boolean> {
 /** Routes under /api/admin. Off (404) until ADMIN_TOKEN is set. */
 async function admin(req: Request, env: Env, parts: string[]): Promise<Response> {
   if (!env.ADMIN_TOKEN) return error('not_found');
-  if (!(await isAdmin(req, env))) return error('forbidden');
-  const [section, alias, action, id, ...extra] = parts;
   const m = req.method;
+  if (!(await isAdmin(req, env))) {
+    log('admin_refused', { method: m });
+    return error('forbidden');
+  }
+  const [section, alias, action, id, ...extra] = parts;
+  // Every change the admin makes leaves a line: what, on which board (never the token).
+  if (m !== 'GET') {
+    const route = [section, action, extra[0]].filter(Boolean).join('/');
+    log('admin', { method: m, route, alias: alias ?? '', item: id ?? '' });
+  }
   // An item's picture: look at it, then decide.
   if (section === 'boards' && alias && ALIAS_RE.test(alias) && action === 'items' && id && extra.length === 1) {
     if (extra[0] === 'image' && m === 'GET')

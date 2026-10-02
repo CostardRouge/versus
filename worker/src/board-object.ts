@@ -77,6 +77,7 @@ import type {
 } from '../../src/core/types';
 import { deleteCards } from './cards';
 import type { Env } from './env';
+import { errorText, log } from './log';
 import { deletePicture, deletePrefix } from './pictures';
 import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
 
@@ -243,7 +244,13 @@ export class BoardObject extends DurableObject<Env> {
     this.registryVoters = voters;
     const row = this.registryRow(board, now);
     // The registry only serves the admin page and the public lists: a failed write must never fail a vote.
-    this.ctx.waitUntil(upsertBoard(db, row).catch(() => {}));
+    this.later('registry_write_failed', upsertBoard(db, row));
+  }
+
+  /** Work that must not hold or fail the request (the registry, R2 clean-ups): a failure is logged, then forgotten. */
+  private later(event: string, work: Promise<unknown>): void {
+    const alias = this.alias;
+    this.ctx.waitUntil(work.catch((e: unknown) => log(event, { alias, error: errorText(e) })));
   }
 
   /** The board's row in the registry, as of now. */
@@ -519,7 +526,7 @@ export class BoardObject extends DurableObject<Env> {
     this.itemsChanged(board, r.value);
     // Its picture, if any, goes with it.
     const images = this.env.IMAGES;
-    if (images && this.alias) this.ctx.waitUntil(deletePicture(images, this.alias, id).catch(() => {}));
+    if (images && this.alias) this.later('picture_delete_failed', deletePicture(images, this.alias, id));
     return { ok: true, value: r.value.length };
   }
 
@@ -561,13 +568,14 @@ export class BoardObject extends DurableObject<Env> {
     }
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    log('board_deleted', { alias: this.alias, reason });
     const db = this.env.REGISTRY;
-    if (db && this.alias) this.ctx.waitUntil(deleteBoard(db, this.alias).catch(() => {}));
+    if (db && this.alias) this.later('registry_delete_failed', deleteBoard(db, this.alias));
     // The cards its links unfurled with go too.
     const images = this.env.IMAGES;
     if (images && this.alias) {
-      this.ctx.waitUntil(deleteCards(images, this.alias).catch(() => {}));
-      this.ctx.waitUntil(deletePrefix(images, `img/${this.alias}/`).catch(() => {}));
+      this.later('cards_delete_failed', deleteCards(images, this.alias));
+      this.later('pictures_delete_failed', deletePrefix(images, `img/${this.alias}/`));
     }
     this.board = null;
     this.cache = null;

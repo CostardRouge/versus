@@ -21,12 +21,20 @@ describe('verifyTurnstile', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it('refuses when Turnstile says no or cannot be reached', async () => {
-    expect(await verifyTurnstile('tok', null, 'secret', answer({ success: false }))).toBe(false);
+  it('refuses when Turnstile says no or cannot be reached, and logs which', async () => {
+    const lines = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const refusal = answer({ success: false, 'error-codes': ['timeout-or-duplicate'] });
+    expect(await verifyTurnstile('tok', null, 'secret', refusal)).toBe(false);
     expect(await verifyTurnstile('tok', null, 'secret', answer('nope'))).toBe(false);
     const down = vi.fn(async () => {
       throw new Error('offline');
     });
     expect(await verifyTurnstile('tok', null, 'secret', down)).toBe(false);
+    expect(lines.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual([
+      { event: 'turnstile_refused', codes: 'timeout-or-duplicate' },
+      { event: 'turnstile_refused', codes: '' },
+      { event: 'turnstile_unreachable', error: 'offline' },
+    ]);
+    lines.mockRestore();
   });
 });
