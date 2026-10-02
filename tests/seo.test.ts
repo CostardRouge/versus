@@ -36,6 +36,7 @@ import {
   PAGES,
   type PageKey,
   pngIcon,
+  SCREENSHOTS,
   SHORTCUTS,
   TITLE,
   TITLES,
@@ -336,6 +337,38 @@ describe('icons', () => {
     for (const icon of icons) expect(existsSync(publicFile(icon.src.replace('./', ''))), icon.src).toBe(true);
     expect(icons.filter((i) => i.purpose === 'maskable')).toHaveLength(1);
     expect(icons.some((i) => i.purpose.includes('any') && i.purpose.includes('maskable'))).toBe(false);
+  });
+});
+
+describe('install screenshots', () => {
+  type Shot = { src: string; sizes: string; form_factor: string; label: string };
+  const shots = () => manifest().screenshots as Shot[];
+
+  it('declares each picture at its real size, with a label', () => {
+    expect(shots()).toHaveLength(SCREENSHOTS.length);
+    for (const s of shots()) {
+      const [w, h] = pngFile(s.src.replace('./', ''));
+      expect(`${w}x${h}`, s.src).toBe(s.sizes);
+      expect(s.label.length).toBeGreaterThan(10);
+    }
+  });
+
+  it("meets the browser's rules: narrow and wide, one size each, 320 to 3840 px, at most 2.3:1", () => {
+    for (const form of ['narrow', 'wide']) {
+      const sizes = new Set(
+        shots()
+          .filter((s) => s.form_factor === form)
+          .map((s) => s.sizes),
+      );
+      expect(sizes.size, form).toBe(1);
+    }
+    for (const s of shots()) {
+      const [w = 0, h = 0] = s.sizes.split('x').map(Number);
+      expect(Math.min(w, h)).toBeGreaterThanOrEqual(320);
+      expect(Math.max(w, h)).toBeLessThanOrEqual(3840);
+      expect(Math.max(w, h) / Math.min(w, h)).toBeLessThanOrEqual(2.3);
+      expect(s.form_factor === 'narrow' ? h > w : w > h, s.src).toBe(true);
+    }
   });
 });
 

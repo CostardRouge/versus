@@ -27,11 +27,12 @@ npm run check        # lint + typecheck + tests + build (what CI runs); run befo
 npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/functions/statements, ≥ 75% branches)
 npm run format       # Biome auto-fix
 npm run icons        # redraw the icons and the social card into public/ (commit the files)
+npm run screenshots  # take the install dialog's screenshots of the app into public/ (Playwright; commit the files)
 npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1 migrated); npm run dev proxies /api to it
 npm run worker:deploy  # build, deploy the Worker, apply D1 migrations (needs a Cloudflare login)
 ```
 
-Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script. No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D75).
+Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script, Playwright for the screenshots script (dev only). No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D75).
 
 ## Code map
 
@@ -47,6 +48,8 @@ build/                build-time only (never shipped): site.ts = every sitewide 
                       robots, sitemap, llms.txt, _headers; seo-plugin.ts = the Vite plugin filling each page; pwa.ts + pwa-plugin.ts = build the service worker
                       as sw.js with its precache list and content version; analytics.ts = the Umami settings written into each page's head
 scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch, the icon shortcuts') and og.png / og-fr.png from build/site.ts
+scripts/screenshots.ts  takes the manifest's screenshots (SCREENSHOTS in build/site.ts) of the real app on the demos: Vite's dev server,
+                      Playwright's Chromium, Math.random seeded so the duels are the same every run (D124)
 public/               icons and the social card (generated, committed); favicon.svg is a legacy address
 src/main.ts           imports the fonts and styles, starts audience measurement, calls mount(document)
 src/audience.ts       audience measurement in the browser (docs/analytics.md): loads Umami only for visitors who don't decline

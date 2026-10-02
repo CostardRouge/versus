@@ -52,6 +52,7 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run worker:dev` | The whole app and the published boards API on http://localhost:8787 (`npm run dev` proxies `/api` to it) |
 | `npm run worker:deploy` | Build, deploy to Cloudflare and apply the D1 migrations (needs a Cloudflare account) |
 | `npm run icons` | Redraw the favicons, app icons and social card into `public/` from `build/site.ts` |
+| `npm run screenshots` | Take the install dialog's screenshots of the app into `public/` (needs Playwright's Chromium: `npx playwright install chromium`, or `CHROMIUM_PATH`) |
 
 ## Project structure
 

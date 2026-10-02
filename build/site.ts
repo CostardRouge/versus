@@ -188,6 +188,55 @@ export const SHORTCUTS = [
   },
 ] as const;
 export const SHORTCUT_SIZES = [96, 192] as const;
+
+/**
+ * Screenshots in the manifest, for the richer install dialog (Chrome on Android shows the narrow ones, desktop
+ * the wide ones). Taken from the real app on the demos by `npm run screenshots` (scripts/screenshots.ts), files
+ * committed; like the icons, new pictures get new file names. Each form factor keeps one size: the browser
+ * wants them alike, between 320 and 3840 px, the long side at most 2.3 times the short one.
+ */
+export const SCREEN_SIZES = {
+  narrow: { width: 390, height: 844, scale: 2 },
+  wide: { width: 1280, height: 800, scale: 1 },
+} as const;
+export const SCREENSHOTS = [
+  {
+    file: 'screen-duel-narrow.png',
+    form: 'narrow',
+    view: 'demo/destinations',
+    label: 'A duel: two places face to face, pick the one you prefer',
+  },
+  {
+    file: 'screen-colors-narrow.png',
+    form: 'narrow',
+    view: 'demo/backgrounds',
+    label: 'Colors and gradients duel like any other item',
+  },
+  {
+    file: 'screen-ranking-narrow.png',
+    form: 'narrow',
+    view: 'demo/destinations/ranking',
+    label: 'The ranking: a podium, then every item with its score',
+  },
+  {
+    file: 'screen-duel-wide.png',
+    form: 'wide',
+    view: 'demo/destinations',
+    label: 'The items, sorted live, next to the duel',
+  },
+  {
+    file: 'screen-colors-wide.png',
+    form: 'wide',
+    view: 'demo/backgrounds',
+    label: 'Colors and gradients duel like any other item',
+  },
+  {
+    file: 'screen-ranking-wide.png',
+    form: 'wide',
+    view: 'demo/backgrounds/ranking',
+    label: 'The ranking of website backgrounds, with its podium',
+  },
+] as const;
 export const shortcutIcon = (icon: string, size: number): string => `${icon}-${size}.png`;
 
 /**

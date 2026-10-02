@@ -26,6 +26,8 @@ import {
   type PageKind,
   pngIcon,
   REPOSITORY,
+  SCREEN_SIZES,
+  SCREENSHOTS,
   SHORTCUT_SIZES,
   SHORTCUTS,
   type SiteLang,
@@ -334,6 +336,16 @@ export function manifest(): Record<string, unknown> {
       // Its own file, not "any maskable": launchers crop to a circle, so the mark sits inside the safe zone.
       { src: `./${ICONS.maskable}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
+    screenshots: SCREENSHOTS.map((s) => {
+      const z = SCREEN_SIZES[s.form];
+      return {
+        src: `./${s.file}`,
+        sizes: `${z.width * z.scale}x${z.height * z.scale}`,
+        type: 'image/png',
+        form_factor: s.form,
+        label: s.label,
+      };
+    }),
     shortcuts: SHORTCUTS.map((s) => ({
       name: s.name,
       short_name: s.short,
