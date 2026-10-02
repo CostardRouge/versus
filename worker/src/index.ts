@@ -20,10 +20,11 @@ export { BoardObject } from './board-object';
  *
  *   POST   /api/boards                          publish (PublishInput + Turnstile token) → { alias, owner }
  *   GET    /api/boards/:alias                   public view, or a WebSocket for voters (Upgrade: websocket)
- *   PATCH  /api/boards/:alias                   settings                         (owner)
+ *   PATCH  /api/boards/:alias                   settings, and { title }          (owner)
  *   POST   /api/boards/:alias/close | reopen    freeze votes and reveal / reopen (owner)
- *   POST   /api/boards/:alias/items             add an item                      (owner)
- *   PATCH  /api/boards/:alias/items/:id         recolor a color item ({ fill }); its votes are dropped (owner)
+ *   POST   /api/boards/:alias/items             add an item, or { items: [...] } (owner)
+ *   PATCH  /api/boards/:alias/items/:id         { label?, fill?, reset }: rename or recolor; its votes stay
+ *                                               unless `reset` (D116) → votes dropped            (owner)
  *   DELETE /api/boards/:alias/items/:id         remove an item and its votes     (owner)
  *   DELETE /api/boards/:alias                   withdraw; returns the local copy (owner)
  *   PUT    /api/boards/:alias/card[?duel=a.b]   the card the board's link (or one duel's) unfurls with: a
@@ -230,8 +231,7 @@ async function board(req: Request, env: Env, alias: string, rest: string[]): Pro
     }
     if (m === 'PATCH' && id !== undefined) {
       const body = await readJson(req);
-      if (body === null) return error('too_large');
-      return reply(await stub.recolorItem(bearer(req), id, isRecord(body) ? body.fill : undefined));
+      return body === null ? error('too_large') : reply(await stub.editItem(bearer(req), id, body));
     }
     if (m === 'DELETE' && id !== undefined) return reply(await stub.removeItem(bearer(req), id));
   }

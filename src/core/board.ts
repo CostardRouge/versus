@@ -198,8 +198,8 @@ export interface PublishInput {
  */
 export function parsePublish(x: unknown, images: ImagePolicy = 'off'): Result<PublishInput> {
   if (!isRecord(x) || typeof x.title !== 'string' || !Array.isArray(x.items)) return fail('bad_request');
-  const title = x.title.trim();
-  if (!title || title.length > LIMITS.title) return fail('bad_request');
+  const title = parseTitle(x.title);
+  if (!title) return fail('bad_request');
   if (typeof x.voter !== 'string' || !VOTER_RE.test(x.voter)) return fail('bad_request');
   const lang: BoardLang = x.lang === 'fr' ? 'fr' : 'en';
   if (x.items.length < 2 || x.items.length > LIMITS.items) return fail('bad_request');
@@ -402,8 +402,17 @@ export function setStatus(board: SharedBoard, status: BoardStatus, now: number):
   board.touched = now;
 }
 
+/** A title from untrusted input: trimmed, 1 to LIMITS.title characters; null otherwise. */
+export function parseTitle(x: unknown): string | null {
+  const title = typeof x === 'string' ? x.trim() : '';
+  return title && title.length <= LIMITS.title ? title : null;
+}
+
+/** Applies an author's patch: the settings it holds, and the board's title when it carries a valid one. */
 export function updateSettings(board: SharedBoard, patch: unknown, now: number): void {
   board.settings = patchSettings(board.settings, patch);
+  const title = isRecord(patch) ? parseTitle(patch.title) : null;
+  if (title) board.title = title;
   board.touched = now;
 }
 
@@ -429,6 +438,26 @@ export function addItem(board: SharedBoard, input: NewItem, id: string, now: num
   board.items.push(item);
   board.touched = now;
   return ok(item);
+}
+
+/**
+ * Adds several items at once (a list the author pasted), each drawn an id by `newId`. Those that can't be added
+ * (taken label, full board) are left out; when none could be, the first refusal is the answer.
+ */
+export function addItems(
+  board: SharedBoard,
+  inputs: readonly NewItem[],
+  newId: () => string,
+  now: number,
+): Result<Item[]> {
+  const added: Item[] = [];
+  let refused: ErrorCode | null = null;
+  for (const input of inputs) {
+    const r = addItem(board, input, newId(), now);
+    if (r.ok) added.push(r.value);
+    else refused ??= r.error;
+  }
+  return added.length || !refused ? ok(added) : fail(refused);
 }
 
 // ─── Pictures (docs/published-boards.md#images) ────────────────────────────
@@ -466,29 +495,61 @@ export function removeItem(board: SharedBoard, id: string, now: number): Result<
   return ok(removed);
 }
 
+/** What the author changes on an item after publication (D116): its label, its color, and what its votes become. */
+export interface ItemEdit {
+  label?: string;
+  fill?: Fill;
+  /** The item is another choice now: its votes go and it starts again from zero. False keeps them (a correction). */
+  reset: boolean;
+}
+
 /**
- * Gives a color item a new fill on an open board. Its votes were cast on the old color, so they are
- * dropped: the item starts again from zero (and, with no votes, gets priority in pair assignment).
- * A label that was the color code follows the new code.
+ * An item edit from untrusted input: a label (1 to LIMITS.label characters) and/or a fill, and `reset`. Without
+ * `reset`, a color change alone resets (what a recolor always did before D116, for apps from before it).
  */
-export function recolorItem(
+export function parseItemEdit(x: unknown): Result<ItemEdit> {
+  if (!isRecord(x)) return fail('bad_request');
+  const out: ItemEdit = { reset: false };
+  if (x.label !== undefined) {
+    const label = typeof x.label === 'string' ? x.label.trim() : '';
+    if (!label || label.length > LIMITS.label) return fail('bad_request');
+    out.label = label;
+  }
+  if (x.fill !== undefined) {
+    const fill = parseFill(x.fill);
+    if (!fill) return fail('bad_request');
+    out.fill = fill;
+  }
+  if (out.label === undefined && out.fill === undefined) return fail('bad_request');
+  if (x.reset !== undefined && typeof x.reset !== 'boolean') return fail('bad_request');
+  out.reset = typeof x.reset === 'boolean' ? x.reset : out.label === undefined;
+  return ok(out);
+}
+
+/**
+ * Changes an item of an open board: a new label, or a new fill for a color item (a label that was the color code
+ * follows the new code). Its votes stay unless `reset`: then they go, and the item starts again from zero (with no
+ * votes, it gets priority in pair assignment). Nothing changes, and no vote goes, when the edit changes nothing.
+ */
+export function editItem(
   board: SharedBoard,
   id: string,
-  raw: unknown,
+  edit: ItemEdit,
   now: number,
 ): Result<{ item: Item; removed: Vote[] }> {
   const it = board.items.find((i) => i.id === id);
   if (!it) return fail('not_found');
   if (board.status !== 'open') return fail('closed');
-  const fill = parseFill(raw);
-  if (!it.fill || !fill) return fail('bad_request');
-  if (sameFill(fill, it.fill)) return ok({ item: it, removed: [] });
-  const label = it.label.toUpperCase() === fillCode(it.fill) ? fillCode(fill) : it.label;
+  if (edit.fill && !it.fill) return fail('bad_request');
+  const fill = edit.fill && it.fill && !sameFill(edit.fill, it.fill) ? edit.fill : it.fill;
+  const follows = !!it.fill && !!fill && it.label.toUpperCase() === fillCode(it.fill);
+  const label = edit.label ?? (follows && fill ? fillCode(fill) : it.label);
+  if (label === it.label && fill === it.fill) return ok({ item: it, removed: [] });
   const key = label.toLowerCase();
   if (board.items.some((i) => i.id !== id && i.label.toLowerCase() === key)) return fail('exists');
-  const item: Item = { ...it, label, fill, h: label === it.label ? it.h : hueOf(label) };
+  const item: Item = { ...it, label, fill };
   board.items = board.items.map((i) => (i.id === id ? item : i));
-  const removed = [...board.votes.values()].filter((v) => v.a === id || v.b === id);
+  const removed = edit.reset ? [...board.votes.values()].filter((v) => v.a === id || v.b === id) : [];
   for (const v of removed) removeVote(board, v.voter, pairKey(v.a, v.b));
   board.touched = now;
   return ok({ item, removed });

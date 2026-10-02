@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
-  addItem,
+  addItems,
   addReport,
   awaitsPicture,
   boardMeta,
@@ -10,20 +10,24 @@ import {
   crowd,
   DEFAULT_MODERATION,
   decidePicture,
+  editItem,
   type ImagePolicy,
+  isRecord,
   itemId,
+  LIMITS,
   lastActivity,
   localCopy,
   moderate,
+  type NewItem,
   type Origin,
   openSession,
   type PublishInput,
+  parseItemEdit,
   parseModeration,
   parseNewItem,
   parseReport,
   pendingPictures,
   recentVotes,
-  recolorItem,
   refill,
   removeItem,
   restoreBoard,
@@ -343,14 +347,17 @@ export class BoardObject extends DurableObject<Env> {
     return this.board ? unfurlOf(this.board) : null;
   }
 
+  /** The author's settings, and the title when the patch carries one (the registry's lists show it). */
   async updateSettings(token: string, patch: unknown): Promise<Result<BoardSettings>> {
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
+    const title = board.value.title;
     updateSettings(board.value, patch, Date.now());
     this.saveMeta(board.value);
     this.dirty = true;
     this.cache = null;
     this.pushState(board.value);
+    if (board.value.title !== title) this.touchRegistry(board.value, true);
     return { ok: true, value: board.value.settings };
   }
 
@@ -359,15 +366,27 @@ export class BoardObject extends DurableObject<Env> {
     return board.ok ? this.applyStatus(board.value, status) : board;
   }
 
-  /** Adds an item as the author (any time the board is open, no delay). */
-  async addItem(token: string, raw: unknown): Promise<Result<Item>> {
+  /**
+   * Adds items as the author (any time the board is open, no delay): one item, or `{ items: [...] }` for a list,
+   * answered with the items added (a taken label or a full board leaves the rest out).
+   */
+  async addItem(token: string, raw: unknown): Promise<Result<Item | Item[]>> {
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
-    const input = parseNewItem(raw, this.imagePolicy());
-    if (!input.ok) return input;
-    const r = addItem(board.value, input.value, this.newItemId(board.value), Date.now());
-    if (r.ok) this.itemsChanged(board.value, []);
-    return r;
+    const list = isRecord(raw) && Array.isArray(raw.items) ? raw.items : null;
+    if (list && (!list.length || list.length > LIMITS.items)) return { ok: false, error: 'bad_request' };
+    const inputs: NewItem[] = [];
+    for (const x of list ?? [raw]) {
+      const input = parseNewItem(x, this.imagePolicy());
+      if (!input.ok) return input;
+      inputs.push(input.value);
+    }
+    const r = addItems(board.value, inputs, () => this.newItemId(board.value), Date.now());
+    if (!r.ok) return r;
+    if (r.value.length) this.itemsChanged(board.value, []);
+    if (list) return r;
+    const [item] = r.value;
+    return item ? { ok: true, value: item } : { ok: false, error: 'bad_request' };
   }
 
   /** Removes an item and its votes; returns how many votes went with it. */
@@ -376,13 +395,19 @@ export class BoardObject extends DurableObject<Env> {
     return board.ok ? this.applyRemove(board.value, id) : board;
   }
 
-  /** Gives a color item a new fill; its votes are dropped. Returns how many votes went with them. */
-  async recolorItem(token: string, id: string, fill: unknown): Promise<Result<number>> {
+  /**
+   * Renames an item or gives a color item a new fill (D116); its votes stay, or go with `reset`. Returns how many
+   * votes went.
+   */
+  async editItem(token: string, id: string, raw: unknown): Promise<Result<number>> {
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
-    const r = recolorItem(board.value, id, fill, Date.now());
+    const edit = parseItemEdit(raw);
+    if (!edit.ok) return edit;
+    const before = board.value.items.find((i) => i.id === id);
+    const r = editItem(board.value, id, edit.value, Date.now());
     if (!r.ok) return r;
-    this.itemsChanged(board.value, r.value.removed);
+    if (r.value.item !== before) this.itemsChanged(board.value, r.value.removed);
     return { ok: true, value: r.value.removed.length };
   }
 

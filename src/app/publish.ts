@@ -19,24 +19,30 @@ import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
 
-/** Publishing a local ranking, and the settings form shared by the publish modal and the author panel. */
+/** Publishing a local ranking, and the settings form shared by the publish modal and the board's settings. */
 
 const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
 
-/** Results visibility and scoring method. Exact sort is listed but can't be picked, with the reason. */
-export function settingsHTML(prefix: string, s: BoardSettings): string {
-  const radio = (name: string, value: string, checked: boolean) =>
-    `<input type="radio" name="${prefix}-${name}" value="${value}" ${checked ? 'checked' : ''}>`;
+const radio = (prefix: string, name: string, value: string, checked: boolean): string =>
+  `<input type="radio" name="${prefix}-${name}" value="${value}" ${checked ? 'checked' : ''}>`;
+
+/** Results visibility: always, after N votes, or hidden until the vote closes. */
+export function visibilityHTML(prefix: string, s: BoardSettings): string {
   const vis = (v: Visibility) => {
     if (v !== 'after') {
-      return `<label class="opt">${radio('vis', v, s.visibility === v)} ${t(v === 'always' ? 'visAlways' : 'visBlind')}</label>`;
+      return `<label class="opt">${radio(prefix, 'vis', v, s.visibility === v)} ${t(v === 'always' ? 'visAlways' : 'visBlind')}</label>`;
     }
-    return `<div class="opt"><label class="opt">${radio('vis', v, s.visibility === v)} ${t('visAfterPre')}</label>
+    return `<div class="opt"><label class="opt">${radio(prefix, 'vis', v, s.visibility === v)} ${t('visAfterPre')}</label>
       <input class="opt-n mono" type="number" id="${prefix}-n" min="1" max="${LIMITS.revealAfter}" value="${s.revealAfter}" aria-label="${t('visAfterPre')} … ${t('visAfterPost')}"> ${t('visAfterPost')}</div>`;
   };
+  return `<fieldset class="set"><legend>${t('settingResults')}</legend>${VISIBILITIES.map(vis).join('')}</fieldset>`;
+}
+
+/** Results visibility and scoring method. Exact sort is listed but can't be picked, with the reason. */
+export function settingsHTML(prefix: string, s: BoardSettings): string {
   const method = (k: MethodKey) =>
-    `<label class="opt">${radio('m', k, s.method === k)} <b>${M(k).name}</b> <span class="muted mono">${M(k).tech}</span></label>`;
-  return `<fieldset class="set"><legend>${t('settingResults')}</legend>${VISIBILITIES.map(vis).join('')}</fieldset>
+    `<label class="opt">${radio(prefix, 'm', k, s.method === k)} <b>${M(k).name}</b> <span class="muted mono">${M(k).tech}</span></label>`;
+  return `${visibilityHTML(prefix, s)}
     <fieldset class="set"><legend>${t('settingMethod')}</legend>${CROWD_METHODS.map(method).join('')}
       <div class="opt off" aria-disabled="true"><span class="opt-dot" aria-hidden="true"></span><span><b>${M('sort').name}</b> <span class="mono">${M('sort').tech}</span><small>${t('sortCrowd')}</small></span></div>
     </fieldset>`;

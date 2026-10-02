@@ -1,16 +1,17 @@
 import { trackEvent } from '../audience';
 import { LIMITS, REPORT_REASONS, revealAt } from '../core/board';
-import { colorTwin, fillCSS, isHex, normHex, sameFill } from '../core/colors';
 import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
-import type { BoardStatus, Duel, ErrorCode, Fill, Item, Outcome, Ranking, ReportReason } from '../core/types';
+import type { BoardStatus, Duel, ErrorCode, Item, Outcome, Ranking, ReportReason } from '../core/types';
 import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
-import { closeColor, cp, openBoardColor } from './color';
-import { $, announce, ask, copyText, reduced, thumbHTML, toast, trashSvg } from './dom';
+import { authorAdd, authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
+import { closeColor, cp } from './color';
+import { $, announce, ask, copyText, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML } from './duel';
+import { addFormHTML, typed } from './editor';
 import {
   type FinaleData,
   type FinaleMode,
@@ -23,16 +24,12 @@ import {
 } from './finale';
 import { fmtCrowd } from './format';
 import { flushJoined, markGone, noteBoard } from './joined';
-import { optionsHTML, readSettings, settingsHTML } from './publish';
 import { makeOwn, open } from './rankings';
 import {
   ApiError,
-  addBoardItem,
   BoardSocket,
   type Connection,
-  patchBoard,
-  recolorBoardItem,
-  removeBoardItem,
+  fetchConfig,
   reportBoard,
   setBoardStatus,
   withdrawBoard,
@@ -40,13 +37,14 @@ import {
 import { routeURL } from './router';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
+import { effTab } from './workspace';
 
 /**
  * Board page of a published ranking: duels come from the server queue, the crowd ranking updates live
- * (or waits for a refresh), and the author gets settings, close/reopen and withdraw.
+ * (or waits for a refresh). Its author sees it in the workspace of a local ranking instead (author.ts, D116).
  */
 
-interface Board {
+export interface Board {
   alias: string;
   owner: string | null;
   socket: BoardSocket | null;
@@ -75,6 +73,8 @@ interface Board {
   finale: boolean;
   /** Something changed during the reveal: render again once it ends. */
   finaleDirty: boolean;
+  /** Whether the server takes pictures for review (asked once the author is known); null until it answers. */
+  pictures: boolean | null;
 }
 
 interface Pending {
@@ -83,6 +83,9 @@ interface Pending {
 }
 
 let B: Board | null = null;
+
+/** The board on screen, if any. */
+export const boardState = (): Board | null => B;
 
 /** What to tell the user when the server refuses an action. */
 function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
@@ -110,8 +113,10 @@ const ownerErrors: Partial<Record<string, MsgKey>> = {
 export const boardURL = (alias: string): string => routeURL({ view: 'board', alias });
 
 const live = (): boolean => S.prefs.live !== false;
-const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
+export const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
 const localOf = (alias: string): Ranking | undefined => S.ranks.find((r) => r.pub?.alias === alias);
+/** The author's page is the workspace (author.ts); the board's own page is for visitors. */
+const authoring = (b: Board | null): b is Board & { view: BoardView } => !!b?.view && b.isOwner && !!b.owner;
 
 /**
  * Connects to a board (or keeps the current connection when it is the same one). `wanted` is the duel a shared
@@ -142,6 +147,7 @@ export function enterBoard(alias: string, available: boolean, wanted: [string, s
     leaving: false,
     finale: false,
     finaleDirty: false,
+    pictures: null,
   };
   B = board;
   resetFinale();
@@ -196,10 +202,19 @@ function onMessage(board: Board, m: ServerMessage): void {
     board.pending = [];
     board.shown = board.latest = m.board.ranking;
     board.shownVotes = board.latestVotes = m.board.counts.votes;
+    // The author's local ranking follows the board: its gallery card shows its status and title.
     const local = localOf(board.alias);
-    if (local?.pub && local.pub.status !== m.board.status) {
+    if (local?.pub && (local.pub.status !== m.board.status || local.title !== m.board.title)) {
       local.pub.status = m.board.status;
+      local.title = m.board.title;
       save();
+    }
+    if (m.owner && board.pictures === null) {
+      board.pictures = false;
+      void fetchConfig().then((c) => {
+        board.pictures = c.images === 'review';
+        if (B === board && board.pictures) renderBoard();
+      });
     }
     note(board);
     renderBoard();
@@ -225,6 +240,7 @@ function onMessage(board: Board, m: ServerMessage): void {
     if (counts) counts.textContent = countsText(board.counts);
     if (board.finale && orderOf(before) !== orderOf(board.shown)) renderBoard();
     renderRanking();
+    if (authoring(board)) refreshAuthorList(true);
   } else {
     const head = board.pending[0];
     if (head?.revert) {
@@ -256,7 +272,7 @@ function note(b: Board, voted = false, lazy = false): void {
 
 const orderOf = (r: RankingView | null): string => r?.order.join(' ') ?? '';
 
-const countsText = (c: Counts): string =>
+export const countsText = (c: Counts): string =>
   t('boardCounts', { votes: plural(c.votes, 'vote'), voters: plural(c.voters, 'voter'), online: c.online });
 
 export function renderBoard(mode: FinaleMode = 'none'): void {
@@ -267,26 +283,24 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
     renderFinale(b, b.view, mode);
     return;
   }
-  const adminOpen = $('#b-admin')?.hasAttribute('open') ?? false;
+  if (authoring(b)) {
+    renderAuthor(b);
+    return;
+  }
   // Keep what someone is typing when another change re-renders the page, unless it was just added.
-  const draft = ($('#b-add-input') as HTMLInputElement | null)?.value ?? '';
-  view.innerHTML = boardHTML(b, adminOpen);
-  const input = $('#b-add-input') as HTMLInputElement | null;
+  const draft = ($('#add-input') as HTMLInputElement | null)?.value ?? '';
+  view.innerHTML = boardHTML(b);
+  const input = $('#add-input') as HTMLInputElement | null;
   if (input && draft && draft !== b.sentLabel) input.value = draft;
   b.sentLabel = null;
-  // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
-  if (cp.id) {
-    const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
-    if (swatch) cp.anchor = swatch;
-    else closeColor();
-  }
+  if (cp.id) closeColor();
   if (b.view) {
     renderDuel();
     renderRanking();
   }
 }
 
-function boardHTML(b: Board, adminOpen: boolean): string {
+function boardHTML(b: Board): string {
   const back = `<button class="back" type="button" data-action="back">${t('back')}</button>`;
   const v = b.view;
   if (!v) {
@@ -320,62 +334,12 @@ function boardHTML(b: Board, adminOpen: boolean): string {
     <div class="b-body">
       <section class="b-main" id="b-main"></section>
       <aside class="b-side">
-        ${b.isOwner ? adminHTML(v, adminOpen) : ''}
         <section class="b-rank" id="b-rank"></section>
-        ${!b.isOwner && v.settings.visitorsAddItems && !closed ? `<section class="b-suggest"><h2>${t('suggestTitle')}</h2>${addFormHTML()}</section>` : ''}
+        ${v.settings.visitorsAddItems && !closed ? `<section class="b-suggest"><h2>${t('suggestTitle')}</h2>${addFormHTML(t('addPlaceholder'), t('suggestTitle'))}</section>` : ''}
         ${b.isOwner ? '' : `<p class="b-report"><button class="link" type="button" data-action="b-report">${t('report')}</button></p>`}
       </aside>
     </div>
   </div>`;
-}
-
-const addFormHTML = (): string =>
-  `<form class="add b-add" id="b-add-form" autocomplete="off">
-    <input id="b-add-input" placeholder="${t('addPlaceholder')}" aria-label="${t('suggestTitle')}" maxlength="200">
-    <button class="add-btn" type="submit" aria-label="${t('add')}">+</button>
-  </form>`;
-
-/** An item's swatch: while the board is open, a color item's swatch opens the color editor. */
-function itemThumbHTML(it: Item, open: boolean): string {
-  if (!it.fill || !open) return thumbHTML(it);
-  return `<button class="thumb thumb-btn" type="button" data-action="b-edit-color" data-id="${esc(it.id)}" style="background:${fillCSS(it.fill)}" aria-label="${esc(t('editColorAria', { label: it.label }))}" title="${t('editColor')}"></button>`;
-}
-
-function itemsHTML(v: BoardView): string {
-  const open = v.status === 'open';
-  const rows = v.items
-    .map((it) => {
-      const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
-      const warn = twin ? `<small class="b-twin">${esc(t('sameColor', { label: twin.label }))}</small>` : '';
-      // A picture sent for review, or refused: the author sees why the item shows as text.
-      const pic =
-        it.pic === 'pending'
-          ? `<small class="b-pic">${t('picPending')}</small>`
-          : it.pic === 'refused'
-            ? `<small class="b-pic b-pic-no">${t('picRefused')}</small>`
-            : '';
-      return `<li>${itemThumbHTML(it, open)}<span class="b-item"><span class="rlabel">${esc(it.label)}</span>${warn}${pic}</span>
-        <button class="icon-btn" type="button" data-action="b-remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">${trashSvg}</button></li>`;
-    })
-    .join('');
-  return `<fieldset class="set"><legend>${t('boardItems')}</legend><ul class="b-items">${rows}</ul>${v.status === 'open' ? addFormHTML() : ''}</fieldset>`;
-}
-
-function adminHTML(v: BoardView, open: boolean): string {
-  const closed = v.status === 'closed';
-  return `<details class="b-admin" id="b-admin" ${open ? 'open' : ''}>
-    <summary>${t('authorPanel')}</summary>
-    <div class="b-admin-body">
-      ${settingsHTML('b', v.settings)}
-      ${optionsHTML('b', v.settings)}
-      ${itemsHTML(v)}
-      <div class="b-admin-actions">
-        <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
-        <button class="btn sm ghost" type="button" data-action="b-admin-link">${t('copyAdminLink')}</button>
-        <button class="btn sm danger" type="button" data-action="b-withdraw">${t('withdraw')}</button>
-      </div>
-    </div>
-  </details>`;
 }
 
 const emptyHTML = (title: string, body: string, action = ''): string =>
@@ -417,12 +381,13 @@ function duelHTML(b: Board, v: BoardView): string {
   </div>`;
 }
 
-function renderDuel(): void {
+export function renderDuel(): void {
   const main = $('#b-main');
   const b = B;
   if (!main || !b?.view) return;
   main.innerHTML = duelHTML(b, b.view);
   bindStage(boardPick, () => B?.busy ?? true);
+  if (authoring(b)) markAuthorPair();
 }
 
 function rankingHTML(b: Board, v: BoardView): string {
@@ -461,7 +426,7 @@ function rankingHTML(b: Board, v: BoardView): string {
   return `${head}${refresh}<ol class="b-rows">${rows}</ol>${agree}${reset}`;
 }
 
-function renderRanking(): void {
+export function renderRanking(): void {
   const el = $('#b-rank');
   if (el && B?.view) el.innerHTML = rankingHTML(B, B.view);
 }
@@ -586,7 +551,8 @@ export async function boardReset(): Promise<void> {
 }
 
 export function boardKeydown(e: KeyboardEvent, tg: HTMLElement): void {
-  if (!B?.view || B.finale) return;
+  // The author votes from the Duel tab only.
+  if (!B?.view || B.finale || (B.isOwner && effTab() !== 'duel')) return;
   if (tg.classList.contains('card') && (e.key === 'Enter' || e.key === ' ')) {
     e.preventDefault();
     boardPick(tg.dataset.side);
@@ -689,6 +655,7 @@ export function boardRefresh(): void {
   B.shown = B.latest;
   B.shownVotes = B.latestVotes;
   renderRanking();
+  if (authoring(B)) refreshAuthorList(true);
 }
 
 /** Handles the board's form fields; returns true when the change belonged to the board page. */
@@ -700,94 +667,30 @@ export function boardChange(tg: HTMLInputElement): boolean {
     else renderRanking();
     return true;
   }
-  if (tg.id === 'b-add-input') return true;
-  if (tg.closest('#b-admin')) {
-    void ownerCall((alias, token) => patchBoard(alias, token, readSettings($('#b-admin') ?? tg, 'b')));
-    return true;
-  }
-  return false;
+  return authorChange(tg);
 }
 
 // ─── Items ──────────────────────────────────────────────────────────────────
 
-/** Text, or a color for a #hex code, like the local item field. */
-function newItem(raw: string): { label: string; fill: Fill | null } | null {
-  const v = raw.trim();
-  if (!v) return null;
-  if (!isHex(v)) return { label: v, fill: null };
-  return { label: normHex(v).toUpperCase(), fill: { type: 'solid', colors: [normHex(v)] } };
-}
-
-/** Adds an item: the author through the API, a visitor over the socket. Everyone then gets the new state. */
-export async function boardAddItem(): Promise<void> {
+/**
+ * What was sent from the add field: the author's items (a list too) through the API, a visitor's suggestion over
+ * the socket. Everyone then gets the new state.
+ */
+export async function boardAdd(text: string): Promise<void> {
   const b = B;
-  const input = $('#b-add-input') as HTMLInputElement | null;
-  const item = input ? newItem(input.value) : null;
-  if (!b?.view || !input || !item) return;
+  if (!b?.view) return;
   if (b.isOwner) {
-    b.sentLabel = input.value;
-    if (await ownerCall((alias, token) => addBoardItem(alias, token, item))) toast(t('itemAdded'));
-    else b.sentLabel = null;
+    await authorAdd(text);
     return;
   }
+  const item = typed(text);
+  if (!item.label) return;
   if (!b.socket?.send({ t: 'add', item })) {
     toast(t('notSent'));
     return;
   }
-  b.sentLabel = input.value;
+  b.sentLabel = text;
   b.pending.push({ kind: 'add' });
-}
-
-/** Removes an item after confirmation; its votes go with it. */
-export async function boardRemoveItem(id: string | undefined): Promise<void> {
-  const b = B;
-  const it = id ? itemOf(id) : undefined;
-  if (!b?.owner || !it || !id) return;
-  const x = b.latest?.stats[id];
-  const votes = x ? x.w + x.l + x.d : 0;
-  const ok = await ask({
-    title: t('removeItemTitle', { label: it.label }),
-    body: t('removeItemBody', { votes: plural(votes, 'vote') }),
-    ok: t('removeOk'),
-    danger: true,
-  });
-  if (!ok || B !== b) return;
-  if ((await ownerCall((alias, token) => removeBoardItem(alias, token, id))) !== null) toast(t('itemRemoved'));
-}
-
-/** Opens the color editor on a color item of the board (a second click on its swatch closes it). */
-export function boardEditColor(id: string | undefined, anchor: HTMLElement): void {
-  const b = B;
-  const it = id ? itemOf(id) : undefined;
-  if (!b?.owner || !b.view || !it?.fill) return;
-  if (cp.id === it.id) {
-    closeColor();
-    return;
-  }
-  openBoardColor(it, b.view.items, anchor, (fill) => void boardRecolor(it.id, fill));
-}
-
-/**
- * Gives an item a new color for everyone. Its votes were cast on the old color, so they go (after a
- * confirmation when there are some) and the item starts again from zero.
- */
-async function boardRecolor(id: string, fill: Fill): Promise<void> {
-  const b = B;
-  const it = itemOf(id);
-  if (!b?.owner || !it?.fill || sameFill(it.fill, fill)) return;
-  const x = b.latest?.stats[id];
-  const votes = x ? x.w + x.l + x.d : 0;
-  if (votes) {
-    const ok = await ask({
-      title: t('recolorTitle', { label: it.label }),
-      body: t('recolorBody', { votes: plural(votes, 'vote'), label: it.label }),
-      ok: t('recolorOk'),
-      danger: true,
-    });
-    if (!ok || B !== b) return;
-  }
-  const n = await ownerCall((alias, token) => recolorBoardItem(alias, token, id, fill));
-  if (n !== null) toast(n ? t('recoloredReset', { label: it.label }) : t('recolored'));
 }
 
 export async function copyBoardLink(alias: string | undefined, admin = false): Promise<void> {
@@ -870,7 +773,7 @@ export async function boardReport(): Promise<void> {
 // ─── Author ─────────────────────────────────────────────────────────────────
 
 /** Calls an owner route; the server then pushes the new state to every connection, this one included. */
-async function ownerCall<T>(fn: (alias: string, token: string) => Promise<T>): Promise<T | null> {
+export async function ownerCall<T>(fn: (alias: string, token: string) => Promise<T>): Promise<T | null> {
   const b = B;
   if (!b?.owner) return null;
   try {
@@ -899,6 +802,7 @@ export async function boardWithdraw(): Promise<void> {
   saveOwner(b.alias, null);
   let target = localOf(b.alias);
   if (target) {
+    target.title = copy.title;
     target.items = copy.items;
     target.history = copy.history;
     target.method = copy.method;

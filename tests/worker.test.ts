@@ -527,6 +527,22 @@ describe('author controls', () => {
     voter.close();
   });
 
+  it('renames the board for the author; the registry follows', async () => {
+    const { alias, owner } = await publish();
+    const voter = await Client.open(alias, 'voter-one-1');
+    await voter.next('state');
+    await api(`/${alias}`, { method: 'PATCH', token: owner, body: { title: '  Pizzas du vendredi ' } });
+    expect((await voter.next('state')).board.title).toBe('Pizzas du vendredi');
+    await vi.waitFor(async () => {
+      const list = (await (await adminApi('/boards?q=vendredi')).json()) as AdminList;
+      expect(list.boards.map((r) => r.alias)).toContain(alias);
+    });
+    // An empty title changes nothing.
+    await api(`/${alias}`, { method: 'PATCH', token: owner, body: { title: ' ' } });
+    expect((await voter.next('state')).board.title).toBe('Pizzas du vendredi');
+    voter.close();
+  });
+
   it('withdraws a board and hands the author a local copy', async () => {
     const { alias, owner } = await publish({}, [{ a: 'p0', b: 'p1', s: 1 }]);
     const voter = await Client.open(alias, 'voter-one-1');
@@ -571,11 +587,52 @@ describe('items after publication', () => {
     expect((await remove('p4')).status).toBe(409);
   });
 
-  it('lets the author recolor a color item; its votes are dropped', async () => {
+  it('adds a pasted list in one request, leaving out labels already there', async () => {
+    const { alias, owner } = await publish();
+    const voter = await Client.open(alias, 'voter-one-1');
+    await voter.next('state');
+    const add = (body: unknown) => api(`/${alias}/items`, { method: 'POST', body, token: owner });
+    const res = await add({ items: [{ label: 'Hawaii' }, { label: 'regina' }, { label: 'Quattro' }] });
+    expect(((await res.json()) as { label: string }[]).map((i) => i.label)).toEqual(['Hawaii', 'Quattro']);
+    // One state for the whole list.
+    expect((await voter.next('state')).board.items).toHaveLength(items.length + 2);
+    expect((await add({ items: [{ label: 'Margherita' }] })).status).toBe(409);
+    expect((await add({ items: [] })).status).toBe(400);
+    expect((await add({ items: [{ label: 'Ok' }, { label: 3 }] })).status).toBe(400);
+    voter.close();
+  });
+
+  it('lets the author rename an item, keeping its votes or starting it again', async () => {
+    const { alias, owner } = await publish({}, [
+      { a: 'p0', b: 'p1', s: 1 },
+      { a: 'p2', b: 'p3', s: 1 },
+    ]);
+    const voter = await Client.open(alias, 'voter-one-1');
+    await voter.next('state');
+    const edit = (id: string, body: unknown, token = owner) =>
+      api(`/${alias}/items/${id}`, { method: 'PATCH', body, token });
+    expect((await edit('p0', { label: 'Marinara' }, 'f'.repeat(64))).status).toBe(403);
+    expect((await edit('p0', { label: 'Regina' })).status).toBe(409);
+    expect((await edit('p0', { label: ' ' })).status).toBe(400);
+    expect(await (await edit('p0', { label: 'Marinara', reset: false })).json()).toBe(0);
+    const kept = await voter.next('state');
+    expect(kept.board.items.find((i) => i.id === 'p0')?.label).toBe('Marinara');
+    expect(kept.board.counts.votes).toBe(2);
+    expect(await (await edit('p2', { label: 'Quattro', reset: true })).json()).toBe(1);
+    const reset = await voter.next('state');
+    expect(reset.board.items.find((i) => i.id === 'p2')?.label).toBe('Quattro');
+    expect(reset.board.counts.votes).toBe(1);
+    await api(`/${alias}/close`, { method: 'POST', token: owner });
+    expect((await edit('p2', { label: 'Late' })).status).toBe(409);
+    voter.close();
+  });
+
+  it('lets the author recolor a color item; its votes go unless kept', async () => {
     const red = { type: 'solid', colors: ['#aa0000'] };
     const colored = items.map((it, i) => (i < 2 ? { ...it, label: i ? '#AA0000' : 'Rouge', fill: red } : it));
     const duels = [
       { a: 'p0', b: 'p1', s: 1 },
+      { a: 'p0', b: 'p2', s: 1 },
       { a: 'p2', b: 'p3', s: 1 },
     ];
     const res = await api('', { method: 'POST', body: { title: 'Couleurs', items: colored, voter: AUTHOR, duels } });
@@ -589,10 +646,14 @@ describe('items after publication', () => {
     expect((await recolor('p2', { fill: blue })).status).toBe(400);
     expect((await recolor('p1', {})).status).toBe(400);
     expect((await recolor('nope', { fill: blue })).status).toBe(404);
+    // A shade kept: its votes stay.
+    expect(await (await recolor('p0', { fill: { type: 'solid', colors: ['#ab0000'] }, reset: false })).json()).toBe(0);
+    expect((await voter.next('state')).board.counts.votes).toBe(3);
+    // A color alone, as apps from before D116 send it: its votes go.
     expect(await (await recolor('p1', { fill: blue })).json()).toBe(1);
     const state = await voter.next('state');
     expect(state.board.items.find((i) => i.id === 'p1')).toMatchObject({ label: '#2743F5', fill: blue });
-    expect(state.board.counts.votes).toBe(1);
+    expect(state.board.counts.votes).toBe(2);
     voter.close();
   });
 
@@ -946,6 +1007,26 @@ describe('pictures for review', () => {
       },
       { timeout: 5000, interval: 200 },
     );
+  });
+
+  it('takes pictures for items the author adds after publication', async () => {
+    const { alias, owner } = await publishPics(items);
+    const res = await api(`/${alias}/items`, {
+      method: 'POST',
+      token: owner,
+      body: {
+        items: [
+          { label: 'Dunes', fill: null, pic: 'pending' },
+          { label: 'Cliffs', fill: null },
+        ],
+      },
+    });
+    const [dunes, cliffs] = (await res.json()) as { id: string; pic?: string }[];
+    expect(dunes?.pic).toBe('pending');
+    expect(cliffs?.pic).toBeUndefined();
+    expect((await sendPicture(alias, dunes?.id ?? '', fakeJpeg(), owner)).status).toBe(201);
+    expect((await sendPicture(alias, cliffs?.id ?? '', fakeJpeg(), owner)).status).toBe(404);
+    expect((await adminApi(`/boards/${alias}/items/${dunes?.id}/image`)).status).toBe(200);
   });
 
   it('deletes a refused picture, needs one to approve, and drops them all with the board', async () => {
