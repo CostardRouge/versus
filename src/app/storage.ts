@@ -43,9 +43,44 @@ function readJSON(key: string): unknown {
   }
 }
 
-export function loadRanks(): Ranking[] | null {
+/** Where rankings that can't be read are set aside, untouched, instead of being lost. */
+export const UNREADABLE_KEY = 'versus-v1-unreadable';
+
+const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+
+/** A stored ranking the app can open: the shape every view relies on. */
+function readable(x: unknown): x is Ranking {
+  if (!isObj(x) || typeof x.id !== 'string' || typeof x.title !== 'string') return false;
+  const { items, history, pair, pub } = x;
+  return (
+    Array.isArray(items) &&
+    items.every((i) => isObj(i) && typeof i.id === 'string' && typeof i.label === 'string') &&
+    Array.isArray(history) &&
+    history.every((d) => isObj(d) && typeof d.a === 'string' && typeof d.b === 'string' && typeof d.s === 'number') &&
+    (pair === null || pair === undefined || (Array.isArray(pair) && pair.length === 2)) &&
+    (pub === undefined || (isObj(pub) && typeof pub.alias === 'string'))
+  );
+}
+
+/**
+ * The stored rankings, or null when there are none. One that can't be read (an extension, a write cut short) is
+ * set aside under UNREADABLE_KEY rather than breaking the app; `onDamaged` hears how many.
+ */
+export function loadRanks(onDamaged?: (n: number) => void): Ranking[] | null {
   const v = readJSON(STORE_KEY);
-  return Array.isArray(v) ? (v as Ranking[]) : null;
+  if (!Array.isArray(v)) return null;
+  const ranks = v.filter(readable);
+  const bad = v.filter((x) => !readable(x));
+  if (bad.length) {
+    const kept = readJSON(UNREADABLE_KEY);
+    try {
+      storage()?.setItem(UNREADABLE_KEY, JSON.stringify([...(Array.isArray(kept) ? kept : []), ...bad]));
+    } catch {
+      /* they stay in versus-v1 until the next save */
+    }
+    onDamaged?.(bad.length);
+  }
+  return ranks;
 }
 
 export function loadLegacyRanks(): Ranking[] {

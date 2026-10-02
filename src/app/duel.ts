@@ -1,4 +1,4 @@
-import { fillCode, fillCSS, fillInk } from '../core/colors';
+import { fillCode, fillCSS, fillText } from '../core/colors';
 import { getItem } from '../core/model';
 import {
   compute,
@@ -32,7 +32,7 @@ export function cardHTML(it: Item, side: 'a' | 'b'): string {
   let inner: string;
   if (it.fill) {
     const code = fillCode(it.fill);
-    inner = `<span class="fillbg" style="background:${fillCSS(it.fill)}"></span><span class="cap" style="color:${fillInk(it.fill)}">${label}${it.label.toUpperCase() !== code ? `<small>${code}</small>` : ''}</span>`;
+    inner = `<span class="fillbg" style="background:${fillCSS(it.fill)}"></span><span class="cap" style="${fillText(it.fill)}">${label}${it.label.toUpperCase() !== code ? `<small>${code}</small>` : ''}</span>`;
   } else if (it.img)
     inner = `<img src="${it.img}" alt="" draggable="false"><span class="shade"></span><span class="cap">${label}</span>`;
   else inner = `<span class="txt ${sizeClass(it.label)}">${label}</span>`;

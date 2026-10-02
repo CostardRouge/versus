@@ -33,7 +33,7 @@ import {
   setFinaleWho,
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
-import { $, closeModal, doc, narrow, toastAct } from './dom';
+import { $, closeModal, doc, narrow, toastAct, trapTab } from './dom';
 import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
 import { changeTheme } from './header';
 import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
@@ -353,7 +353,9 @@ function onChange(e: Event): void {
 function onKeydown(e: KeyboardEvent): void {
   const modal = $('#modal');
   if (modal && !modal.hidden) {
+    const box = $('.modal-box', modal);
     if (e.key === 'Escape') closeModal(false);
+    else if (e.key === 'Tab' && box) trapTab(e, box);
     return;
   }
   const tg = e.target as HTMLElement;
@@ -389,6 +391,9 @@ function onKeydown(e: KeyboardEvent): void {
     tg.blur();
     return;
   }
+  // Duel shortcuts only where they can't be another control's keys: on the page itself, or in the duel. Arrows on a
+  // tab or a header button must never cast a vote.
+  if (tg !== doc.body && tg !== doc.documentElement && !tg.closest('.duel')) return;
   if (S.route.view === 'board') boardKeydown(e, tg);
   else duelKeydown(e, tg);
 }

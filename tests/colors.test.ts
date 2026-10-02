@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   colorTwin,
+  contrastOf,
   fillCode,
   fillCSS,
   fillInk,
+  fillNeedsHalo,
+  fillText,
   harmonies,
   hexToHsl,
   hslToHex,
@@ -12,7 +15,8 @@ import {
   normHex,
   sameFill,
 } from '../src/core/colors';
-import type { Item } from '../src/core/types';
+import type { Fill, Item } from '../src/core/types';
+import { mulberry32 } from '../src/core/util';
 
 describe('hex parsing', () => {
   it('accepts #rgb and #rrggbb only', () => {
@@ -70,6 +74,34 @@ describe('fills', () => {
   it('picks readable text', () => {
     expect(fillInk({ type: 'solid', colors: ['#111111'] })).toBe('#ffffff');
     expect(fillInk({ type: 'solid', colors: ['#f2a516'] })).toBe('#15171d');
+    // The caption sits at the bottom, over a gradient's last stops, not its average: gold → indigo is dark there.
+    expect(fillInk({ type: 'gradient', colors: ['#f5c542', '#2b1a6e'] })).toBe('#ffffff');
+    expect(fillInk({ type: 'gradient', colors: ['#2ec4b6', '#0b1d3a'] })).toBe('#ffffff');
+  });
+
+  it('reaches 4.5:1 under every caption, with a halo where no ink does on its own', () => {
+    const rng = mulberry32(42);
+    const hex = () =>
+      `#${Math.floor(rng() * 0xffffff)
+        .toString(16)
+        .padStart(6, '0')}`;
+    let halos = 0;
+    for (let i = 0; i < 4000; i++) {
+      const f: Fill = i % 2 ? { type: 'solid', colors: [hex()] } : { type: 'gradient', colors: [hex(), hex(), hex()] };
+      const ink = luminance(fillInk(f));
+      const under = f.type === 'solid' ? f.colors : f.colors.slice(1);
+      const worst = Math.min(...under.map((c) => contrastOf(ink, luminance(c))));
+      const other = luminance(fillInk(f) === '#ffffff' ? '#15171d' : '#ffffff');
+      // The ink chosen is never the worse of the two…
+      expect(worst).toBeGreaterThanOrEqual(Math.min(...under.map((c) => contrastOf(other, luminance(c)))));
+      // …and a caption under 4.5:1 always gets its halo.
+      expect(fillNeedsHalo(f)).toBe(worst < 4.5);
+      if (fillNeedsHalo(f)) {
+        halos++;
+        expect(fillText(f)).toContain('text-shadow');
+      }
+    }
+    expect(halos).toBeGreaterThan(0);
   });
 
   it('describes a fill by its codes', () => {

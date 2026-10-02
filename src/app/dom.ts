@@ -91,16 +91,40 @@ export function ask(opts: {
     okB.className = `btn ${opts.danger ? 'danger' : 'primary'}`;
     cancel.textContent = t('cancel');
     cancel.hidden = opts.cancel === false;
+    const box = $('.modal-box', m);
+    if (body.textContent?.trim()) box?.setAttribute('aria-describedby', 'm-body');
+    else box?.removeAttribute('aria-describedby');
     const prev = doc.activeElement as HTMLElement | null;
+    // The page behind can't be reached (Tab, a screen reader's cursor) while the question is open.
+    $('#app')?.setAttribute('inert', '');
     m.hidden = false;
     modalDone = (v) => {
       m.hidden = true;
       modalDone = null;
+      $('#app')?.removeAttribute('inert');
       prev?.focus();
       resolve(v);
     };
-    setTimeout(() => okB.focus(), 10);
+    // A destructive question starts on Cancel: Enter alone must never delete.
+    setTimeout(() => (opts.danger && !cancel.hidden ? cancel : okB).focus(), 10);
   });
+}
+
+const FOCUSABLE = 'button, [href], input, select, textarea, summary, [tabindex]';
+
+/** Keeps Tab inside an open dialog: from its last control back to its first, and the other way round. */
+export function trapTab(e: KeyboardEvent, box: HTMLElement): void {
+  const all = $$<HTMLElement>(FOCUSABLE, box).filter(
+    (el) => !el.closest('[hidden]') && !(el as HTMLButtonElement).disabled && el.tabIndex >= 0,
+  );
+  const first = all[0];
+  const last = all.at(-1);
+  if (!first || !last) return;
+  const at = doc.activeElement;
+  if (e.shiftKey ? at === first || !box.contains(at) : at === last || !box.contains(at)) {
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  }
 }
 export const closeModal = (v: boolean): void => modalDone?.(v);
 

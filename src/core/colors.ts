@@ -71,9 +71,48 @@ export function fillCSS(f: Fill): string {
   ].join(',');
 }
 
-/** Dark or white text, whichever reads better on the fill. */
+/** WCAG contrast ratio between two luminances (1 to 21). */
+export const contrastOf = (a: number, b: number): number => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+
+const DARK_INK = '#15171d';
+const LIGHT_INK = '#ffffff';
+/** Contrast a caption needs (WCAG AA for normal text). */
+const READABLE = 4.5;
+
+/**
+ * The colors behind a fill's caption, which sits along the bottom: the color itself, or for a gradient (155°,
+ * fillCSS) its stops past the first, which the bottom of the card covers.
+ */
+const captionStops = (f: Fill): string[] => (f.type === 'solid' ? f.colors.slice(0, 1) : f.colors.slice(1));
+
+/** The lowest contrast an ink gets over the colors behind the caption. */
+const worstContrast = (ink: string, f: Fill): number => {
+  const l = luminance(ink);
+  return Math.min(...captionStops(f).map((c) => contrastOf(l, luminance(c))));
+};
+
+/** Dark or white text, whichever reads better everywhere under the caption. */
 export const fillInk = (f: Fill): string =>
-  f.colors.reduce((sum, c) => sum + luminance(c), 0) / f.colors.length > 0.18 ? '#15171d' : '#ffffff';
+  worstContrast(DARK_INK, f) >= worstContrast(LIGHT_INK, f) ? DARK_INK : LIGHT_INK;
+
+/** Whether even the better ink stays under 4.5:1 somewhere under the caption: it then gets a halo. */
+export const fillNeedsHalo = (f: Fill): boolean => worstContrast(fillInk(f), f) < READABLE;
+
+/** The halo that lifts an ink off a mid-tone fill: the other ink, blurred around the letters. */
+export const haloOf = (ink: string): string => (ink === DARK_INK ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.7)');
+
+/** The CSS text-shadow of a caption over a fill: a halo when the fill alone can't carry the ink, else ''. */
+export function fillShadow(f: Fill): string {
+  if (!fillNeedsHalo(f)) return '';
+  const h = haloOf(fillInk(f));
+  return `0 0 2px ${h},0 0 8px ${h}`;
+}
+
+/** CSS for a caption over a fill: its ink, and its halo when it needs one. */
+export function fillText(f: Fill): string {
+  const shadow = fillShadow(f);
+  return `color:${fillInk(f)}${shadow ? `;text-shadow:${shadow}` : ''}`;
+}
 
 export const fillCode = (f: Fill): string => f.colors.map((c) => normHex(c).toUpperCase()).join(' → ');
 

@@ -451,7 +451,8 @@ export function notFoundHtml(url: string): string {
       (function () {
         var p = location.pathname;
         var i = p.indexOf('/app/');
-        if (i < 0) return;
+        // Not under an app folder, or already at a folder that doesn't exist (/fr/app/): the 404 page, no loop.
+        if (i < 0 || p.length === i + 5) return;
         try {
           sessionStorage.setItem('versus-path', p.slice(i + 5) + location.search + location.hash);
         } catch (e) {

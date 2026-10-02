@@ -389,6 +389,23 @@ describe('generated files', () => {
     expect(html).toContain(`href="${URL_}app/"`);
   });
 
+  it('sends a deep path to its app folder once, and never loops on a folder that doesn’t exist', () => {
+    const script = notFoundHtml(URL_).match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
+    const run = (pathname: string) => {
+      const stash = new Map<string, string>();
+      const replaced: string[] = [];
+      const location = { pathname, search: '', hash: '', replace: (to: string) => replaced.push(to) };
+      const sessionStorage = { setItem: (k: string, v: string) => stash.set(k, v) };
+      new Function('location', 'sessionStorage', script)(location, sessionStorage);
+      return { to: replaced[0] ?? null, kept: stash.get(STASH_KEY) ?? null };
+    };
+    expect(run('/versus/app/demo/destinations')).toEqual({ to: '/versus/app/', kept: 'demo/destinations' });
+    expect(run('/fr/app/x')).toEqual({ to: '/fr/app/', kept: 'x' });
+    // That folder isn't the app's either: the page stays, instead of reloading itself forever.
+    expect(run('/fr/app/')).toEqual({ to: null, kept: null });
+    expect(run('/elsewhere')).toEqual({ to: null, kept: null });
+  });
+
   it('adds the Cloudflare headers to the Worker build only', () => {
     expect(files._headers).toBeUndefined();
     const worker = generatedFiles(URL_, { lastmod: '2026-09-30', worker: true });

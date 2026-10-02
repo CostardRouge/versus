@@ -1,4 +1,4 @@
-import { fillCode, fillCSS, fillInk } from '../core/colors.ts';
+import { fillCode, fillCSS, fillText } from '../core/colors.ts';
 import { compute, expected, stability } from '../core/scoring.ts';
 import type { Computed, ItemStats, MethodKey, Ranking } from '../core/types.ts';
 import { esc, hueOf, sizeClass } from '../core/util.ts';
@@ -71,7 +71,7 @@ function cardInner(it: ShowItem, side: 'a' | 'b', lang: Lang): string {
   const tag = `<span class="side-tag" aria-hidden="true">${side.toUpperCase()}</span>`;
   if (isText(it)) return `${tag}<span class="txt ${sizeClass(it.label[lang])}">${label}</span>`;
   if (it.fill) {
-    return `${tag}${mediaHTML(it)}<span class="cap" style="color:${fillInk(it.fill)}">${label}<small>${fillCode(it.fill)}</small></span>`;
+    return `${tag}${mediaHTML(it)}<span class="cap" style="${fillText(it.fill)}">${label}<small>${fillCode(it.fill)}</small></span>`;
   }
   return `${tag}${mediaHTML(it)}<span class="shade"></span><span class="cap">${label}</span>`;
 }

@@ -47,6 +47,8 @@ import { effTab } from './workspace';
 export interface Board {
   alias: string;
   owner: string | null;
+  /** A token from an admin link, sent but not yet confirmed by the server: it is stored only once it is. */
+  candidate: string | null;
   socket: BoardSocket | null;
   conn: Connection | 'unavailable';
   view: BoardView | null;
@@ -87,18 +89,25 @@ let B: Board | null = null;
 /** The board on screen, if any. */
 export const boardState = (): Board | null => B;
 
-/** What to tell the user when the server refuses an action. */
+/**
+ * What to tell the user when the server refuses an action; the queue it sends next puts the duel and the vote count
+ * right again. A refused skip says nothing: its pair simply comes back.
+ */
 function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
   if (code === 'closed') return 'voteClosed';
   if (code === 'final') return 'finalVotes';
-  if (kind !== 'add') return null;
-  const add: Partial<Record<ErrorCode, MsgKey>> = {
-    full: 'boardFull',
-    exists: 'itemExists',
-    too_fast: 'addTooFast',
-    forbidden: 'addNotAllowed',
-  };
-  return add[code] ?? 'actionFailed';
+  if (code === 'rate_limited') return 'tooManyTries';
+  if (kind === 'add') {
+    const add: Partial<Record<ErrorCode, MsgKey>> = {
+      full: 'boardFull',
+      exists: 'itemExists',
+      too_fast: 'addTooFast',
+      forbidden: 'addNotAllowed',
+    };
+    return add[code] ?? 'actionFailed';
+  }
+  if (kind === 'vote') return code === 'too_fast' ? 'voteTooFast' : 'voteNotCounted';
+  return kind === 'undo' || kind === 'reset' ? 'actionFailed' : null;
 }
 
 const ownerErrors: Partial<Record<string, MsgKey>> = {
@@ -120,15 +129,22 @@ const authoring = (b: Board | null): b is Board & { view: BoardView } => !!b?.vi
 
 /**
  * Connects to a board (or keeps the current connection when it is the same one). `wanted` is the duel a shared
- * link asked for: the server serves it first when this voter can still vote on it.
+ * link asked for: the server serves it first when this voter can still vote on it. `candidate` is the token of an
+ * admin link just opened: tried instead of the stored one, and stored only if the server says it is this board's.
  */
-export function enterBoard(alias: string, available: boolean, wanted: [string, string] | null = null): void {
+export function enterBoard(
+  alias: string,
+  available: boolean,
+  wanted: [string, string] | null = null,
+  candidate: string | null = null,
+): void {
   if (B?.alias === alias) return;
   leaveBoard();
-  const owner = loadOwners()[alias] ?? null;
+  const owner = candidate ?? loadOwners()[alias] ?? null;
   const board: Board = {
     alias,
     owner,
+    candidate,
     socket: null,
     conn: available ? 'connecting' : 'unavailable',
     view: null,
@@ -151,19 +167,51 @@ export function enterBoard(alias: string, available: boolean, wanted: [string, s
   };
   B = board;
   resetFinale();
-  if (!available) return;
+  if (available) connect(board, wanted);
+}
+
+/** Opens the board's connection, with the author's token in the hello when there is one. */
+function connect(board: Board, wanted: [string, string] | null = null): void {
   const hello: ClientMessage = {
     t: 'hello',
     voter: S.voter,
-    ...(owner ? { owner } : {}),
+    ...(board.owner ? { owner: board.owner } : {}),
     ...(wanted ? { pair: wanted } : {}),
   };
-  board.socket = new BoardSocket(
-    alias,
+  // Messages of a connection replaced since (a refused admin link) are ignored; the first calls come while it is built.
+  const mine = (): boolean => !socket || board.socket === socket;
+  let socket: BoardSocket | undefined;
+  socket = new BoardSocket(
+    board.alias,
     hello,
-    (m) => onMessage(board, m),
-    (c) => onConnection(board, c),
+    (m) => {
+      if (mine()) onMessage(board, m);
+    },
+    (c) => {
+      if (mine()) onConnection(board, c);
+    },
   );
+  board.socket = socket;
+}
+
+/**
+ * The server's answer to an admin link's token: kept when it is this board's; otherwise the stored token, if any,
+ * is untouched and used again. Returns true when the connection starts over with it.
+ */
+function settleCandidate(board: Board, owner: boolean): boolean {
+  const tried = board.candidate;
+  if (tried === null) return false;
+  board.candidate = null;
+  if (owner) {
+    saveOwner(board.alias, tried);
+    return false;
+  }
+  toast(t('ownerLinkRefused'));
+  board.owner = loadOwners()[board.alias] ?? null;
+  if (!board.owner || board.owner === tried) return false;
+  board.socket?.close();
+  connect(board);
+  return true;
 }
 
 export function leaveBoard(): void {
@@ -193,6 +241,7 @@ function onConnection(board: Board, c: Connection): void {
 function onMessage(board: Board, m: ServerMessage): void {
   if (B !== board) return;
   if (m.t === 'state') {
+    if (settleCandidate(board, m.owner)) return;
     board.view = m.board;
     board.isOwner = m.owner;
     board.mine = m.mine;
@@ -794,19 +843,53 @@ export async function ownerCall<T>(fn: (alias: string, token: string) => Promise
 export const boardStatus = (status: BoardStatus): Promise<unknown> =>
   ownerCall((alias, token) => setBoardStatus(alias, token, status));
 
-/** Deletes the board and brings the crowd's result back as a local ranking. */
+/** An approved picture as the app keeps images: a JPEG data URL (the server takes JPEGs only). */
+async function jpegURL(res: Response): Promise<string> {
+  let bin = '';
+  for (const b of new Uint8Array(await res.arrayBuffer())) bin += String.fromCharCode(b);
+  return `data:image/jpeg;base64,${btoa(bin)}`;
+}
+
+/**
+ * The pictures of a board's items as data URLs, by item id: the local ranking's own when it still has them (sent
+ * for review or not), else the approved picture read from the server. One that can't be read is left out.
+ */
+async function picturesOf(items: readonly Item[], local: Ranking | undefined): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const it of items) {
+    const mine = local?.items.find((i) => i.id === it.id)?.img;
+    if (mine?.startsWith('data:')) out.set(it.id, mine);
+    else if (it.img?.startsWith('/img/')) {
+      try {
+        const res = await fetch(it.img);
+        if (res.ok) out.set(it.id, await jpegURL(res));
+      } catch {
+        /* the item stays as text */
+      }
+    }
+  }
+  return out;
+}
+
+/** Deletes the board and brings the crowd's result back as a local ranking, its pictures kept. */
 export async function boardWithdraw(): Promise<void> {
   const b = B;
   if (!b?.owner) return;
   const ok = await ask({ title: t('withdrawTitle'), body: t('withdrawBody'), ok: t('withdraw'), danger: true });
   if (!ok || B !== b) return;
   b.leaving = true;
+  // The board's pictures go with it: read them first, so the copy keeps them.
+  const pictures = await picturesOf(b.view?.items ?? [], localOf(b.alias));
   const copy = await ownerCall(withdrawBoard);
   if (!copy) {
     b.leaving = false;
     return;
   }
   saveOwner(b.alias, null);
+  copy.items = copy.items.map(({ pic: _, ...it }) => ({
+    ...it,
+    img: pictures.get(it.id) ?? (it.img?.startsWith('data:') ? it.img : null),
+  }));
   let target = localOf(b.alias);
   if (target) {
     target.title = copy.title;

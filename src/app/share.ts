@@ -1,5 +1,5 @@
 import { trackEvent } from '../audience';
-import { fillInk, hslToHex, normHex, rgbOf } from '../core/colors';
+import { fillInk, fillNeedsHalo, haloOf, hslToHex, normHex, rgbOf } from '../core/colors';
 import type { RankingView } from '../core/protocol';
 import { agreement, lastDuelPerPair, ownRanking } from '../core/published';
 import { methodOf, validHistory } from '../core/scoring';
@@ -336,6 +336,22 @@ function drawBadge(ctx: Ctx, P: Palette, text: string, cx: number, cy: number, r
   ctx.fillText(text, cx, cy + r * 0.06);
 }
 
+/**
+ * Draws an item's caption in the ink its card needs: dark or white over a fill (with the halo a mid-tone fill needs,
+ * like the app's cards), white over a picture, the page's ink over a text card.
+ */
+function caption(ctx: Ctx, P: Palette, it: Item, size: number, draw: () => void): void {
+  const ink = it.fill ? fillInk(it.fill) : it.img ? '#ffffff' : P.ink;
+  ctx.save();
+  ctx.fillStyle = ink;
+  if (it.fill && fillNeedsHalo(it.fill)) {
+    ctx.shadowColor = haloOf(ink);
+    ctx.shadowBlur = size * 0.3;
+  }
+  draw();
+  ctx.restore();
+}
+
 /** A podium tile as the end-of-vote page draws it: the item's picture, its name at the bottom, its place. */
 function drawTile(
   ctx: Ctx,
@@ -364,11 +380,9 @@ function drawTile(
     ctx.fillRect(x, y, w, h);
     ctx.restore();
   }
-  const ink = it.fill ? fillInk(it.fill) : it.img ? '#ffffff' : P.ink;
-  ctx.fillStyle = ink;
   const label = fitText(ctx, it.label, w - pad * 2, 3, w * 0.13, w * 0.075, (s) => font(700, s, P.display));
   const height = label.lines.length * label.size * 1.05;
-  lines(ctx, label, x + pad, y + h - pad - height, 1.05);
+  caption(ctx, P, it, label.size, () => lines(ctx, label, x + pad, y + h - pad - height, 1.05));
   if (place !== null) drawBadge(ctx, P, String(place), x + pad + w * 0.07, y + pad + w * 0.07, w * 0.085);
 }
 
@@ -448,10 +462,9 @@ function drawDuelCard(
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
-  ctx.fillStyle = it.fill ? fillInk(it.fill) : it.img ? '#ffffff' : P.ink;
   const label = fitText(ctx, it.label, w - pad * 2, 3, w * 0.17, w * 0.09, (s) => font(700, s, P.display));
   const height = label.lines.length * label.size * 1.05;
-  lines(ctx, label, pad, h - pad - height, 1.05);
+  caption(ctx, P, it, label.size, () => lines(ctx, label, pad, h - pad - height, 1.05));
   drawBadge(ctx, P, side.toUpperCase(), pad + w * 0.06, pad + w * 0.06, w * 0.08, side === 'a' ? P.a : P.b, P.onAccent);
   ctx.restore();
 }

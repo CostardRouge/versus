@@ -122,7 +122,7 @@ beforeAll(async () => {
   vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init: RequestInit) => {
+    vi.fn(async (url: string, init: RequestInit = {}) => {
       // The Popular section asks on its own; here it stays empty and out of the calls.
       if (url.includes('/api/popular')) return Response.json({ boards: [] });
       const headers = (init.headers ?? {}) as Record<string, string>;
@@ -255,6 +255,23 @@ describe('voting', () => {
     ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
     expect($('#toast')?.textContent).toBe('Votes are final on this ranking.');
     expect(($('[data-action="b-undo"]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('says when the server didn’t count a vote, and takes the queue it sends back', async () => {
+    const ws = FakeSocket.last();
+    click('[data-action="b-pick"][data-side="b"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p1', b: 'p2', s: 0 });
+    ws.receive({ t: 'error', code: 'too_fast' });
+    expect($('#toast')?.textContent).toBe('Not so fast: that vote wasn’t counted.');
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+    expect($('.eyebrow')?.textContent).toContain('Your votes: 1');
+    expect($('#b-main')?.dataset.duel).toContain('p1');
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'not_assigned' });
+    expect($('#toast')?.textContent).toBe('That vote wasn’t counted. Try again.');
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
   });
 
   it('follows the keyboard', async () => {
@@ -641,12 +658,14 @@ describe('author', () => {
     expect(stored().find((r) => r.pub)?.title).toBe('Pizzas du vendredi');
   });
 
-  it('withdraws into a local copy with the crowd votes', async () => {
+  it('withdraws into a local copy with the crowd votes, and the board’s pictures', async () => {
+    const pictured = items.map((it, i) => (i === 0 ? { ...it, img: `/img/b/${ALIAS}/p0.jpg` } : it));
+    FakeSocket.last().receive(state({ items: pictured }, true));
     const copy = {
       id: 'x',
       title: 'Pizzas du vendredi',
       method: 'elo',
-      items,
+      items: pictured,
       history: [
         { a: 'p0', b: 'p1', s: 1 },
         { a: 'p1', b: 'p2', s: 0 },
@@ -655,7 +674,7 @@ describe('author', () => {
       created: 1,
       updated: 1,
     };
-    respond = () => ({ status: 200, body: copy });
+    respond = (c) => (c.url.includes('/img/') ? { status: 200, body: 'jpeg' } : { status: 200, body: copy });
     click('[data-action="b-settings"]');
     click('#b-settings [data-action="b-withdraw"]');
     expect($('#m-title')?.textContent).toBe('Withdraw this ranking?');
@@ -665,6 +684,10 @@ describe('author', () => {
     const local = stored().find((r) => r.title === 'Pizzas du vendredi' && r.history.length === 2);
     expect(local?.pub).toBeUndefined();
     expect(local?.method).toBe('elo');
+    // The picture was read before the board (and it) went: the copy keeps it as its own.
+    expect(local?.items[0]?.img).toMatch(/^data:image\/jpeg;base64,/);
+    // The pictured item goes again, so that the copy can be published without pictures further on.
+    click(`#item-list [data-action="remove-item"][data-id="p0"]`);
     expect(location.pathname).toMatch(/^\/r\/\w+\/ranking$/);
     expect($('.results')).not.toBeNull();
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
@@ -678,10 +701,30 @@ describe('links', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
     expect(location.pathname).toBe(`/b/${ALIAS}`);
     expect(location.hash).toBe('');
-    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
     const ws = FakeSocket.last();
     ws.open();
     expect(ws.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
+    // Kept only once the server says the token is this board's.
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
+    ws.receive(state({}, true));
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
+  });
+
+  it('never lets an admin link with a wrong token replace the one this browser keeps', async () => {
+    const wrong = 'c'.repeat(64);
+    history.pushState(null, '', `/b/${ALIAS}#owner=${wrong}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const tried = FakeSocket.last();
+    tried.open();
+    expect(tried.sent[0]).toMatchObject({ t: 'hello', owner: wrong });
+    tried.receive(state({}, false));
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
+    expect($('#toast')?.textContent).toContain('isn’t valid for this ranking');
+    // The connection starts over with the token this browser had.
+    const again = FakeSocket.last();
+    expect(again).not.toBe(tried);
+    again.open();
+    expect(again.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
   });
 
   it('reads an admin link written before paths, and moves it to the board’s address', async () => {

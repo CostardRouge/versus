@@ -244,8 +244,8 @@ const content = (r: Ranking): string =>
 /**
  * Adds a file's content to this browser without ever replacing anything. A ranking whose id is free keeps it
  * (its address stays the same from one device to the other); one that differs from the local version, or
- * takes a demo's id, comes in as a copy. The file's voter id is taken only by a browser that has neither
- * voted nor published, so votes already cast here keep their voter.
+ * takes a demo's id, comes in as a copy. The file's voter id is taken only from a whole browser's backup, by a
+ * browser that has neither voted nor published, so votes already cast here keep their voter.
  */
 export function mergeBackup(
   local: Local,
@@ -276,12 +276,15 @@ export function mergeBackup(
     votes++;
   }
   const fresh = !local.joined.length && !local.ranks.some((r) => r.pub);
+  // Only a whole browser's backup brings a voter id: one whose votes it holds (cards, published boards). A shared
+  // ranking never does, so a file someone gives can't make this browser vote under an id they know.
+  const full = file.joined.length > 0 || Object.keys(file.owners).length > 0;
   return {
     local: {
       ranks,
       owners: { ...file.owners, ...local.owners },
       joined,
-      voter: fresh && file.voter ? file.voter : local.voter,
+      voter: fresh && full && file.voter ? file.voter : local.voter,
     },
     added,
     same,

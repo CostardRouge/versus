@@ -6,3 +6,4 @@ coverage/
 .vite/
 .wrangler/
 .dev.vars
+.claude/worktrees/

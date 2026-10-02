@@ -56,6 +56,20 @@ export function syncURL(mode: 'push' | 'replace' = 'push'): void {
   else history.replaceState(null, '', url.pathname);
 }
 
+/**
+ * Where a path kept by the 404 page leads: under the app's folder on this origin, or nowhere (null). A scheme, a
+ * backslash or a protocol-relative path would name another origin, which the address bar can't take.
+ */
+export function stashedURL(path: string): string | null {
+  try {
+    const root = appRoot();
+    const url = new URL(path.replace(/^[/\\]+/, ''), root);
+    return url.origin === root.origin && url.pathname.startsWith(root.pathname) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** GitHub Pages answers a deep link with 404.html, which keeps the path here and loads the app's folder. */
 export const STASH_KEY = 'versus-path';
 export function takeStash(): string | null {

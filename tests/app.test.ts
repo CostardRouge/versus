@@ -73,6 +73,19 @@ describe('app', () => {
     expect(JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].history).toHaveLength(25);
   });
 
+  it('casts no vote with keys pressed on a tab, only on the page or in the duel', () => {
+    const count = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].history.length;
+    const n = count();
+    const tab = $('.tab[data-tab="results"]') as HTMLElement;
+    for (const key of ['ArrowRight', 'ArrowDown', 's', '=']) {
+      tab.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    }
+    expect(count()).toBe(n);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    vi.advanceTimersByTime(600);
+    expect(count()).toBe(n + 1);
+  });
+
   it('switches scoring method and shows the comparison table', () => {
     click('[data-action="set-method"][data-m="win"]');
     expect($('#method-name')?.textContent).toBe('Simple');
@@ -177,6 +190,55 @@ describe('app', () => {
     expect($('#toast')?.textContent).toBe('All already in the list');
     expect(labels()).toHaveLength(5);
   });
+
+  it('removes an item at once and puts it back in its place, duels included, on Undo', () => {
+    const rank = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]').at(-1);
+    click('.tab[data-tab="duel"]');
+    click('[data-action="pick"][data-side="a"]');
+    vi.advanceTimersByTime(600);
+    const before = rank();
+    const [first] = before.items;
+    click(`#item-list [data-action="remove-item"][data-id="${first.id}"]`);
+    expect(rank().items.map((i: { id: string }) => i.id)).not.toContain(first.id);
+    expect($('#toast')?.textContent).toContain(`“${first.label}” removed.`);
+    click('[data-action="toast-act"]');
+    expect(rank().items).toEqual(before.items);
+    expect(rank().history).toEqual(before.history);
+  });
+
+  it('refuses to rename an item to another item’s label', () => {
+    const inputs = () => [...document.querySelectorAll<HTMLInputElement>('#item-list .row-label')];
+    const [a, b] = inputs();
+    if (!a || !b) throw new Error('missing rows');
+    const label = a.value;
+    a.value = ` ${b.value.toUpperCase()} `;
+    a.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(a.value).toBe(label);
+    expect($('#toast')?.textContent).toBe('This item is already there.');
+  });
+
+  it('asks a destructive question starting on Cancel, keeping Tab inside and the page out of reach', async () => {
+    click('[data-action="back"]');
+    const ranks = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]').length;
+    const n = ranks();
+    click('.rcard [data-action="delete"]');
+    await vi.advanceTimersByTimeAsync(20);
+    expect(document.activeElement?.id).toBe('m-cancel');
+    expect($('#app')?.hasAttribute('inert')).toBe(true);
+    expect($('.modal-box')?.getAttribute('aria-describedby')).toBe('m-body');
+    const tab = (shiftKey = false) =>
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true }));
+    ($('#m-ok') as HTMLElement).focus();
+    tab();
+    expect(document.activeElement?.id).toBe('m-cancel');
+    tab(true);
+    expect(document.activeElement?.id).toBe('m-ok');
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect($('#modal')?.hidden).toBe(true);
+    expect($('#app')?.hasAttribute('inert')).toBe(false);
+    expect(ranks()).toBe(n);
+  });
 });
 
 describe('addresses', () => {
@@ -228,11 +290,18 @@ describe('addresses', () => {
     expect(location.pathname).toBe('/demo/accent/ranking');
     expect(sessionStorage.getItem(STASH_KEY)).toBeNull();
     const origin = location.origin;
-    sessionStorage.setItem(STASH_KEY, '//elsewhere.example/demo/accent');
-    back('/');
-    expect(location.origin).toBe(origin);
-    expect(location.pathname).toBe('/');
-    expect($('h1')?.textContent).toBe('Your rankings');
+    for (const elsewhere of [
+      '//elsewhere.example/demo/accent',
+      'javascript:alert(1)',
+      '\\\\elsewhere.example/x',
+      'http:elsewhere.example',
+    ]) {
+      sessionStorage.setItem(STASH_KEY, elsewhere);
+      back('/');
+      expect(location.origin).toBe(origin);
+      expect(location.pathname).toBe('/');
+      expect($('h1')?.textContent).toBe('Your rankings');
+    }
   });
 });
 

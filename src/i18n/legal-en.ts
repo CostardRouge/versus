@@ -44,7 +44,7 @@ export const legalEn = {
   count1:
     'Visits are counted with <a href="https://umami.is">Umami</a>, self-hosted on the publisher’s own server at <code>insight.steevepommier.com</code>: no third party receives the data, and none of it serves advertising.',
   count2:
-    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, an installation, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
+    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, rankings exported to a file or imported from one (how many), an installation, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
   count3:
     '<b>Never counted:</b> the content of your rankings, their titles or items, the address of a published ranking, the author’s key, your IP address (it gives the country, then is discarded), or anything that could follow you from one site to another. No cookie is set.',
   count4:

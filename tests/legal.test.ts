@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { analyticsConfig, analyticsTag } from '../build/analytics';
@@ -20,6 +20,46 @@ const OPTS = {
 const body = { en: legalBody('en', OPTS), fr: legalBody('fr', OPTS) } as const;
 const placeholders = (v: string): string[] => [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1] ?? '').sort();
 const levels = (html: string) => [...html.matchAll(/<h(\d)[\s>]/g)].map((m) => Number(m[1]));
+
+/** Each event the app counts (src/audience.ts trackEvent), and the words saying so in the legal notice. */
+const COUNTED: Record<string, { en: RegExp; fr: RegExp }> = {
+  'ranking-created': { en: /a ranking created/, fr: /un classement créé/ },
+  'ranking-finished': { en: /created or finished/, fr: /créé ou terminé/ },
+  'board-published': { en: /a ranking published/, fr: /un classement publié/ },
+  'board-joined': { en: /a first vote on a published ranking/, fr: /un premier vote sur un classement publié/ },
+  'board-finished': { en: /every pair voted/, fr: /toutes ses paires votées/ },
+  shared: { en: /shared as an image and how/, fr: /partagé en image et par quel moyen/ },
+  'rankings-exported': { en: /rankings exported to a file/, fr: /classements exportés dans un fichier/ },
+  'rankings-imported': { en: /or imported from one/, fr: /ou importés d’un fichier/ },
+  'app-installed': { en: /an installation/, fr: /une installation/ },
+  chocolatine: { en: /chocolatine debate/, fr: /débat de la chocolatine/ },
+};
+
+/** The names passed to trackEvent anywhere under src/. */
+function trackedEvents(): string[] {
+  const names = new Set<string>();
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const path = resolve(dir, e.name);
+      if (e.isDirectory()) walk(path);
+      else if (e.name.endsWith('.ts')) {
+        for (const m of readFileSync(path, 'utf8').matchAll(/trackEvent\(\s*'([\w-]+)'/g)) names.add(m[1] ?? '');
+      }
+    }
+  };
+  walk(resolve(process.cwd(), 'src'));
+  return [...names].sort();
+}
+
+describe('what the legal notice says is counted', () => {
+  it('names every event the app sends, in both languages', () => {
+    expect(trackedEvents()).toEqual(Object.keys(COUNTED).sort());
+    for (const [name, words] of Object.entries(COUNTED)) {
+      expect(legalEn.count2, name).toMatch(words.en);
+      expect(legalFr.count2, name).toMatch(words.fr);
+    }
+  });
+});
 
 describe('legal notice messages', () => {
   it('French covers exactly the English keys, with the same placeholders and markup', () => {

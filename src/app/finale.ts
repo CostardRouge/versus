@@ -1,4 +1,4 @@
-import { fillCSS, fillInk } from '../core/colors';
+import { fillCSS, fillText } from '../core/colors';
 import type { ItemScore, RankingView } from '../core/protocol';
 import { agreement, crowdCheck, neckAndNeck, ownRanking, totalPairs } from '../core/published';
 import type { BoardStatus, Computed, Duel, Item, MethodKey } from '../core/types';
@@ -36,7 +36,7 @@ export interface FinaleData {
 /** How long the reveal lasts; live updates wait for its end. */
 const PLAY_MS = 4200;
 /** Stands for an item name in a translated sentence, replaced by the highlighted name. */
-const SLOT = '';
+export const SLOT = '';
 
 const podiumSvg =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="11" width="6" height="10" rx="1"/><rect x="9" y="4" width="6" height="17" rx="1"/><rect x="15.5" y="14" width="6" height="7" rx="1"/></svg>';
@@ -95,10 +95,10 @@ function ctxOf(d: FinaleData): Ctx {
 }
 
 const tileStyle = (it: Item): string =>
-  it.fill ? `background:${fillCSS(it.fill)};color:${fillInk(it.fill)}` : `--h:${it.h}`;
+  it.fill ? `background:${fillCSS(it.fill)};${fillText(it.fill)}` : `--h:${it.h}`;
 const highlight = (it: Item): string => `<span class="fin-win" style="${tileStyle(it)}">${esc(it.label)}</span>`;
-/** A translated sentence around a highlighted item name. */
-const sentence = (text: string, it: Item): string => esc(text).replace(SLOT, highlight(it));
+/** A translated sentence around a highlighted item name (the name as it is: `$&` in a label is no pattern). */
+export const sentence = (text: string, it: Item): string => esc(text).replace(SLOT, () => highlight(it));
 const percent = (x: number): number => (x < 0 ? 0 : Math.min(100, Math.round(x)));
 const shortScore = (m: MethodKey, x: ItemScore): string =>
   m === 'win' ? pct(Math.round(x.score * 100)) : String(Math.round(x.score));

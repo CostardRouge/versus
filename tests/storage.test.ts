@@ -10,6 +10,7 @@ import {
   saveJoined,
   savePrefs,
   saveRanks,
+  UNREADABLE_KEY,
 } from '../src/app/storage';
 import { DEFAULT_SETTINGS } from '../src/core/board';
 import { mkItem, mkRank } from '../src/core/model';
@@ -41,6 +42,17 @@ describe('storage', () => {
     r.items.push(mkItem('A'));
     expect(saveRanks([r])).toBe(true);
     expect(loadRanks()).toEqual([r]);
+  });
+
+  it('sets aside a ranking it can’t read instead of breaking the app', () => {
+    const r = mkRank('Test');
+    r.items.push(mkItem('A'));
+    const broken = { id: 'x', title: 'Broken', items: 'nope', history: [] };
+    localStorage.setItem(STORE_KEY, JSON.stringify([broken, r, { id: 'y' }]));
+    const damaged = vi.fn();
+    expect(loadRanks(damaged)).toEqual([r]);
+    expect(damaged).toHaveBeenCalledWith(2);
+    expect(JSON.parse(localStorage.getItem(UNREADABLE_KEY) ?? '[]')).toEqual([broken, { id: 'y' }]);
   });
 
   it('returns null when nothing or garbage is stored', () => {

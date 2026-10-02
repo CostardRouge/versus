@@ -1,4 +1,5 @@
 import { fillCode, sameFill } from './colors';
+import { labelKey } from './list';
 import { mkRank } from './model';
 import { compute, pairKey } from './scoring';
 import type {
@@ -421,12 +422,12 @@ const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 /** Id for an item added after publication, drawn by the server. */
 export const itemId = (bytes: Uint8Array): string => Array.from(bytes, (b) => ID_CHARS[b & 63]).join('');
 
-/** Adds an item to an open board. Refused when full or when the same label is already there. */
+/** Adds an item to an open board. Refused when full or when the same label is already there (`labelKey`). */
 export function addItem(board: SharedBoard, input: NewItem, id: string, now: number): Result<Item> {
   if (board.status !== 'open') return fail('closed');
   if (board.items.length >= LIMITS.items) return fail('full');
-  const key = input.label.toLowerCase();
-  if (board.items.some((i) => i.label.toLowerCase() === key)) return fail('exists');
+  const key = labelKey(input.label);
+  if (board.items.some((i) => labelKey(i.label) === key)) return fail('exists');
   const item: Item = {
     id,
     label: input.label,
@@ -548,8 +549,8 @@ export function editItem(
   const follows = !!it.fill && !!fill && it.label.toUpperCase() === fillCode(it.fill);
   const label = edit.label ?? (follows && fill ? fillCode(fill) : it.label);
   if (label === it.label && fill === it.fill) return ok({ item: it, removed: [] });
-  const key = label.toLowerCase();
-  if (board.items.some((i) => i.id !== id && i.label.toLowerCase() === key)) return fail('exists');
+  const key = labelKey(label);
+  if (board.items.some((i) => i.id !== id && labelKey(i.label) === key)) return fail('exists');
   const item: Item = { ...it, label, fill };
   board.items = board.items.map((i) => (i.id === id ? item : i));
   const removed = edit.reset ? [...board.votes.values()].filter((v) => v.a === id || v.b === id) : [];

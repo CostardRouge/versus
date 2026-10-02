@@ -505,6 +505,12 @@ describe('items after publication', () => {
     expect(b.items).toHaveLength(4);
     expect(lastActivity(b)).toBe(T0 + 5);
     expect(errorOf(addItem(b, { label: 'HAWAII', fill: null, img: null }, 'new2', T0))).toBe('exists');
+    // Spacing and Unicode forms aside, like the add field: two labels that read the same are the same item.
+    value(addItem(b, { label: 'New York', fill: null, img: null }, 'ny', T0));
+    expect(errorOf(addItem(b, { label: 'New  York', fill: null, img: null }, 'ny2', T0))).toBe('exists');
+    value(addItem(b, { label: 'Café', fill: null, img: null }, 'cafe', T0));
+    expect(errorOf(addItem(b, { label: 'Café', fill: null, img: null }, 'cafe2', T0))).toBe('exists');
+    expect(errorOf(editItem(b, 'new1', { label: 'new   york', reset: false }, T0))).toBe('exists');
     const full = board(LIMITS.items);
     expect(errorOf(addItem(full, { label: 'One more', fill: null, img: null }, 'x', T0))).toBe('full');
     setStatus(b, 'closed', T0);

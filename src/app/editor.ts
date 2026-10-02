@@ -162,7 +162,12 @@ export function fileToThumb(file: File): Promise<string> {
         c.width = Math.round(img.width * sc);
         c.height = Math.round(img.height * sc);
         c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
-        resolve(c.toDataURL('image/jpeg', 0.82));
+        // A canvas the browser refuses to read back (SecurityError) must not leave the import waiting forever.
+        try {
+          resolve(c.toDataURL('image/jpeg', 0.82));
+        } catch (e) {
+          reject(e);
+        }
       };
       img.onerror = reject;
       img.src = String(fr.result);

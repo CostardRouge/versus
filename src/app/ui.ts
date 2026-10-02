@@ -1,7 +1,7 @@
 import { buildDemo, DEMOS, relabelDemos } from '../core/demos';
 import { voterId } from '../core/published';
-import { detectLang, type Lang, setLang as setI18nLang } from '../i18n';
-import { initDom } from './dom';
+import { detectLang, type Lang, setLang as setI18nLang, t } from '../i18n';
+import { initDom, toast } from './dom';
 import { bindEvents } from './events';
 import { applyStatic } from './header';
 import { initPwa } from './pwa';
@@ -23,7 +23,7 @@ export function mount(d: Document): void {
   S.voter = loadVoter(() => voterId(crypto.getRandomValues(new Uint8Array(22))));
   const lang: Lang = detectLang(S.prefs.lang, navigator.language);
   setI18nLang(lang);
-  S.ranks = loadRanks() ?? loadLegacyRanks();
+  S.ranks = loadRanks(() => setTimeout(() => toast(t('storageDamaged')), 0)) ?? loadLegacyRanks();
   S.joined = loadJoined();
   for (const demo of DEMOS) {
     if (!S.ranks.some((r) => r.id === demo.id)) S.ranks.push(buildDemo(demo, lang));

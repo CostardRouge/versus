@@ -314,5 +314,8 @@ describe('mergeBackup', () => {
     const published = rank('r1', { pub: { alias: 'Zz3dEf7hJk' } });
     expect(mergeBackup(local({ ranks: [published] }), f, opts).local.voter).toBe('local-voter');
     expect(mergeBackup(local(), file({ joined: [card(ALIAS)] }), opts).local.voter).toBe('local-voter');
+    // A file of rankings alone (a shared one, or one made up) never sets it.
+    expect(mergeBackup(local(), file({ rankings: [rank('r9')], voter: VOTER }), opts).local.voter).toBe('local-voter');
+    expect(mergeBackup(local(), file({ owners: { [ALIAS]: TOKEN }, voter: VOTER }), opts).local.voter).toBe(VOTER);
   });
 });

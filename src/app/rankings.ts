@@ -18,9 +18,9 @@ import { renderList } from './items';
 import { refreshJoined } from './joined';
 import { refreshPopular } from './popular';
 import { online } from './remote';
-import { appRoot, currentPath, routeURL, syncURL, takeStash } from './router';
+import { currentPath, routeURL, stashedURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
-import { saveOwner, savePrefs } from './storage';
+import { savePrefs } from './storage';
 import { setTab, wsHTML } from './workspace';
 
 /** Top-level view switch (gallery, workspace or published board), navigation and actions on whole rankings. */
@@ -179,15 +179,18 @@ export function goBack(): void {
   window.scrollTo?.(0, 0);
 }
 
-/** Opens a published board at its own address, the link to share; `duel` is the pair a shared link asked for. */
+/**
+ * Opens a published board at its own address, the link to share; `duel` is the pair a shared link asked for,
+ * `owner` the token of an admin link just opened.
+ */
 export function openBoard(
   alias: string | undefined,
-  opts: { replace?: boolean; duel?: [string, string] | null } = {},
+  opts: { replace?: boolean; duel?: [string, string] | null; owner?: string | null } = {},
 ): void {
   if (!alias) return;
   S.route = { view: 'board', alias, tab: 'duel' };
   syncURL(opts.replace ? 'replace' : 'push');
-  enterBoard(alias, online(), opts.duel ?? null);
+  enterBoard(alias, online(), opts.duel ?? null, opts.owner ?? null);
   render();
   window.scrollTo?.(0, 0);
 }
@@ -199,8 +202,9 @@ export function openBoard(
  */
 export function routeFromURL(): void {
   const stashed = takeStash();
-  // Leading slashes dropped: the stashed path stays under the app's folder, on this origin.
-  if (stashed !== null) history.replaceState(null, '', new URL(stashed.replace(/^\/+/, ''), appRoot()).href);
+  // The stashed path stays under the app's folder, on this origin; anything else is dropped.
+  const target = stashed === null ? null : stashedURL(stashed);
+  if (target) history.replaceState(null, '', target);
   let owner: string | null = null;
   const legacy = parseBoardHash(location.hash);
   if (legacy) {
@@ -213,13 +217,12 @@ export function routeFromURL(): void {
     // A duel link (`?duel=a.b`): the board opens on that duel; the address loses the query once open.
     const duel = parseDuelQuery(location.search);
     if (owner) {
-      saveOwner(route.alias, owner);
       history.replaceState(null, '', location.pathname);
-      // Reconnect so the server knows this connection is the author's.
+      // Reconnect with the token: the board keeps it only once the server says it is this board's (board.ts).
       leaveBoard();
     } else if (S.route.view === 'board' && S.route.alias === route.alias && !duel) return;
     if (duel) leaveBoard();
-    openBoard(route.alias, { replace: true, duel });
+    openBoard(route.alias, { replace: true, duel, owner });
     return;
   }
   if (route?.view === 'rank') {

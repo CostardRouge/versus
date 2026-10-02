@@ -3,6 +3,8 @@ import {
   fillCode,
   fillCSS,
   fillInk,
+  fillShadow,
+  fillText,
   harmonies,
   hexToHsl,
   hslToHex,
@@ -70,7 +72,7 @@ function cpHTML(it: Item, f: Fill): string {
     )
     .join('');
   return `<p class="cp-label">${t('cpTitle')}</p>
-    <div class="cp-preview" id="cp-preview" style="background:${fillCSS(f)};color:${fillInk(f)}"><span>${fillCode(f)}</span></div>
+    <div class="cp-preview" id="cp-preview" style="background:${fillCSS(f)};${fillText(f)}"><span>${fillCode(f)}</span></div>
     <div class="cp-seg" role="radiogroup">
       <button type="button" role="radio" aria-checked="${!isG}" data-action="cp-type" data-type="solid">${t('solid')}</button>
       <button type="button" role="radio" aria-checked="${isG}" data-action="cp-type" data-type="gradient">${t('gradientT')}</button>
@@ -166,6 +168,7 @@ function applyFill(commit: boolean): void {
   if (pv) {
     pv.style.background = css;
     pv.style.color = fillInk(it.fill);
+    pv.style.textShadow = fillShadow(it.fill);
     const span = pv.firstElementChild;
     if (span) span.textContent = fillCode(it.fill);
   }

@@ -1,4 +1,4 @@
-import { freshLabels, parseList } from '../core/list';
+import { freshLabels, labelKey, parseList } from '../core/list';
 import { getItem, mkItem } from '../core/model';
 import { compute, methodOf } from '../core/scoring';
 import type { Item, Ranking } from '../core/types';
@@ -7,7 +7,7 @@ import { closeColor, cp } from './color';
 import { $$, toast } from './dom';
 import { fileToThumb, imageFiles, imageName, type Row, renderRows, type Typed, takeColor, typed } from './editor';
 import { fmtScore } from './format';
-import { cur, save, stat } from './state';
+import { cur, S, save, stat } from './state';
 import { effTab, renderMain } from './workspace';
 
 /** A local ranking's items in the shared editor (editor.ts): live-sorted list, and edits that apply at once. */
@@ -116,17 +116,34 @@ function dropItems(r: Ranking, ids: Set<string>): void {
   if (cur() === r) afterItemsChange(r, prev);
   else save();
 }
+/** Removes an item at once; Undo puts it back in its place with its id, so its duels count again. */
 export function removeItem(id: string | undefined): void {
   const r = cur();
-  if (r && id) dropItems(r, new Set([id]));
+  const at = r && id ? r.items.findIndex((i) => i.id === id) : -1;
+  const it = r?.items[at];
+  if (!r || !it) return;
+  dropItems(r, new Set([it.id]));
+  toast(t('itemRemovedNamed', { label: it.label }), {
+    label: t('undoToast'),
+    run: () => {
+      if (!S.ranks.includes(r) || getItem(r, it.id)) return;
+      const prev = r.items.length;
+      r.items.splice(Math.min(at, prev), 0, it);
+      r.updated = Date.now();
+      if (cur() === r) afterItemsChange(r, prev);
+      else save();
+    },
+  });
 }
 
-/** Commits a label edited in the side list; an empty label is reverted. */
+/** Commits a label edited in the side list; an empty label, or another item's, is reverted. */
 export function renameItem(r: Ranking, input: HTMLInputElement): void {
   const it = input.dataset.id ? getItem(r, input.dataset.id) : undefined;
   if (!it) return;
   const v = input.value.trim();
-  if (!v) {
+  const key = labelKey(v);
+  if (!v || r.items.some((o) => o !== it && labelKey(o.label) === key)) {
+    if (v && v !== it.label) toast(t('itemExists'));
     input.value = it.label;
     return;
   }
