@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { SHORTCUTS } from '../build/site';
 import { DEMOS } from '../src/core/demos';
 import { adminHash, parseBoardHash } from '../src/core/published';
-import { ownerFragment, parseOwnerFragment, parseRoute, type Route, routePath, trackedPath } from '../src/core/route';
+import {
+  lastRanking,
+  ownerFragment,
+  parseOwnerFragment,
+  parseRoute,
+  parseShortcut,
+  type Route,
+  routePath,
+  trackedPath,
+} from '../src/core/route';
 
 const ALIAS = 'Ab3dEf7hJk';
 const TOKEN = 'a'.repeat(64);
@@ -66,5 +76,26 @@ describe('trackedPath', () => {
     expect(trackedPath({ view: 'rank', id: 'x7Kq2', tab: 'duel' })).toBe('r/:id');
     expect(trackedPath({ view: 'rank', id: 'x7Kq2', tab: 'items' })).toBe('r/:id/items');
     expect(trackedPath({ view: 'board', alias: ALIAS })).toBe('b/:alias');
+  });
+});
+
+describe('icon shortcuts', () => {
+  it('reads the shortcut the manifest declares, and nothing else', () => {
+    for (const s of SHORTCUTS) expect(parseShortcut(`?shortcut=${s.key}`)).toBe(s.key);
+    expect(parseShortcut('?shortcut=new&x=1')).toBe('new');
+    expect(parseShortcut('')).toBeNull();
+    expect(parseShortcut('?shortcut=delete')).toBeNull();
+    expect(parseShortcut('?duel=a.b')).toBeNull();
+  });
+
+  it('resumes the ranking changed last, never a demo', () => {
+    const ranks = [
+      { id: 'a', updated: 5 },
+      { id: 'demo', updated: 9, demo: true },
+      { id: 'b', updated: 7 },
+    ];
+    expect(lastRanking(ranks)?.id).toBe('b');
+    expect(lastRanking([{ id: 'demo', updated: 9, demo: true }])).toBeNull();
+    expect(lastRanking([])).toBeNull();
   });
 });

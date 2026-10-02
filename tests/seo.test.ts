@@ -36,6 +36,7 @@ import {
   PAGES,
   type PageKey,
   pngIcon,
+  SHORTCUTS,
   TITLE,
   TITLES,
 } from '../build/site';
@@ -335,6 +336,20 @@ describe('icons', () => {
     for (const icon of icons) expect(existsSync(publicFile(icon.src.replace('./', ''))), icon.src).toBe(true);
     expect(icons.filter((i) => i.purpose === 'maskable')).toHaveLength(1);
     expect(icons.some((i) => i.purpose.includes('any') && i.purpose.includes('maskable'))).toBe(false);
+  });
+});
+
+describe('icon shortcuts', () => {
+  it('open the app with their key, with icons that exist at their declared size', () => {
+    const shortcuts = manifest().shortcuts as { url: string; icons: { src: string; sizes: string }[] }[];
+    expect(shortcuts.map((s) => s.url)).toEqual(SHORTCUTS.map((s) => `./app/?shortcut=${s.key}`));
+    for (const s of shortcuts) {
+      expect(s.icons.length).toBeGreaterThan(0);
+      for (const icon of s.icons) {
+        const [w, h] = pngFile(icon.src.replace('./', ''));
+        expect(`${w}x${h}`, icon.src).toBe(icon.sizes);
+      }
+    }
   });
 });
 

@@ -26,7 +26,10 @@ import {
   type PageKind,
   pngIcon,
   REPOSITORY,
+  SHORTCUT_SIZES,
+  SHORTCUTS,
   type SiteLang,
+  shortcutIcon,
   TITLES,
   VERIFICATION,
   VERSIONS,
@@ -331,6 +334,18 @@ export function manifest(): Record<string, unknown> {
       // Its own file, not "any maskable": launchers crop to a circle, so the mark sits inside the safe zone.
       { src: `./${ICONS.maskable}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
+    shortcuts: SHORTCUTS.map((s) => ({
+      name: s.name,
+      short_name: s.short,
+      description: s.description,
+      url: `./app/?shortcut=${s.key}`,
+      icons: SHORTCUT_SIZES.map((size) => ({
+        src: `./${shortcutIcon(s.icon, size)}`,
+        sizes: `${size}x${size}`,
+        type: 'image/png',
+        purpose: 'any',
+      })),
+    })),
     share_target: {
       action: './app/share-target',
       method: 'POST',

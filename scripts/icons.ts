@@ -13,7 +13,19 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { Resvg } from '@resvg/resvg-js';
 import satori from 'satori';
-import { CARD_COPY, COLORS, ICONS, LANGUAGES, NAME, OG_IMAGES, pngIcon, type SiteLang } from '../build/site.ts';
+import {
+  CARD_COPY,
+  COLORS,
+  ICONS,
+  LANGUAGES,
+  NAME,
+  OG_IMAGES,
+  pngIcon,
+  SHORTCUT_SIZES,
+  SHORTCUTS,
+  type SiteLang,
+  shortcutIcon,
+} from '../build/site.ts';
 import { hueOf } from '../src/core/util.ts';
 
 const require = createRequire(import.meta.url);
@@ -94,6 +106,19 @@ async function mark(): Promise<string> {
 async function tile(scale: number): Promise<string> {
   const glyphs = await vsGlyphs(64, 27 * scale);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="32" height="64" fill="${COLORS.a}"/><rect x="32" width="32" height="64" fill="${COLORS.b}"/>${glyphs}</svg>`;
+}
+
+/**
+ * A shortcut's icon: the mark's two halves, full bleed like the maskable icon (launchers show shortcuts in their
+ * own circle), and a sign drawn as a path, inside the middle 80 %: a plus for a new ranking, a play sign to resume.
+ */
+function shortcut(sign: 'plus' | 'play'): string {
+  const ink = COLORS.onAccent;
+  const path =
+    sign === 'plus'
+      ? `<path d="M32 19v26M19 32h26" stroke="${ink}" stroke-width="7" stroke-linecap="round"/>`
+      : `<path d="M26 20.5v23a2.2 2.2 0 0 0 3.3 1.9l18.4-11.5a2.2 2.2 0 0 0 0-3.8L29.3 18.6a2.2 2.2 0 0 0-3.3 1.9z" fill="${ink}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="32" height="64" fill="${COLORS.a}"/><rect x="32" width="32" height="64" fill="${COLORS.b}"/>${path}</svg>`;
 }
 
 /** ICO container holding PNG images (Vista and later; every current browser). */
@@ -305,4 +330,6 @@ for (const size of ICONS.png) write(pngIcon(size), png(markSvg, size));
 write(ICONS.maskable, png(await tile(0.8), 512));
 write(ICONS.apple, png(await tile(1), ICONS.appleSize));
 write(ICONS.ico, ico(ICONS.icoSizes.map((size) => ({ size, data: png(markSvg, size) }))));
+for (const s of SHORTCUTS)
+  for (const size of SHORTCUT_SIZES) write(shortcutIcon(s.icon, size), png(shortcut(s.sign), size));
 for (const lang of LANGUAGES) write(OG_IMAGES[lang].path, png(await socialCard(markSvg, lang), OG_IMAGES[lang].width));

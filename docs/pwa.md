@@ -15,6 +15,7 @@ Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable 
   - **Updates are offered, never forced** (D78): once a new worker is installed and waiting, a bar above the header says a new version is ready, with **Reload** and **Later**. Reload asks the worker to take over, then the page reloads. Later hides the bar; the new version starts once every tab of the app is closed. An open app checks for a new version when it comes back to the foreground, at most hourly.
   - **Install button** in the header, shown only when the browser offers installation (`beforeinstallprompt`: Chrome and Edge on desktop and Android). It replaces Chrome's mini-infobar on Android. A toast confirms the installation.
   - **Persistent storage** (`navigator.storage.persist()`) requested in the installed app only: installed apps get it silently, while a tab in Firefox would show a prompt.
+- **Icon shortcuts** (`SHORTCUTS` in `build/site.ts`, D123): a long press on the installed app's icon (Android), or a right click (desktop), offers **New ranking** and **Resume your ranking**. Each opens `app/?shortcut=new|last`; the app reads it once and drops it from the address (`parseShortcut()` in `src/core/route.ts`). Resume opens the ranking changed last, or its board if it is published.
 - **Share target** (`share_target` in the manifest, `src/sw/sw.ts`, `src/app/inbox.ts`, D121, D122): Versus appears in the system's share sheet once installed (Android, installed Chrome; not iOS).
   - The share is a POST to `app/share-target` (title, text, link, files: images and Versus files). The service worker answers it: it puts the share in a cache of its own, `versus-inbox` (replacing one never picked up; 60 files at most), then redirects to `app/`.
   - At startup the app picks the inbox up and empties it. A Versus file is imported. Photos become image items; text is read like a paste: a list gives its items, a link alone gives the page's title.
@@ -59,7 +60,8 @@ On the deployed site, in Chrome:
 4. On an Android phone: open the site in Chrome, tap Install in the header, open Versus from the home screen, turn on airplane mode, open it again.
 5. Images: add a few dozen photos to a ranking, then DevTools → Application: Local storage `versus-v1` holds `idb:…` references, IndexedDB → `versus` → `images` holds the photos. Reload: the photos are there. (Tested with Playwright: 120 photos, 26 MB, `localStorage` at 15 kB, no warning.)
 6. Sharing to Versus, on Android with the app installed: in the gallery app, select a few photos → Share → Versus. The app opens and asks where to add them. Same from a notes app with a list. A manifest change reaches an installed app when Chrome updates it (up to a day); reinstalling applies it at once.
-7. On an iPhone: in Safari, open the app, tap Export under your rankings and save the file to Files. Share → Add to Home Screen, open Versus from the icon: an app window, with a note saying the rankings from Safari aren't here. Tap Import, pick the file: the rankings appear.
+7. Shortcuts: long-press the installed app's icon on Android (right-click it on desktop): New ranking opens a new ranking, Resume opens the last one. A manifest change reaches an installed app when Chrome updates it.
+8. On an iPhone: in Safari, open the app, tap Export under your rankings and save the file to Files. Share → Add to Home Screen, open Versus from the icon: an app window, with a note saying the rankings from Safari aren't here. Tap Import, pick the file: the rankings appear.
 
 These steps were run in Chromium with Playwright while building this (served under `/versus/` like GitHub Pages, with two builds to simulate a deploy); the script is a starting point for the end-to-end tests on the roadmap.
 
@@ -75,7 +77,7 @@ These steps were run in Chromium with Playwright while building this (served und
 1. ~~**Export / import**, then **`display: standalone`**~~: done (D97–D101).
 2. ~~**Images in IndexedDB**~~: done (D118–D120).
 3. ~~**Share target**~~: done (D121, D122).
-4. **Manifest shortcuts** ("New ranking") and **screenshots** for Chrome's richer install dialog.
+4. ~~**Manifest shortcuts**~~: done (D123). **Screenshots** for Chrome's richer install dialog remain.
 5. **Notifications** for published boards (Web Push) once the backend is deployed: a board closes, results are revealed. On iOS, only for home-screen apps, which are now `standalone`.
 6. **Capacitor shell**, only if the stores are ever wanted (D75): same build, native push and app links.
 

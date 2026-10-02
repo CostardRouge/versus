@@ -232,6 +232,7 @@ export const en = {
   cantRead: 'Couldn’t read these images',
   imagesRankTitle: 'Images · {date}',
   sharedRankTitle: 'Shared · {date}',
+  nothingToResume: 'No ranking to resume yet',
   shareTitle: 'Add to Versus',
   shareInto: 'Add {what} to:',
   shareNew: 'A new ranking',

@@ -235,6 +235,7 @@ export const fr: Messages = {
   cantRead: 'Impossible de lire ces images',
   imagesRankTitle: 'Images · {date}',
   sharedRankTitle: 'Partagé · {date}',
+  nothingToResume: 'Aucun classement à reprendre pour l’instant',
   shareTitle: 'Ajouter à Versus',
   shareInto: 'Ajouter {what} à :',
   shareNew: 'Un nouveau classement',

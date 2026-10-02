@@ -46,7 +46,7 @@ build/                build-time only (never shipped): site.ts = every sitewide 
                       language, colors, icons, social cards, author); seo.ts = head tags per page (hreflang), JSON-LD, manifest,
                       robots, sitemap, llms.txt, _headers; seo-plugin.ts = the Vite plugin filling each page; pwa.ts + pwa-plugin.ts = build the service worker
                       as sw.js with its precache list and content version; analytics.ts = the Umami settings written into each page's head
-scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch) and og.png / og-fr.png from build/site.ts
+scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch, the icon shortcuts') and og.png / og-fr.png from build/site.ts
 public/               icons and the social card (generated, committed); favicon.svg is a legacy address
 src/main.ts           imports the fonts and styles, starts audience measurement, calls mount(document)
 src/audience.ts       audience measurement in the browser (docs/analytics.md): loads Umami only for visitors who don't decline
@@ -65,7 +65,8 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   protocol.ts         HTTP/WebSocket messages and views shared by the app and the Worker, the admin list and view, Popular
   templates.ts        the official templates (D110): fixed EN/FR lists, their slugs and pages, what the Worker publishes
   route.ts            the app's addresses (D92): demo/<slug>, r/<id>, b/<alias>, tab; parse and write, author fragment;
-                      trackedPath() = the address audience measurement records (ids and aliases replaced)
+                      trackedPath() = the address audience measurement records (ids and aliases replaced); parseShortcut()
+                      and lastRanking() for the icon shortcuts (?shortcut=new|last, D123)
   published.ts        client helpers: what can be published, publish request, links, agreement, neck and neck
   share.ts            sharing as an image: card formats and specs (ranking, crowd, duo, compare, duel), duel links (?duel=a.b),
                       the keys, addresses and checks of the cards links unfurl with
