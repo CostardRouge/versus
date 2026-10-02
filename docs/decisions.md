@@ -59,6 +59,7 @@ Decisions made while designing Versus (conversation of 2026-09-29, prototyped as
 | D26 | Biome, strict TS, Vitest with a 90% coverage floor on `src/core` | Decided | Plus a jsdom smoke test of the whole app. |
 | D27 | Single CI workflow; deploy to GitHub Pages from `main` only after checks pass | Decided | Relative `base: './'`, so the build works under `/versus/`. Dependabot weekly for npm and actions; `@types/node` majors ignored to match Node 22. |
 | D28 | MIT license | Decided | © 2026 Steeve Pommier. |
+| D128 | End-to-end tests with Playwright (`e2e/`, `npm run e2e`): real browsers against the real Worker in Wrangler's local runtime, serving the app built as deployed (`--mode worker`: publishing, the service worker), with a fresh registry per run. Chromium on desktop and as a phone (Pixel 7, touch). They run in CI on every pull request and push, and deploys wait for them | Decided | What the jsdom tests can't see: layout (the color popover on screen, no sideways scroll on a phone), pointer and touch gestures, files dropped, the service worker offline and its notifications, several people on one board over WebSockets, the moderation page against the real admin API. Each browser of a test is a person of its own (storage, client address for the per-IP limits), nothing loaded from other sites, measurement off. One retry in CI. Chromium only for now: Playwright's WebKit is the next step toward Safari, real iPhones stay a by-hand check. 16 scenarios, about 20 seconds. |
 
 ## Going online
 

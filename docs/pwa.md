@@ -67,7 +67,7 @@ On the deployed site, in Chrome:
 9. Notifications (once the Worker has its keys): open someone else's open board, tap **Notify me**, allow; have its author close the vote: the notification shows the board's title, and a tap opens the board. As the author, tick the box in the board's settings: the fifth voter brings a notification. DevTools → Application → Service workers → *Push* sends a test message (it must be JSON with `title`, `body`, `path`, `tag` to show).
 10. On an iPhone: in Safari, open the app, tap Export under your rankings and save the file to Files. Share → Add to Home Screen, open Versus from the icon: an app window, with a note saying the rankings from Safari aren't here. Tap Import, pick the file: the rankings appear.
 
-These steps were run in Chromium with Playwright while building this (served under `/versus/` like GitHub Pages, with two builds to simulate a deploy); the script is a starting point for the end-to-end tests on the roadmap.
+These steps were run in Chromium with Playwright while building this (served under `/versus/` like GitHub Pages, with two builds to simulate a deploy). The end-to-end tests (`e2e/pwa.spec.ts`, D128) now check the offline app and the notifications on every pull request; the update with two builds is still by hand.
 
 ## Limits
 

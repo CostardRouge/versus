@@ -54,6 +54,7 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run worker:deploy` | Build, deploy to Cloudflare and apply the D1 migrations (needs a Cloudflare account) |
 | `npm run icons` | Redraw the favicons, app icons and social card into `public/` from `build/site.ts` |
 | `npm run screenshots` | Take the install dialog's screenshots of the app into `public/` (needs Playwright's Chromium: `npx playwright install chromium`, or `CHROMIUM_PATH`) |
+| `npm run e2e` | End-to-end tests: Playwright's Chromium against the app and the Worker run locally (`npx playwright install chromium` once, or `CHROMIUM_PATH`) |
 | `npm run vapid` | Print a key pair for notifications, to set as the Worker's secrets `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` |
 
 ## Project structure
@@ -89,7 +90,7 @@ tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Work
 
 ## CI and deployment
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, a production build, and the end-to-end tests (Playwright). On `main`, once both pass, the build is deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
 
 The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 

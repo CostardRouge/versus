@@ -24,6 +24,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 npm install
 npm run dev          # Vite dev server
 npm run check        # lint + typecheck + tests + build (what CI runs); run before every commit
+npm run e2e          # end-to-end tests: Playwright against the app and the Worker run locally (CHROMIUM_PATH here)
 npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/functions/statements, ≥ 75% branches)
 npm run format       # Biome auto-fix
 npm run icons        # redraw the icons and the social card into public/ (commit the files)
@@ -33,7 +34,7 @@ npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1
 npm run worker:deploy  # build, deploy the Worker, apply D1 migrations (needs a Cloudflare login)
 ```
 
-Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script, Playwright for the screenshots script (dev only). No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D75).
+Node 22 (`.nvmrc`). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script, Playwright (`@playwright/test`) for the end-to-end tests and the screenshots script (dev only). No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D75).
 
 ## Code map
 
@@ -152,6 +153,11 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       + inbox-ui.test.ts (shares picked up: lists, the choice, a Versus file) + push.test.ts (RFC 8291 example, VAPID,
                       subscriptions, messages) + push-ui.test.ts (bells, the author's box, a tapped notification); worker.test.ts
                       runs a fake push service and decrypts what the Worker sends
+e2e/                  end-to-end tests (D128): serve.ts builds the app in worker mode and runs the Worker locally (fresh state, the
+                      tests' admin token and keys), fixtures.ts (each browser a person: storage, client address, nothing external),
+                      local.spec.ts (duels, gestures, paste, colors, drops, export, addresses), boards.spec.ts (voters live, closing,
+                      admin link, withdrawal, moderation), pwa.spec.ts (offline, notifications), phone.spec.ts (touch, no sideways scroll)
+playwright.config.ts  projects desktop (Desktop Chrome) and phone (Pixel 7, phone.spec.ts); the server through webServer
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 
@@ -174,7 +180,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Audience measurement** (`docs/analytics.md`): views and events go through `src/audience.ts`, never through the tracker's automatic tracking or `data-umami-event` attributes. An event's data is anonymous facts only (method, counts, flags), never a title, a label, an id or an alias. The legal notice lists what is counted: change an event, a tracked path or what is stored, and update `src/i18n/legal-*.ts` in the same commit.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in the HTML shells or `public/`: each page's head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The home pages (`/`, `/fr/`) are the indexed ones, linked by hreflang, with every word in their static HTML and one h1; the app (`/app/`) is `noindex` and keeps its own static text (`src/app/about.ts`). Links between pages are relative (the site also lives under github.io/versus/). A redesigned icon or social card gets new file names (caches key on the URL). Modules the Vite config reaches import with their `.ts` extension (D90). Details in `docs/seo.md`.
-- Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
+- Commit only when `npm run check` passes; after a change to the UI, the Worker or the service worker, run `npm run e2e` too (in Claude Code's cloud sandbox with `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`: its Chromium is older than the one Playwright installs). CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build, and the end-to-end tests, on PRs and pushes; once both pass it deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
 
 ## Key domain rules
 

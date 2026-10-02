@@ -10,7 +10,7 @@
  * Needs a Chromium for Playwright: `npx playwright install chromium` once, or CHROMIUM_PATH=/path/to/chrome.
  */
 
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 import { createServer } from 'vite';
 import { SCREEN_SIZES, SCREENSHOTS } from '../build/site.ts';
 

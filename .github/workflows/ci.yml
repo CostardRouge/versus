@@ -61,9 +61,44 @@ jobs:
         with:
           path: dist
 
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WRANGLER_SEND_METRICS: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # The browser matching the installed Playwright, with the system libraries it needs.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Real browsers against the real Worker in Wrangler's local runtime (playwright.config.ts, e2e/serve.ts).
+      - name: End-to-end tests
+        run: npm run e2e
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   deploy:
     name: Deploy to GitHub Pages
-    needs: verify
+    needs: [verify, e2e]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -84,7 +119,7 @@ jobs:
 
   deploy-worker:
     name: Deploy to Cloudflare
-    needs: verify
+    needs: [verify, e2e]
     # Off until the repository has the CLOUDFLARE_ACCOUNT_ID variable (and the CLOUDFLARE_API_TOKEN secret).
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_ACCOUNT_ID != ''
     runs-on: ubuntu-latest
