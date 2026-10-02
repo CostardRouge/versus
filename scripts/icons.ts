@@ -121,6 +121,15 @@ function shortcut(sign: 'plus' | 'play'): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="32" height="64" fill="${COLORS.a}"/><rect x="32" width="32" height="64" fill="${COLORS.b}"/>${path}</svg>`;
 }
 
+/**
+ * A notification's badge: Android keeps only its alpha and tints it, so the mark becomes a white disc with "vs"
+ * cut out of it.
+ */
+async function badge(): Promise<string> {
+  const glyphs = (await vsGlyphs(64, 27)).replace(/fill="[^"]*"/g, 'fill="#000"');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><mask id="m"><circle cx="32" cy="32" r="32" fill="#fff"/>${glyphs}</mask><circle cx="32" cy="32" r="32" fill="#fff" mask="url(#m)"/></svg>`;
+}
+
 /** ICO container holding PNG images (Vista and later; every current browser). */
 function ico(images: { size: number; data: Buffer }[]): Buffer {
   const header = Buffer.alloc(6);
@@ -330,6 +339,7 @@ for (const size of ICONS.png) write(pngIcon(size), png(markSvg, size));
 write(ICONS.maskable, png(await tile(0.8), 512));
 write(ICONS.apple, png(await tile(1), ICONS.appleSize));
 write(ICONS.ico, ico(ICONS.icoSizes.map((size) => ({ size, data: png(markSvg, size) }))));
+write(ICONS.badge, png(await badge(), ICONS.badgeSize));
 for (const s of SHORTCUTS)
   for (const size of SHORTCUT_SIZES) write(shortcutIcon(s.icon, size), png(shortcut(s.sign), size));
 for (const lang of LANGUAGES) write(OG_IMAGES[lang].path, png(await socialCard(markSvg, lang), OG_IMAGES[lang].width));

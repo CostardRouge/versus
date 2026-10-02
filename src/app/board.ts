@@ -9,7 +9,7 @@ import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { authorAdd, authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
 import { closeColor, cp } from './color';
-import { $, announce, ask, copyText, reduced, thumbHTML, toast } from './dom';
+import { $, $$, announce, ask, bellSvg, copyText, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML } from './duel';
 import { addFormHTML, typed } from './editor';
 import {
@@ -24,6 +24,7 @@ import {
 } from './finale';
 import { fmtCrowd } from './format';
 import { flushJoined, markGone, noteBoard } from './joined';
+import { forgetPush, preparePush, pushAsked, pushReady, togglePush } from './push';
 import { makeOwn, open } from './rankings';
 import {
   ApiError,
@@ -152,6 +153,10 @@ export function enterBoard(alias: string, available: boolean, wanted: [string, s
   B = board;
   resetFinale();
   if (!available) return;
+  // The bells show once the server and the service worker answered.
+  void preparePush().then((ok) => {
+    if (ok && B === board) renderBell();
+  });
   const hello: ClientMessage = {
     t: 'hello',
     voter: S.voter,
@@ -182,6 +187,7 @@ function onConnection(board: Board, c: Connection): void {
   if (c === 'gone' && !board.leaving) {
     board.view = null;
     markGone(board.alias);
+    forgetPush(board.alias);
   }
   if (!board.view) renderBoard();
   else {
@@ -209,6 +215,8 @@ function onMessage(board: Board, m: ServerMessage): void {
       local.title = m.board.title;
       save();
     }
+    // Closed: the board told the voters who asked, and forgot them.
+    if (m.board.status === 'closed') forgetPush(board.alias, 'voter');
     if (m.owner && board.pictures === null) {
       board.pictures = false;
       void fetchConfig().then((c) => {
@@ -326,6 +334,7 @@ function boardHTML(b: Board): string {
       <span class="b-head-acts">
         <button class="btn sm primary" type="button" data-action="share-board">${t('share')}</button>
         <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
+        <span class="b-bell">${bellHTML(b)}</span>
         ${mine}
       </span>
     </div>
@@ -596,6 +605,7 @@ const finaleData = (b: Board, v: BoardView): FinaleData => ({
   crowd: b.shown,
   owner: b.isOwner,
   view: resultView(),
+  bell: bellHTML(b),
 });
 
 /** In place updates wait for the end of the reveal; a view switch or an opening doesn't. */
@@ -669,6 +679,34 @@ export function boardChange(tg: HTMLInputElement): boolean {
     return true;
   }
   return authorChange(tg);
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+/**
+ * The voter's bell: a notification when the vote closes (src/app/push.ts). Only where notifications can be
+ * offered, and on a vote that can close: open, not one of the site's own boards.
+ */
+function bellHTML(b: Board): string {
+  const v = b.view;
+  if (!v || b.isOwner || v.status !== 'open' || v.official || !pushReady()) return '';
+  const on = pushAsked(b.alias, 'voter');
+  return `<button class="btn sm ghost bell" type="button" data-action="b-notify" aria-pressed="${on}" title="${esc(t(on ? 'notifyOnHint' : 'notifyMeHint'))}">${bellSvg}<span>${t(on ? 'notifyOn' : 'notifyMe')}</span></button>`;
+}
+
+/** Every bell on screen (the board's head, the end-of-vote page), as things stand. */
+export function renderBell(): void {
+  const b = B;
+  for (const el of $$('.b-bell')) el.innerHTML = b ? bellHTML(b) : '';
+}
+
+/** The bell was tapped: straight to the browser's prompt, which needs the tap. */
+export function boardNotify(): void {
+  const b = B;
+  if (!b?.view) return;
+  void togglePush(b.alias, 'voter').then(() => {
+    if (B === b) renderBell();
+  });
 }
 
 // ─── Items ──────────────────────────────────────────────────────────────────
@@ -801,6 +839,7 @@ export async function boardWithdraw(): Promise<void> {
     return;
   }
   saveOwner(b.alias, null);
+  forgetPush(b.alias);
   let target = localOf(b.alias);
   if (target) {
     target.title = copy.title;
@@ -827,6 +866,7 @@ export function boardUnlink(): void {
   if (!b || !local) return;
   delete local.pub;
   saveOwner(b.alias, null);
+  forgetPush(b.alias);
   save();
   leaveBoard();
   open(local.id, 'duel', { replace: true });

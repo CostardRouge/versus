@@ -39,6 +39,7 @@ Referrer: the other site the visitor came from (origin and path only), then, ins
 | `rankings-imported` | A file brought something new | `rankings` (added), `same` (already here), `votes` (cards added) |
 | `share-received` | Another app shared to Versus (D121) | `what` (`images`, `text` or `file`), `items` (count) |
 | `shortcut-used` | A shortcut of the installed app's icon opened it (D123) | `which` (`new` or `last`) |
+| `notify-on` | Notifications of a published board turned on (D126) | `role` (`voter` or `owner`) |
 | `chocolatine` | A side taken at the bottom of the home page | `side`: `chocolatine` or `pain-au-chocolat` |
 
 Umami adds on its own: browser, OS, device type, screen size, language, country (from the IP, which it doesn't store).

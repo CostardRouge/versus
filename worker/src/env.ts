@@ -15,6 +15,14 @@ export interface Env {
   ADMIN_TOKEN?: string;
   /** `review`: authors may publish pictures, shown once the admin approved them. Unset or anything else: no pictures. */
   IMAGES_UPLOAD?: string;
+  /**
+   * The server's key pair for notifications (VAPID, base64url: the public point and the private scalar), made
+   * with `npm run vapid`. Both set: voters and authors may ask for notifications. Unset: notifications are off.
+   */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  /** `1` lets push endpoints on localhost through (tests). */
+  PUSH_LOCAL?: string;
   /** Turnstile secret key. Unset: publishing needs no check (local development). */
   TURNSTILE_SECRET?: string;
   /** Inactivity TTL override, in seconds (tests use a few seconds). Defaults to TTL_DAYS. */

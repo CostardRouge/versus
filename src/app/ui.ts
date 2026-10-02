@@ -6,8 +6,9 @@ import { bindEvents } from './events';
 import { applyStatic } from './header';
 import { hasImageRefs, loadImages, tidyImages } from './images';
 import { receiveShare } from './inbox';
+import { checkPush, listenPush } from './push';
 import { initPwa } from './pwa';
-import { routeFromURL } from './rankings';
+import { openBoard, routeFromURL } from './rankings';
 import { S, save } from './state';
 import { loadJoined, loadLegacyRanks, loadPrefs, loadRanks, loadVoter } from './storage';
 
@@ -46,6 +47,11 @@ function start(): void {
   routeFromURL();
   // Photos, text or a file another app shared to Versus (the manifest's share_target).
   void receiveShare();
+  // A tapped notification opens its board here; the subscription is checked once the app is up.
+  listenPush((alias) => openBoard(alias));
   // Unused images, once the app is up: never in the way of the first render.
-  setTimeout(() => void tidyImages(S.ranks), 5000);
+  setTimeout(() => {
+    void tidyImages(S.ranks);
+    void checkPush();
+  }, 5000);
 }

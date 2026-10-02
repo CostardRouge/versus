@@ -56,6 +56,19 @@ import {
   type Unfurl,
   unfurlOf,
 } from '../../src/core/protocol';
+import {
+  milestoneOf,
+  newMilestone,
+  PUSH_AUDIENCE,
+  PUSH_BATCH,
+  PUSH_MAX,
+  PUSH_TTL,
+  type PushEvent,
+  type PushMessage,
+  parsePushSubscription,
+  parseUnsubscribe,
+  pushMessage,
+} from '../../src/core/push';
 import { pairKey } from '../../src/core/scoring';
 import type {
   BoardMeta,
@@ -77,6 +90,7 @@ import { deleteCards } from './cards';
 import type { Env } from './env';
 import { deletePicture, deletePrefix, picturePath } from './pictures';
 import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
+import { type Sent, sendPush, type Vapid, vapidKeys } from './webpush';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
 const BROADCAST_MS = 1000;
@@ -109,6 +123,30 @@ CREATE TABLE IF NOT EXISTS reports (
   t INTEGER NOT NULL
 ) WITHOUT ROWID;`;
 
+// Notifications (docs/published-boards.md#notifications): the browsers subscribed, one row per role, and the
+// messages waiting to go out, sent by the alarm a batch at a time. Created when the board wakes, like reports.
+const PUSH_SCHEMA = `
+CREATE TABLE IF NOT EXISTS push (
+  endpoint TEXT NOT NULL,
+  role TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  lang TEXT NOT NULL,
+  t INTEGER NOT NULL,
+  PRIMARY KEY (endpoint, role)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY,
+  endpoint TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  msg TEXT NOT NULL,
+  ttl INTEGER NOT NULL
+);`;
+
+/** Delay between two batches of notifications. */
+const PUSH_GAP_MS = 500;
+
 interface StoredMeta extends BoardMeta {
   alias: string;
   ownerHash: string;
@@ -116,6 +154,16 @@ interface StoredMeta extends BoardMeta {
 
 type VoteRow = { voter: string; a: string; b: string; s: number; t: number; seq: number };
 type ReportRow = { voter: string; reason: ReportReason; note: string; t: number };
+type OutboxRow = { id: number; endpoint: string; p256dh: string; auth: string; msg: string; ttl: number };
+
+/**
+ * What a board remembers about its notifications: the last voters milestone its author was told about, and the
+ * site's address, which signs the messages (VAPID's contact).
+ */
+interface PushState {
+  milestone: number;
+  site: string;
+}
 
 async function sha256(s: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -147,6 +195,7 @@ export class BoardObject extends DurableObject<Env> {
   private dirty = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private lastBroadcast = 0;
+  private push: PushState = { milestone: 0, site: '' };
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -171,9 +220,12 @@ export class BoardObject extends DurableObject<Env> {
       this.seq = row.seq + 1;
     }
     this.sql.exec(REPORTS_SCHEMA);
+    this.sql.exec(PUSH_SCHEMA);
     const reports: Report[] = this.sql
       .exec<ReportRow>('SELECT voter, reason, note, t FROM reports ORDER BY t')
       .toArray();
+    const push = this.sql.exec<{ v: string }>("SELECT v FROM meta WHERE k = 'push'").toArray()[0];
+    if (push) this.push = JSON.parse(push.v) as PushState;
     this.ownerHash = ownerHash;
     // Boards stored before the registry existed have no alias: they simply stay out of it.
     this.alias = alias ?? '';
@@ -319,6 +371,7 @@ export class BoardObject extends DurableObject<Env> {
     this.cache = null;
     this.sql.exec(SCHEMA);
     this.sql.exec(REPORTS_SCHEMA);
+    this.sql.exec(PUSH_SCHEMA);
     this.ctx.storage.transactionSync(() => {
       this.saveMeta(board);
       this.sql.exec("INSERT INTO meta (k, v) VALUES ('items', ?)", JSON.stringify(board.items));
@@ -441,6 +494,144 @@ export class BoardObject extends DurableObject<Env> {
     return { ok: true, value: true };
   }
 
+  // ─── Notifications (docs/published-boards.md#notifications) ──────────────
+
+  /**
+   * A browser asks to be notified: a voter when the vote closes (an open board that can close: not the site's own),
+   * the author (their token) of the crowd's milestones and the pictures' review. `site` is the address the request
+   * came to, the messages' contact.
+   */
+  async subscribePush(token: string, raw: unknown, site: string): Promise<Result<true>> {
+    if (!this.board || !this.alias || !vapidKeys(this.env)) return { ok: false, error: 'not_found' };
+    const input = parsePushSubscription(raw, this.env.PUSH_LOCAL === '1');
+    if (!input.ok) return input;
+    const s = input.value;
+    if (s.role === 'owner') {
+      const owned = await this.ownedBoard(token);
+      if (!owned.ok) return owned;
+    }
+    const board = this.board;
+    if (!board) return { ok: false, error: 'not_found' };
+    if (s.role === 'voter' && board.official) return { ok: false, error: 'forbidden' };
+    if (s.role === 'voter' && board.status !== 'open') return { ok: false, error: 'closed' };
+    const known = this.sql
+      .exec('SELECT 1 FROM push WHERE endpoint = ? AND role = ?', s.endpoint, s.role)
+      .toArray().length;
+    const count = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM push').one().n;
+    if (!known && count >= PUSH_MAX) return { ok: false, error: 'full' };
+    this.sql.exec(
+      `INSERT INTO push (endpoint, role, p256dh, auth, lang, t) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (endpoint, role) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, lang = excluded.lang, t = excluded.t`,
+      s.endpoint,
+      s.role,
+      s.p256dh,
+      s.auth,
+      s.lang,
+      Date.now(),
+    );
+    // An author who turns notifications on hears about the next milestone, not one passed long ago.
+    const milestone =
+      s.role === 'owner' ? Math.max(this.push.milestone, milestoneOf(board.voters.size)) : this.push.milestone;
+    if (milestone !== this.push.milestone || site !== this.push.site) {
+      this.push = { milestone, site };
+      this.savePush();
+    }
+    return { ok: true, value: true };
+  }
+
+  /** A browser turns notifications off, for one role or both. No token: knowing the endpoint is enough. */
+  unsubscribePush(raw: unknown): Result<true> {
+    if (!this.board) return { ok: false, error: 'not_found' };
+    const input = parseUnsubscribe(raw);
+    if (!input.ok) return input;
+    const { endpoint, role } = input.value;
+    if (role) this.sql.exec('DELETE FROM push WHERE endpoint = ? AND role = ?', endpoint, role);
+    else this.sql.exec('DELETE FROM push WHERE endpoint = ?', endpoint);
+    return { ok: true, value: true };
+  }
+
+  private savePush(): void {
+    this.sql.exec(
+      "INSERT INTO meta (k, v) VALUES ('push', ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v",
+      JSON.stringify(this.push),
+    );
+  }
+
+  /** The server's keys and the site's address, when notifications are on. */
+  private vapid(): Vapid | null {
+    const keys = vapidKeys(this.env);
+    return keys ? { ...keys, subject: this.push.site } : null;
+  }
+
+  /**
+   * Queues an event's notification for everyone it is for, each in their language; the alarm sends them right
+   * after, a batch at a time.
+   */
+  private notify(board: SharedBoard, e: PushEvent): void {
+    if (!this.alias || !this.vapid()) return;
+    const rows = this.sql
+      .exec<{ endpoint: string; p256dh: string; auth: string; lang: string }>(
+        'SELECT endpoint, p256dh, auth, lang FROM push WHERE role = ?',
+        PUSH_AUDIENCE[e.kind],
+      )
+      .toArray();
+    if (!rows.length) return;
+    const about = { alias: this.alias, title: board.title };
+    this.ctx.storage.transactionSync(() => {
+      for (const r of rows) {
+        const msg = pushMessage(e, about, r.lang === 'fr' ? 'fr' : 'en');
+        this.sql.exec(
+          'INSERT INTO outbox (endpoint, p256dh, auth, msg, ttl) VALUES (?, ?, ?, ?, ?)',
+          r.endpoint,
+          r.p256dh,
+          r.auth,
+          JSON.stringify(msg),
+          PUSH_TTL[e.kind],
+        );
+      }
+    });
+    this.ctx.waitUntil(this.ctx.storage.setAlarm(Date.now()));
+  }
+
+  /**
+   * Sends a batch of the queued notifications. A push service that no longer knows a subscription (404, 410) gets
+   * it forgotten; any other failure loses that one message. True when more are waiting.
+   */
+  private async flushPush(): Promise<boolean> {
+    const rows = this.sql
+      .exec<OutboxRow>('SELECT id, endpoint, p256dh, auth, msg, ttl FROM outbox ORDER BY id LIMIT ?', PUSH_BATCH)
+      .toArray();
+    if (!rows.length) return false;
+    const vapid = this.vapid();
+    const sent = await Promise.all(
+      rows.map(
+        (r): Promise<Sent> =>
+          vapid
+            ? sendPush(r, JSON.parse(r.msg) as PushMessage, r.ttl, vapid).catch((): Sent => 'failed')
+            : Promise.resolve('failed'),
+      ),
+    );
+    // Withdrawn or taken down meanwhile: its storage is gone.
+    if (!this.board) return false;
+    this.ctx.storage.transactionSync(() => {
+      rows.forEach((r, i) => {
+        this.sql.exec('DELETE FROM outbox WHERE id = ?', r.id);
+        if (sent[i] === 'gone') this.sql.exec('DELETE FROM push WHERE endpoint = ?', r.endpoint);
+      });
+    });
+    return this.sql.exec('SELECT 1 FROM outbox LIMIT 1').toArray().length > 0;
+  }
+
+  /** After a vote: the author hears when the crowd passes a milestone (once each). */
+  private voted(board: SharedBoard): void {
+    if (!this.vapid()) return;
+    const m = newMilestone(board.voters.size, this.push.milestone);
+    if (m === null) return;
+    this.push = { ...this.push, milestone: m };
+    this.savePush();
+    this.notify(board, { kind: 'voters', voters: m });
+  }
+
   // ─── Admin (the Worker checks the admin token before calling these) ──────
 
   /** Everything, ranking included, whatever the visibility, with the flags and the reports. */
@@ -493,6 +684,7 @@ export class BoardObject extends DurableObject<Env> {
     const r = decidePicture(board, id, decision, picturePath(this.alias, id));
     if (!r.ok) return r;
     this.itemsChanged(board, []);
+    this.notify(board, { kind: 'picture', label: r.value.label, ok: decision === 'ok' });
     return r;
   }
 
@@ -504,10 +696,16 @@ export class BoardObject extends DurableObject<Env> {
   }
 
   private applyStatus(board: SharedBoard, status: BoardStatus): Result<BoardStatus> {
+    const closing = board.status === 'open' && status === 'closed';
     setStatus(board, status, Date.now());
     this.saveMeta(board);
     this.pushState(board);
     this.touchRegistry(board, true);
+    if (closing) {
+      // The voters who asked are told, once: their subscriptions have served.
+      this.notify(board, { kind: 'closed' });
+      this.sql.exec("DELETE FROM push WHERE role = 'voter'");
+    }
     return { ok: true, value: status };
   }
 
@@ -570,14 +768,20 @@ export class BoardObject extends DurableObject<Env> {
     this.board = null;
     this.cache = null;
     this.ownerHash = '';
+    this.push = { milestone: 0, site: '' };
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
   }
 
+  /** Notifications first (the next batch a moment later); then the board's expiry, the alarm's other use. */
   override async alarm(): Promise<void> {
+    if (!this.board) return;
+    const more = await this.flushPush();
     const board = this.board;
+    if (!board) return;
+    if (more) return this.ctx.storage.setAlarm(Date.now() + PUSH_GAP_MS);
     // The site's own boards never expire.
-    if (!board || board.official) return;
+    if (board.official) return;
     const due = lastActivity(board) + this.ttlMs();
     if (Date.now() >= due) await this.destroy('expired');
     else await this.ctx.storage.setAlarm(due);
@@ -639,7 +843,10 @@ export class BoardObject extends DurableObject<Env> {
     let r: Result<unknown>;
     if (msg.t === 'vote') {
       const res = sessionVote(board, session, msg.a, msg.b, msg.s, now, C, Math.random);
-      if (res.ok) this.saveVote(res.value.vote);
+      if (res.ok) {
+        this.saveVote(res.value.vote);
+        this.voted(board);
+      }
       r = res;
     } else if (msg.t === 'skip') {
       r = sessionSkip(board, session, msg.a, msg.b, now, C, Math.random);

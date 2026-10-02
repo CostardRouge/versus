@@ -1,6 +1,6 @@
 # Installable, offline app (PWA)
 
-Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable and usable offline without a framework or a PWA library. Native apps, if store presence is ever wanted, would be a Capacitor shell around this same build.
+Last updated 2026-10-02. Web first (D75): Versus is a web app, made installable and usable offline without a framework or a PWA library. Native apps, if store presence is ever wanted, would be a Capacitor shell around this same build.
 
 ## What is in place
 
@@ -21,6 +21,7 @@ Last updated 2026-09-30. Web first (D75): Versus is a web app, made installable 
   - The share is a POST to `app/share-target` (title, text, link, files: images and Versus files). The service worker answers it: it puts the share in a cache of its own, `versus-inbox` (replacing one never picked up; 60 files at most), then redirects to `app/`.
   - At startup the app picks the inbox up and empties it. A Versus file is imported. Photos become image items; text is read like a paste: a list gives its items, a link alone gives the page's title.
   - The user picks where: a new ranking (the shared title, or "Images · date" / "Shared · date") or one of their eight latest; with none of their own, a new one directly. Demos and published rankings aren't offered.
+- **Notifications of published boards** (Web Push, D125–D127, `docs/published-boards.md#notifications`): a voter's bell (told when the vote closes), the author's box in the board's settings (voters coming in, pictures reviewed). The app subscribes on that tap (`src/app/push.ts`), the Worker encrypts and sends, the service worker shows the notification (the site's icon, a white badge for Android's status bar, `badge-96.png`) and, on a tap, brings the app forward on the board (a message to the open page, no reload) or opens a new window. Off until the Worker has its keys (`npm run vapid`, `docs/online-architecture.md#notifications`).
 - **Images in IndexedDB** (`src/core/images.ts`, `src/app/images.ts`, D118–D120):
   - An item's image is a data URL in memory, as always. In `localStorage` it becomes a reference, `idb:<key>`, once IndexedDB (database `versus`, store `images`, a record `{ key, data, t }` per image) holds it. The key comes from the content: an image used twice is stored once.
   - **Saving** (`save()` in `src/app/state.ts`): images already stored are written as references; a new one is written inline, stored, then the rankings are written again, smaller. The storage warning waits for that second write. An import stores its images first, then writes the rankings.
@@ -47,7 +48,7 @@ The app lived at the site's root until the home page took it (D84). What keeps w
 | --- | --- | --- | --- |
 | Chrome, Edge (desktop) | The header button or the address bar icon; own window | Yes | |
 | Chrome (Android) | The header button; icon on the home screen, own window | Yes | Same storage as the browser: rankings are there. |
-| Safari (iOS, iPadOS) | Share → Add to Home Screen; the icon opens an app window | Yes | No install prompt. The home-screen app has its own storage, apart from Safari's: empty, it explains how to bring the rankings (Export in Safari, Import in the app). An icon added before D98 still opens Safari; adding it again gives the app window. |
+| Safari (iOS, iPadOS) | Share → Add to Home Screen; the icon opens an app window | Yes | No install prompt. The home-screen app has its own storage, apart from Safari's: empty, it explains how to bring the rankings (Export in Safari, Import in the app). An icon added before D98 still opens Safari; adding it again gives the app window. Notifications only in the home-screen app (iOS 16.4 and later); Safari's tabs show no bell. |
 | Firefox (desktop) | No | Yes | |
 | Firefox (Android) | Menu → Install | Yes | |
 
@@ -63,7 +64,8 @@ On the deployed site, in Chrome:
 6. Sharing to Versus, on Android with the app installed: in the gallery app, select a few photos → Share → Versus. The app opens and asks where to add them. Same from a notes app with a list. A manifest change reaches an installed app when Chrome updates it (up to a day); reinstalling applies it at once.
 7. Shortcuts: long-press the installed app's icon on Android (right-click it on desktop): New ranking opens a new ranking, Resume opens the last one. A manifest change reaches an installed app when Chrome updates it.
 8. Install dialog: on an Android phone that hasn't installed Versus, open the app in Chrome and tap Install: the dialog shows the screenshots and the description.
-9. On an iPhone: in Safari, open the app, tap Export under your rankings and save the file to Files. Share → Add to Home Screen, open Versus from the icon: an app window, with a note saying the rankings from Safari aren't here. Tap Import, pick the file: the rankings appear.
+9. Notifications (once the Worker has its keys): open someone else's open board, tap **Notify me**, allow; have its author close the vote: the notification shows the board's title, and a tap opens the board. As the author, tick the box in the board's settings: the fifth voter brings a notification. DevTools → Application → Service workers → *Push* sends a test message (it must be JSON with `title`, `body`, `path`, `tag` to show).
+10. On an iPhone: in Safari, open the app, tap Export under your rankings and save the file to Files. Share → Add to Home Screen, open Versus from the icon: an app window, with a note saying the rankings from Safari aren't here. Tap Import, pick the file: the rankings appear.
 
 These steps were run in Chromium with Playwright while building this (served under `/versus/` like GitHub Pages, with two builds to simulate a deploy); the script is a starting point for the end-to-end tests on the roadmap.
 
@@ -80,7 +82,7 @@ These steps were run in Chromium with Playwright while building this (served und
 2. ~~**Images in IndexedDB**~~: done (D118–D120).
 3. ~~**Share target**~~: done (D121, D122).
 4. ~~**Manifest shortcuts** and **screenshots**~~: done (D123, D124).
-5. **Notifications** for published boards (Web Push) once the backend is deployed: a board closes, results are revealed. On iOS, only for home-screen apps, which are now `standalone`.
+5. ~~**Notifications** for published boards (Web Push)~~: done (D125–D127). On iOS, only for home-screen apps, which are now `standalone`.
 6. **Capacitor shell**, only if the stores are ever wanted (D75): same build, native push and app links.
 
 Done since: the native share sheet (Web Share API) with the result drawn as an image, from the Ranking tab, a board, a duel and the end-of-vote page (D110, D111).

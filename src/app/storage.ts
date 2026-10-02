@@ -1,5 +1,6 @@
 import { VOTER_RE } from '../core/board';
 import { parseJoined } from '../core/joined';
+import { type PushPrefs, parsePushPrefs } from '../core/push';
 import type { Joined, Ranking } from '../core/types';
 import type { Lang } from '../i18n';
 
@@ -153,5 +154,19 @@ export function saveJoined(list: Joined[]): void {
     storage()?.setItem(JOINED_KEY, JSON.stringify(list));
   } catch {
     /* the cards come back on the next vote */
+  }
+}
+
+export const PUSH_KEY = 'versus-push';
+
+/** The boards this browser asked notifications of (src/app/push.ts). */
+export const loadPush = (): PushPrefs => parsePushPrefs(readJSON(PUSH_KEY));
+
+export function savePush(p: PushPrefs): void {
+  try {
+    if (Object.keys(p.boards).length) storage()?.setItem(PUSH_KEY, JSON.stringify(p));
+    else storage()?.removeItem(PUSH_KEY);
+  } catch {
+    /* the bells show off; the boards still notify */
   }
 }

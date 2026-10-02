@@ -1,6 +1,7 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { cacheVersion, injectPrecache, PRECACHE_MARK, pageAddress, precacheList, VERSION_MARK } from '../build/pwa';
-import { ICONS } from '../build/site';
+import { ICONS, pngIcon } from '../build/site';
 
 const BUILD = [
   'index.html',
@@ -106,5 +107,15 @@ describe('injectPrecache', () => {
   it('refuses a worker without its placeholders', () => {
     expect(() => injectPrecache(`const l=${PRECACHE_MARK};`, [], 'x')).toThrow(VERSION_MARK);
     expect(() => injectPrecache(`const v=${VERSION_MARK};`, [], 'x')).toThrow(PRECACHE_MARK);
+  });
+});
+
+describe('notifications', () => {
+  it('show the site’s icon and badge, files drawn by npm run icons', () => {
+    const sw = readFileSync('src/sw/sw.ts', 'utf8');
+    for (const file of [pngIcon(192), ICONS.badge]) {
+      expect(sw).toContain(`at('${file}')`);
+      expect(existsSync(`public/${file}`), file).toBe(true);
+    }
   });
 });

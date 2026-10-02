@@ -28,7 +28,7 @@ export const legalEn = {
 
   deviceTitle: 'On your device',
   device1:
-    'Your rankings, their items (images included), your duels and your preferences (language, theme, display choices) are kept in your browser’s storage (local storage, and IndexedDB for images), on this device only. So are, if you use published rankings, an anonymous voter id (a random string), the keys of the rankings you published and the cards under “Your votes”.',
+    'Your rankings, their items (images included), your duels and your preferences (language, theme, display choices) are kept in your browser’s storage (local storage, and IndexedDB for images), on this device only. So are, if you use published rankings, an anonymous voter id (a random string), the keys of the rankings you published, the cards under “Your votes” and which rankings you asked to be notified about.',
   device2:
     'The installed app also keeps its own files in the browser’s cache to work offline: files, never your data, except for a moment what you share to it from another app, until it opens. None of this is sent anywhere, except what you publish, or a file you export yourself. To erase it, delete your rankings in the app, or clear this site’s data in your browser’s settings.',
 
@@ -39,12 +39,14 @@ export const legalEn = {
     'A published ranking is deleted when its author withdraws it, or after {days} days without activity. Anyone with its link can see it and vote, so don’t publish anything personal. The author’s link carries a key after the <code>#</code>, which browsers never send to a server: keep it to yourself.',
   boards3:
     'Reporting a ranking sends the reason you pick, your note if any, and the same anonymous voter id, so that one browser counts once; the publisher reads reports to decide whether to take a ranking down, hide it from the site’s lists or leave it. Nothing else is stored about you.',
+  boards4:
+    'If you ask to be notified (when a vote closes, or as its author, when voters come in and pictures are reviewed), your browser gives the ranking an address at its push service (Google, Mozilla, Apple or Microsoft, depending on the browser) and two keys; the ranking keeps them, with the language to write in, until the vote closes, you turn notifications off, or the ranking is deleted. Each notification is encrypted for your browser: the push service carries it without being able to read it.',
 
   countTitle: 'Audience measurement',
   count1:
     'Visits are counted with <a href="https://umami.is">Umami</a>, self-hosted on the publisher’s own server at <code>insight.steevepommier.com</code>: no third party receives the data, and none of it serves advertising.',
   count2:
-    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, an installation, a shortcut of its icon used, a file exported or imported and something shared to Versus from another app, with counts only, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
+    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, an installation, a shortcut of its icon used, a file exported or imported, something shared to Versus from another app and notifications turned on, with counts only, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
   count3:
     '<b>Never counted:</b> the content of your rankings, their titles or items, the address of a published ranking, the author’s key, your IP address (it gives the country, then is discarded), or anything that could follow you from one site to another. No cookie is set.',
   count4:

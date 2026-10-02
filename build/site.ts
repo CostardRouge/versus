@@ -158,6 +158,9 @@ export const ICONS = {
   maskable: 'icon-maskable-512.png',
   apple: 'apple-touch-icon.png',
   appleSize: 180,
+  /** A notification's badge (src/sw/sw.ts): the mark as a white silhouette, which Android tints in its status bar. */
+  badge: 'badge-96.png',
+  badgeSize: 96,
   /** Old addresses still answered (with the current drawing) but no longer declared. */
   legacy: ['favicon.svg'],
 } as const;

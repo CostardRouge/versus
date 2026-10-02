@@ -2521,6 +2521,17 @@ body.dropping .drop-overlay {
   flex-wrap: wrap;
   gap: 8px 16px;
 }
+/* The voter's bell (notified at the closing): its slot takes no room while empty. */
+.b-bell {
+  display: contents;
+}
+.bell[aria-pressed="true"] {
+  border-color: var(--a);
+  color: var(--a);
+}
+.b-notify {
+  margin: 4px 0 0;
+}
 /* Reporting: a quiet link at the end of the side column, a small form in the modal. */
 .b-report {
   margin: 18px 0 0;

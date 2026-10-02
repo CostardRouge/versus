@@ -11,6 +11,9 @@
  * boards API, other origins and anything else but GET reach the network untouched. The app (app/) opens from
  * the cache; the home pages (the root, fr/) come from the network when there is one, so they are always
  * current, and from the cache offline.
+ *
+ * It also shows the notifications of published boards the Worker sends (src/core/push.ts) and, on a tap, opens
+ * the board in the app: the open one if there is one, a new window otherwise.
  */
 
 declare const self: ServiceWorkerGlobalScope;
@@ -36,6 +39,18 @@ const SHARE_PATH = 'app/share-target';
 const INBOX = `${PREFIX}inbox`;
 /** As many files as one drop takes (items.ts). */
 const SHARE_FILES = 60;
+/** The notifications' icon and badge (ICONS in build/site.ts; the badge is a white silhouette Android tints). */
+const ICON = at('icon-192.png');
+const BADGE = at('badge-96.png');
+/** A notification as the Worker sends it (PushMessage in src/core/push.ts). */
+interface PushMessage {
+  title: string;
+  body: string;
+  path: string;
+  tag: string;
+}
+/** A path of the app (`app/b/<alias>`): a notification never opens anything else. */
+const APP_PATH = /^app\/[\w/-]*$/;
 
 self.addEventListener('install', (event) => {
   // `reload` skips the HTTP cache, which could still hold the previous deploy's page.
@@ -74,6 +89,50 @@ self.addEventListener('fetch', (event) => {
   }
   if (PRECACHED.has(url.origin + url.pathname) || path.startsWith('assets/')) event.respondWith(file(req, event));
 });
+
+self.addEventListener('push', (event) => {
+  const msg = readPush(event.data);
+  if (!msg) return;
+  event.waitUntil(
+    self.registration.showNotification(msg.title, {
+      body: msg.body,
+      tag: msg.tag,
+      icon: ICON,
+      badge: BADGE,
+      data: { path: msg.path },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const path = (event.notification.data as { path?: unknown } | null)?.path;
+  event.waitUntil(openApp(typeof path === 'string' && APP_PATH.test(path) ? path : 'app/'));
+});
+
+/** A message as the Worker sends it (PushMessage in src/core/push.ts); anything else is not shown. */
+function readPush(data: PushMessageData | null): PushMessage | null {
+  try {
+    const x = data?.json() as Partial<PushMessage> | undefined;
+    if (!x || typeof x.title !== 'string' || typeof x.body !== 'string' || typeof x.tag !== 'string') return null;
+    if (typeof x.path !== 'string' || !APP_PATH.test(x.path)) return null;
+    return { title: x.title, body: x.body, path: x.path, tag: x.tag };
+  } catch {
+    return null;
+  }
+}
+
+/** The app's window comes forward and opens the view itself, without reloading (src/app/push.ts); or a new one. */
+async function openApp(path: string): Promise<void> {
+  const url = at(path);
+  const app = (await self.clients.matchAll({ type: 'window' })).find((c) => c.url.startsWith(SHELL));
+  if (app) {
+    await app.focus().catch(() => app);
+    app.postMessage({ t: 'open', path });
+    return;
+  }
+  await self.clients.openWindow(url);
+}
 
 /** The stored page, or the network if the cache was cleared. */
 async function page(req: Request): Promise<Response> {

@@ -25,6 +25,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 - **Export and import:** save your rankings and votes in a file, or one ranking to send, and open them in another browser, on another device or in the installed app.
 - Rankings stay in the browser (`localStorage`); only what you publish is sent. Visits are counted with a self-hosted, cookie-free Umami, never loaded for visitors who decline (a switch on the [legal notice](https://versus.steevepommier.com/legal/), Do Not Track, Global Privacy Control), and never with a ranking's content or id (see [`docs/analytics.md`](docs/analytics.md)).
 - **Published boards**: publish a ranking, share the link, and let a crowd vote in real time (on versus.steevepommier.com; the GitHub Pages copy has no backend). See [`docs/published-boards.md`](docs/published-boards.md).
+- **Notifications** (Web Push, sent by the Worker with WebCrypto only): a voter is told when a vote closes, an author as voters come in and when a picture is reviewed; asked on a tap, never on arrival (see [`docs/published-boards.md#notifications`](docs/published-boards.md#notifications)).
 - **Share as an image**: your ranking, the crowd's, you against the crowd, or a single duel, drawn in the browser in post, story or landscape format and handed to the system share sheet, the clipboard or a download. A board's link unfurls with its own card, a duel link with its two items.
 - **Moderation**: visitors report a board (anonymously, with a reason); the publisher's page at `/admin/` lists boards with their reports, hides or features them, removes items and takes boards down (see [`docs/published-boards.md#moderation`](docs/published-boards.md#moderation)).
 - **Pictures through review** (off by default): when the publisher turns them on, a published ranking's pictures are sent for review and shown once approved from the moderation page; until then the items show as text.
@@ -53,6 +54,7 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run worker:deploy` | Build, deploy to Cloudflare and apply the D1 migrations (needs a Cloudflare account) |
 | `npm run icons` | Redraw the favicons, app icons and social card into `public/` from `build/site.ts` |
 | `npm run screenshots` | Take the install dialog's screenshots of the app into `public/` (needs Playwright's Chromium: `npx playwright install chromium`, or `CHROMIUM_PATH`) |
+| `npm run vapid` | Print a key pair for notifications, to set as the Worker's secrets `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` |
 
 ## Project structure
 

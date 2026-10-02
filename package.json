@@ -15,6 +15,7 @@
     "preview": "vite preview",
     "icons": "node scripts/icons.ts",
     "screenshots": "node scripts/screenshots.ts",
+    "vapid": "node scripts/vapid.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p worker && tsc --noEmit -p src/sw",
     "lint": "biome check .",
     "format": "biome check --write .",

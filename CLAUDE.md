@@ -28,6 +28,7 @@ npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/fun
 npm run format       # Biome auto-fix
 npm run icons        # redraw the icons and the social card into public/ (commit the files)
 npm run screenshots  # take the install dialog's screenshots of the app into public/ (Playwright; commit the files)
+npm run vapid        # print a key pair for notifications (Worker secrets VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY); writes nothing
 npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1 migrated); npm run dev proxies /api to it
 npm run worker:deploy  # build, deploy the Worker, apply D1 migrations (needs a Cloudflare login)
 ```
@@ -47,7 +48,8 @@ build/                build-time only (never shipped): site.ts = every sitewide 
                       language, colors, icons, social cards, author); seo.ts = head tags per page (hreflang), JSON-LD, manifest,
                       robots, sitemap, llms.txt, _headers; seo-plugin.ts = the Vite plugin filling each page; pwa.ts + pwa-plugin.ts = build the service worker
                       as sw.js with its precache list and content version; analytics.ts = the Umami settings written into each page's head
-scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch, the icon shortcuts') and og.png / og-fr.png from build/site.ts
+scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch, the icon shortcuts', the notifications' badge) and og.png / og-fr.png from build/site.ts
+scripts/vapid.ts      makes the notifications' VAPID key pair for the owner to set as Worker secrets (never committed)
 scripts/screenshots.ts  takes the manifest's screenshots (SCREENSHOTS in build/site.ts) of the real app on the demos: Vite's dev server,
                       Playwright's Chromium, Math.random seeded so the duels are the same every run (D124)
 public/               icons and the social card (generated, committed); favicon.svg is a legacy address
@@ -57,7 +59,8 @@ src/audience.ts       audience measurement in the browser (docs/analytics.md): l
                       (never name a module "analytics": shared chunks take its name and filter lists block it)
 src/tokens.css        design tokens shared by the app and the home page: light on :root, dark via prefers-color-scheme and [data-theme]
 src/styles.css        the app's styles (imports tokens.css)
-src/sw/sw.ts          service worker (offline app shell, updates on request, share target inbox); own tsconfig (WebWorker types)
+src/sw/sw.ts          service worker (offline app shell, updates on request, share target inbox, shows notifications and opens their
+                      board on a tap); own tsconfig (WebWorker types), imports nothing
 src/core/             pure logic, no DOM: must stay framework-free and fully unit tested
   types.ts            Ranking, Item, Fill, Duel, Computed…
   scoring.ts          compute() for the 4 methods, pair selection, stability, undo
@@ -78,6 +81,8 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
                       JSON array); duplicates of what the ranking has; sharedLabels() = what another app shared, as labels
   backup.ts           export and import (D97–D101): the file format, strict validation of a file, merge that never replaces
   images.ts           images out of localStorage (D118–D120): content keys, references `idb:<key>`, stored form, hydration, clean-up rule
+  push.ts             notifications of published boards (D125–D127): subscriptions (allowed push services, keys), roles, voters
+                      milestones, the messages (texts in i18n/unfurl.ts), this browser's bells (`versus-push`), base64url
   model.ts, util.ts   constructors, ids, escaping, small helpers
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
                       landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules);
@@ -116,6 +121,8 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   backup.ts           export (share sheet on phones, download elsewhere) and import (file picked or dropped)
   images.ts           IndexedDB for images (database `versus`, store `images`): read at startup, store on save, clean up
   inbox.ts            what another app shared to Versus (share target): picked up at startup, imported or added where the user picks
+  push.ts             notifications: support, subscribing on a tap (the voter's bell in board.ts and finale.ts, the author's box in
+                      author.ts), turning off, the startup check of the subscription, a tapped notification opening its board
   header.ts, format.ts  static header texts and theme / score, record and date formatting
   storage.ts          guarded localStorage access, prefs, migration from prototype keys
 src/landing/          the home page: markup.ts renders it at build time (pure strings, like frame.ts: the demo frames'
@@ -131,8 +138,9 @@ worker/               Cloudflare Worker: index.ts (router, admin, limits), board
                       cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), pictures.ts (items' pictures: sent for review to R2,
                       public under /img/ once approved, the admin's decision), templates.ts (official templates: publication on demand, the
                       /t/<slug>/ pages in the legal shell, the sitemap completed), registry.ts + migrations/ (D1 registry: the admin list's rows,
-                      flags, report and picture counts, template key, recent votes, top labels), random.ts, turnstile.ts; own tsconfig; secrets
-                      ADMIN_TOKEN, TURNSTILE_SECRET; variable IMAGES_UPLOAD (`review` turns pictures on); bindings BOARDS, REGISTRY, IMAGES (R2
+                      flags, report and picture counts, template key, recent votes, top labels), webpush.ts (Web Push: RFC 8291 encryption,
+                      RFC 8292 VAPID, WebCrypto only), random.ts, turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET,
+                      VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY; variables IMAGES_UPLOAD (`review` turns pictures on), PUSH_LOCAL (tests); bindings BOARDS, REGISTRY, IMAGES (R2
                       bucket versus-images); `run_worker_first` for /sitemap.xml
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + board-ui.test.ts, votes-ui.test.ts, share-ui.test.ts and
                       admin-ui.test.ts (published boards, "Your votes", the share panel and the moderation page against a fake API and a fake
@@ -141,7 +149,9 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       list, version) + landing.test.ts (home page markup and texts) + landing-ui.test.ts (jsdom smoke test)
                       + audience.test.ts (measurement settings, loading rules, clean payloads) + legal.test.ts (legal pages, switch)
                       + backup-ui.test.ts (export, import, drop, the iOS home-screen note) + images.test.ts (image references)
-                      + inbox-ui.test.ts (shares picked up: lists, the choice, a Versus file)
+                      + inbox-ui.test.ts (shares picked up: lists, the choice, a Versus file) + push.test.ts (RFC 8291 example, VAPID,
+                      subscriptions, messages) + push-ui.test.ts (bells, the author's box, a tapped notification); worker.test.ts
+                      runs a fake push service and decrypts what the Worker sends
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 
@@ -154,12 +164,13 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Official templates and public lists (D110 to D112):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
 - **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author's items list does (text until approved).
 - **Items (D116):** one items pane for every ranking (`app/editor.ts`): a local ranking (`items.ts`) and a board's author (`author.ts`) fill it, a visitor's suggestion uses its add field. On a published board, an edit of an item with votes asks whether they stay (`askVotes`); the rule is `editItem` in `core/board.ts`. Don't build a second form for items.
+- **Notifications (D125 to D127, `docs/published-boards.md#notifications`):** rules and texts in `core/push.ts` (texts in `i18n/unfurl.ts`, the Worker's dictionary), sending in `worker/src/webpush.ts`; a board queues messages in its `outbox` and its alarm sends them in batches of `PUSH_BATCH` (the free plan's 50 subrequests). Ask on a tap only, never on arrival; a new event is a `PushEvent` kind with its audience, TTL and texts, queued with `notify()` in the board's Durable Object, and a test in `worker.test.ts` that decrypts it. Never send content beyond the board's title and an item's label.
 - **Moderation (D107 to D109, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`; an image is a data URL or a reference `idb:<key>` to IndexedDB `versus` / `images`, D118), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home and legal pages read theme and lang and write lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"), `umami.disabled` (Umami's own opt-out key, set by the legal page's switch); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Cache API: `versus-<version>` (the service worker's files) and `versus-inbox` (a share from another app, until the app picks it up). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`; an image is a data URL or a reference `idb:<key>` to IndexedDB `versus` / `images`, D118), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home and legal pages read theme and lang and write lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"), `versus-push` (the boards this browser asked notifications of, by role, and the endpoint they know), `umami.disabled` (Umami's own opt-out key, set by the legal page's switch); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Cache API: `versus-<version>` (the service worker's files) and `versus-inbox` (a share from another app, until the app picks it up). Changing the stored shape requires a migration in `storage.ts`.
 - **Audience measurement** (`docs/analytics.md`): views and events go through `src/audience.ts`, never through the tracker's automatic tracking or `data-umami-event` attributes. An event's data is anonymous facts only (method, counts, flags), never a title, a label, an id or an alias. The legal notice lists what is counted: change an event, a tracked path or what is stored, and update `src/i18n/legal-*.ts` in the same commit.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in the HTML shells or `public/`: each page's head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The home pages (`/`, `/fr/`) are the indexed ones, linked by hreflang, with every word in their static HTML and one h1; the app (`/app/`) is `noindex` and keeps its own static text (`src/app/about.ts`). Links between pages are relative (the site also lives under github.io/versus/). A redesigned icon or social card gets new file names (caches key on the URL). Modules the Vite config reaches import with their `.ts` extension (D90). Details in `docs/seo.md`.

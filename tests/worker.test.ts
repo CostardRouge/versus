@@ -1,4 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS } from '../src/core/board';
@@ -12,11 +14,13 @@ import type {
   PopularBoard,
   ServerMessage,
 } from '../src/core/protocol';
+import type { PushMessage } from '../src/core/push';
 import { pairKey } from '../src/core/scoring';
 import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
 import { TEMPLATES } from '../src/core/templates';
 import type { BoardSettings, Ranking } from '../src/core/types';
 import { fakePng } from './helpers/png';
+import { decryptPush, type FakeBrowser, fakeBrowser, fakeVapid, vapidClaims } from './helpers/push';
 
 /** End-to-end tests of the Worker and its Durable Object, running in the local workerd runtime. */
 
@@ -945,7 +949,7 @@ describe('pictures for review', () => {
     adminApi(`/boards/${alias}/items/${id}/picture`, { method: 'POST', body: { decision } });
 
   it('refuses announced pictures while they are off, and says so in its config', async () => {
-    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'off' });
+    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'off', push: null });
     const res = await api('', { method: 'POST', body: { title: 'Photos', items: announced('p0'), voter: AUTHOR } });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'images_not_allowed' });
@@ -955,7 +959,7 @@ describe('pictures for review', () => {
     await server.update({
       workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { IMAGES_UPLOAD: 'review' } }],
     });
-    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'review' });
+    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'review', push: null });
     const { alias, owner } = await publishPics(announced('p0'));
     const first = (await view(alias)).body.items;
     expect(first[0]).toMatchObject({ id: 'p0', img: null, pic: 'pending' });
@@ -1052,6 +1056,190 @@ describe('pictures for review', () => {
       timeout: 5000,
       interval: 200,
     });
+  });
+});
+
+describe('notifications', () => {
+  /** A push service on this machine: it keeps what the Worker posts, and answers 410 under /gone/. */
+  interface Received {
+    path: string;
+    headers: Record<string, string | string[] | undefined>;
+    body: Uint8Array<ArrayBuffer>;
+  }
+  const received: Received[] = [];
+  let push: Server;
+  let pushBase = '';
+  let vapid: Awaited<ReturnType<typeof fakeVapid>>;
+
+  beforeAll(async () => {
+    push = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        received.push({ path: req.url ?? '', headers: req.headers, body: new Uint8Array(Buffer.concat(chunks)) });
+        res.writeHead(req.url?.startsWith('/gone/') ? 410 : 201).end();
+      });
+    });
+    await new Promise<void>((resolve) => push.listen(0, '127.0.0.1', resolve));
+    pushBase = `http://127.0.0.1:${(push.address() as AddressInfo).port}`;
+    vapid = await fakeVapid();
+  });
+
+  afterAll(() => new Promise<void>((resolve) => push.close(() => resolve())));
+
+  const on = () =>
+    server.update({
+      workers: [
+        {
+          configPath: CONFIG,
+          secrets: { ADMIN_TOKEN: ADMIN, VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey },
+          vars: { PUSH_LOCAL: '1', IMAGES_UPLOAD: 'review' },
+        },
+      ],
+    });
+
+  /** A browser of this test, subscribed under its own path of the push service. */
+  const browsers = new Map<string, FakeBrowser>();
+  async function subscribe(alias: string, path: string, role: 'voter' | 'owner', lang = 'en', token?: string) {
+    const b = await fakeBrowser();
+    browsers.set(path, b);
+    const subscription = { endpoint: `${pushBase}${path}`, keys: { p256dh: b.p256dh, auth: b.auth } };
+    return api(`/${alias}/push`, { method: 'POST', body: { subscription, role, lang }, token });
+  }
+
+  /** What arrived at a path, decrypted with that browser's keys. */
+  async function messages(path: string): Promise<PushMessage[]> {
+    const b = browsers.get(path);
+    if (!b) throw new Error(path);
+    const mine = received.filter((r) => r.path === path);
+    return Promise.all(mine.map(async (r) => JSON.parse(await decryptPush(r.body, b.ua, b.auth)) as PushMessage));
+  }
+
+  const waitFor = (check: () => Promise<void> | void) => vi.waitFor(check, { timeout: 8000, interval: 100 });
+
+  it('stays off without the keys', async () => {
+    const { alias } = await publish();
+    expect(((await (await server.fetch('/api/config')).json()) as { push: unknown }).push).toBeNull();
+    expect((await subscribe(alias, '/off/1', 'voter')).status).toBe(404);
+  });
+
+  it('tells the voters who asked when the vote closes, in their language, then forgets them', async () => {
+    await on();
+    expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'review', push: vapid.publicKey });
+    const { alias, owner } = await publish();
+    expect((await subscribe(alias, '/v/fr', 'voter', 'fr')).status).toBe(200);
+    expect((await subscribe(alias, '/v/en', 'voter', 'en')).status).toBe(200);
+    expect((await subscribe(alias, '/gone/1', 'voter')).status).toBe(200);
+    expect((await subscribe(alias, '/v/off', 'voter')).status).toBe(200);
+    // Again: the same row, not a second one.
+    expect((await subscribe(alias, '/v/en', 'voter', 'en')).status).toBe(200);
+    expect(
+      (await api(`/${alias}/push`, { method: 'DELETE', body: { endpoint: `${pushBase}/v/off`, role: 'voter' } }))
+        .status,
+    ).toBe(200);
+    // Only the browsers' push services, only well-formed keys, the author's role with their token only.
+    const bad = {
+      subscription: { endpoint: 'https://evil.example/x', keys: { p256dh: 'B', auth: 'x' } },
+      role: 'voter',
+    };
+    expect((await api(`/${alias}/push`, { method: 'POST', body: bad })).status).toBe(400);
+    expect((await subscribe(alias, '/o/none', 'owner')).status).toBe(403);
+    expect((await subscribe(alias, '/o/bad', 'owner', 'en', 'f'.repeat(64))).status).toBe(403);
+    expect((await api(`/${alias}/push`, { method: 'PUT', body: {} })).status).toBe(404);
+    expect((await api('/1111111115/push', { method: 'DELETE', body: { endpoint: 'x' } })).status).toBe(404);
+
+    const before = received.length;
+    expect((await api(`/${alias}/close`, { method: 'POST', token: owner })).status).toBe(200);
+    await waitFor(() => expect(received.length - before).toBe(3));
+    expect(await messages('/v/fr')).toEqual([
+      {
+        title: 'Pizzas',
+        body: 'Le vote est clos : découvre le classement final de la foule.',
+        path: `app/b/${alias}`,
+        tag: `closed-${alias}`,
+      },
+    ]);
+    expect((await messages('/v/en'))[0]?.body).toBe('The vote is closed: see the crowd’s final ranking.');
+    expect(await messages('/v/off')).toEqual([]);
+    // What a push service checks: the encoding, how long to keep it, its topic, and the signed contact.
+    const sent = received.find((r) => r.path === '/v/en') as Received;
+    expect(sent.headers['content-encoding']).toBe('aes128gcm');
+    expect(sent.headers.ttl).toBe(String(7 * 86_400));
+    expect(sent.headers.topic).toBe(`closed-${alias}`);
+    const { k, claims } = await vapidClaims(String(sent.headers.authorization), vapid.verify);
+    expect(k).toBe(vapid.publicKey);
+    expect(claims).toMatchObject({ aud: pushBase, sub: new URL(base).origin });
+    // Told once: the voters' subscriptions are gone, the one the push service refused too.
+    const sql = await server.getWorker().getDurableObjectStorage('BoardObject', { name: alias });
+    expect(await sql.exec('SELECT role FROM push')).toEqual([]);
+    expect(await sql.exec('SELECT id FROM outbox')).toEqual([]);
+    // A closed board has nothing left to wait for.
+    expect((await subscribe(alias, '/v/late', 'voter')).status).toBe(409);
+  });
+
+  it('sends a crowd in batches, and forgets subscriptions the push service no longer knows', async () => {
+    const { alias, owner } = await publish();
+    const paths = Array.from({ length: 45 }, (_, i) => (i % 9 === 0 ? `/gone/m${i}` : `/many/${i}`));
+    for (const path of paths) expect((await subscribe(alias, path, 'voter')).status).toBe(200);
+    expect((await subscribe(alias, '/o/batch', 'owner', 'en', owner)).status).toBe(200);
+    const before = received.length;
+    expect((await api(`/${alias}/close`, { method: 'POST', token: owner })).status).toBe(200);
+    await waitFor(() => expect(received.length - before).toBe(paths.length));
+    for (const path of paths) expect(await messages(path)).toHaveLength(1);
+    // The author's subscription stays: closing isn't news to them.
+    const sql = await server.getWorker().getDurableObjectStorage('BoardObject', { name: alias });
+    expect(await sql.exec('SELECT role FROM push')).toEqual([{ role: 'owner' }]);
+    expect(await messages('/o/batch')).toEqual([]);
+  });
+
+  it('tells the author when the crowd passes a milestone, once', async () => {
+    const { alias, owner } = await publish();
+    expect((await subscribe(alias, '/o/fr', 'owner', 'fr', owner)).status).toBe(200);
+    for (let i = 1; i <= 6; i++) {
+      const voter = await Client.open(alias, `push-voter-${i}`);
+      const state = await voter.next('state');
+      const [a, b] = state.pairs[0] as [string, string];
+      voter.send({ t: 'vote', a, b, s: 1 });
+      await voter.next('pairs');
+      voter.close();
+    }
+    await waitFor(async () => expect(await messages('/o/fr')).toHaveLength(1));
+    expect((await messages('/o/fr'))[0]).toEqual({
+      title: 'Pizzas',
+      body: 'Déjà 5 votants sur ton classement. Va voir où il en est.',
+      path: `app/b/${alias}`,
+      tag: `voters-${alias}`,
+    });
+    await sleep(500);
+    expect(await messages('/o/fr')).toHaveLength(1);
+  });
+
+  it('tells the author what the moderator decided about a picture', async () => {
+    const list = items.map((it) => (it.id === 'p0' ? { ...it, pic: 'pending' } : it));
+    const res = await api('', { method: 'POST', body: { title: 'Photos', items: list, voter: AUTHOR } });
+    const { alias, owner } = (await res.json()) as { alias: string; owner: string };
+    expect((await subscribe(alias, '/o/pic', 'owner', 'en', owner)).status).toBe(200);
+    const jpeg = new Uint8Array(1024);
+    jpeg.set([0xff, 0xd8, 0xff, 0xe0]);
+    const put = await server.fetch(`/api/boards/${alias}/items/p0/image`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${owner}`, 'CF-Connecting-IP': nextIp() },
+      body: jpeg,
+    });
+    expect(put.status).toBe(201);
+    const ok = await adminApi(`/boards/${alias}/items/p0/picture`, { method: 'POST', body: { decision: 'ok' } });
+    expect(ok.status).toBe(200);
+    await waitFor(async () => expect(await messages('/o/pic')).toHaveLength(1));
+    expect((await messages('/o/pic'))[0]?.body).toBe('Picture approved: “Margherita” now shows it to voters.');
+  });
+
+  it('lets nobody wait for the closing of the site’s own boards', async () => {
+    const en = (await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] };
+    // A template's own board (featured boards of earlier tests are in the list too).
+    let official = '';
+    for (const b of en.boards) if (!official && (await view(b.alias)).body.official) official = b.alias;
+    expect(official).toMatch(ALIAS_RE);
+    expect((await subscribe(official, '/v/tpl', 'voter')).status).toBe(403);
   });
 });
 

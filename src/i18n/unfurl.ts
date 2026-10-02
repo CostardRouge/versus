@@ -1,8 +1,9 @@
 /**
  * Texts of a board's link preview (title and description a social network shows when the link is pasted),
- * written by the Worker into the app page's head (worker/src/index.ts) in the board's language. Kept apart
- * from the app's dictionary so the Worker bundles these few lines only. Placeholders: {title}, {a}, {b} the
- * two items of a duel, {items}, {votes}, {voters} with their numbers already worded.
+ * written by the Worker into the app page's head (worker/src/index.ts) in the board's language, of the template
+ * pages, and of the notifications the Worker sends (in the subscriber's language). Kept apart from the app's
+ * dictionary so the Worker bundles these few lines only. Placeholders: {title}, {a}, {b} the two items of a
+ * duel, {label} an item, {items}, {votes}, {voters} with their numbers already worded.
  */
 export const unfurlEn = {
   boardTitle: '{title} · Versus',
@@ -31,6 +32,11 @@ export const unfurlEn = {
     'Want the same duel with your own list? Open the board and make your own version: a ranking of yours, with these items, ready to change and publish.',
   tplMoreTitle: 'More rankings to vote on',
   tplAbout: 'Made with Versus, the free app that ranks anything two at a time.',
+  // Notifications (src/core/push.ts): the board's title is the notification's title, these are its line.
+  pushClosed: 'The vote is closed: see the crowd’s final ranking.',
+  pushVoters: '{voters} on your ranking. See where it stands.',
+  pushPictureOk: 'Picture approved: “{label}” now shows it to voters.',
+  pushPictureRefused: 'Picture refused: “{label}” stays as text.',
   item: ['item', 'items'],
   vote: ['vote', 'votes'],
   voter: ['voter', 'voters'],
@@ -62,6 +68,10 @@ export const unfurlFr: typeof unfurlEn = {
     'Envie du même duel avec ta propre liste ? Ouvre le tableau et fais ta version : un classement à toi, avec ces éléments, prêt à modifier et à publier.',
   tplMoreTitle: 'D’autres classements où voter',
   tplAbout: 'Fait avec Versus, l’app gratuite qui classe n’importe quoi deux par deux.',
+  pushClosed: 'Le vote est clos : découvre le classement final de la foule.',
+  pushVoters: 'Déjà {voters} sur ton classement. Va voir où il en est.',
+  pushPictureOk: 'Photo acceptée : « {label} » la montre maintenant aux votants.',
+  pushPictureRefused: 'Photo refusée : « {label} » reste en texte.',
   item: ['élément', 'éléments'],
   vote: ['vote', 'votes'],
   voter: ['votant', 'votants'],
