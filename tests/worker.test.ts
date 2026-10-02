@@ -405,6 +405,26 @@ describe('link previews', () => {
     expect(content((await page('/app/b/1111111116')).html, 'og:title')).toBe(untouched);
   });
 
+  it('escapes a hostile title and labels in the head', async () => {
+    const title = 'Q" onfocus="alert(1)" x="</title><script>alert(2)</script>';
+    const res = await api('', {
+      method: 'POST',
+      body: { title, items: [{ ...items[0], label: '"><img src=x>' }, ...items.slice(1)], voter: AUTHOR },
+    });
+    const { alias } = (await res.json()) as { alias: string };
+    const decode = (s = '') =>
+      s
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+    // Read back the way a browser does: an unescaped quote or tag would cut the title or the attribute short.
+    const board = (await page(`/app/b/${alias}`)).html;
+    expect(decode(board.match(/<title>([^<]*)<\/title>/)?.[1])).toBe(`${title} · Versus`);
+    expect(decode(content(board, 'og:title'))).toBe(`${title} · Versus`);
+    const duel = (await page(`/app/b/${alias}?duel=p0.p1`)).html;
+    expect(decode(content(duel, 'og:title'))).toBe(`"><img src=x> vs Regina · ${title}`);
+  });
+
   it('stores the card the app drew, serves it under /og/ and puts it in the head', async () => {
     const { alias } = await publish();
     expect((await upload(alias, card, '', 'text/plain')).status).toBe(415);
@@ -670,6 +690,33 @@ describe('items after publication', () => {
     expect(added.board.items.map((i) => i.label)).toContain('Hawaii');
     voter.send({ t: 'add', item: { label: '#FF8800', fill: { type: 'solid', colors: ['#ff8800'] } } });
     expect((await voter.next('error')).code).toBe('too_fast');
+    // Saying hello again doesn't reset the delay.
+    voter.send({ t: 'hello', voter: 'voter-one-1' });
+    await voter.next('state');
+    voter.send({ t: 'add', item: { label: 'Funghi' } });
+    expect((await voter.next('error')).code).toBe('too_fast');
+    voter.close();
+  });
+});
+
+describe('one voter per connection', () => {
+  it('refuses a hello as another voter on the same connection', async () => {
+    const { alias } = await publish();
+    const voter = await Client.open(alias, 'voter-one-1');
+    const [a, b] = (await voter.next('state')).pairs[0] as [string, string];
+    voter.send({ t: 'vote', a, b, s: 1 });
+    await voter.next('pairs');
+    voter.send({ t: 'hello', voter: 'someone-else-2' });
+    expect((await voter.next('error')).code).toBe('forbidden');
+    // The connection keeps its voter: its next vote is still theirs.
+    voter.send({ t: 'hello', voter: 'voter-one-1' });
+    const { pairs, mine } = await voter.next('state');
+    expect(mine).toHaveLength(1);
+    const [c, d] = pairs[0] as [string, string];
+    await sleep(ACTION_INTERVAL_MS + 20);
+    voter.send({ t: 'vote', a: c, b: d, s: 0 });
+    expect((await voter.next('pairs')).mine).toBe(2);
+    expect((await view(alias)).body.counts).toMatchObject({ votes: 2, voters: 1 });
     voter.close();
   });
 });

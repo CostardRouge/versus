@@ -235,6 +235,21 @@ describe('parseBackup', () => {
     expect(b.joined[0]?.settings.revealAfter).toBe(DEFAULT_SETTINGS.revealAfter);
   });
 
+  it("keeps a card whose board shows an approved picture, from that board's own address only", () => {
+    const picture = `/img/b/${ALIAS}/p0.jpg`;
+    const b = read(
+      file({
+        joined: [
+          card(ALIAS, { items: [item('p0', 'Margherita', { img: picture }), item('p1')] }),
+          card('Zz3dEf7hJk', { items: [item('p0', 'Margherita', { img: picture }), item('p1')] }),
+          card('Yy3dEf7hJk', { items: [item('p0', 'Margherita', { img: '/img/b/Yy3dEf7hJk/p1.jpg' }), item('p1')] }),
+        ],
+      }),
+    );
+    expect(b.joined.map((j) => j.alias)).toEqual([ALIAS]);
+    expect(b.joined[0]?.items[0]?.img).toBe(picture);
+  });
+
   it('keeps the first of two rankings with the same id', () => {
     const b = read(file({ rankings: [rank('r1', { title: 'First' }), rank('r1', { title: 'Second' })] }));
     expect(b.rankings.map((r) => r.title)).toEqual(['First']);

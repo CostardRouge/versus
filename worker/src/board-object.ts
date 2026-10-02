@@ -14,6 +14,7 @@ import {
   type ImagePolicy,
   isRecord,
   itemId,
+  keepsVoter,
   LIMITS,
   lastActivity,
   localCopy,
@@ -27,6 +28,7 @@ import {
   parseNewItem,
   parseReport,
   pendingPictures,
+  picturePath,
   recentVotes,
   refill,
   removeItem,
@@ -75,7 +77,7 @@ import type {
 } from '../../src/core/types';
 import { deleteCards } from './cards';
 import type { Env } from './env';
-import { deletePicture, deletePrefix, picturePath } from './pictures';
+import { deletePicture, deletePrefix } from './pictures';
 import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
@@ -606,15 +608,8 @@ export class BoardObject extends DurableObject<Env> {
       board = this.board;
       if (!board) return ws.close(GONE, 'not_found');
       const prev = ws.deserializeAttachment() as Session | null;
-      const session = openSession(
-        board,
-        msg.voter,
-        owner,
-        this.crowd(board),
-        Math.random,
-        prev?.lastActionAt,
-        msg.pair ?? null,
-      );
+      if (!keepsVoter(prev, msg.voter)) return send(ws, { t: 'error', code: 'forbidden' });
+      const session = openSession(board, msg.voter, owner, this.crowd(board), Math.random, prev, msg.pair ?? null);
       ws.serializeAttachment(session);
       return send(ws, this.stateFor(board, session));
     }

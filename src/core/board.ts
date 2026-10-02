@@ -462,6 +462,9 @@ export function addItems(
 
 // ─── Pictures (docs/published-boards.md#images) ────────────────────────────
 
+/** The public address of an item's picture once approved, relative to the site's root (served by the Worker). */
+export const picturePath = (alias: string, id: string): string => `/img/b/${alias}/${id}.jpg`;
+
 /** Items whose picture waits for the moderator. */
 export const pendingPictures = (board: SharedBoard): number => board.items.filter((i) => i.pic === 'pending').length;
 
@@ -720,8 +723,9 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
 }
 
 /**
- * A new session; `lastActionAt` carries over when a connection says hello again, so it can't dodge the limit.
- * `wanted` is the duel a shared link asked for: it comes first when this voter can still vote on it.
+ * A new session; `prev` is the connection's session when it says hello again: its last vote and last item added
+ * carry over, so a new hello can't dodge the limits. `wanted` is the duel a shared link asked for: it comes first
+ * when this voter can still vote on it.
  */
 export function openSession(
   board: SharedBoard,
@@ -729,14 +733,22 @@ export function openSession(
   owner: boolean,
   C: Computed,
   rng: Rng,
-  lastActionAt = 0,
+  prev: Pick<Session, 'lastActionAt' | 'lastAddAt'> | null = null,
   wanted: readonly [string, string] | null = null,
 ): Session {
-  const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt };
+  const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt: prev?.lastActionAt ?? 0 };
+  if (prev?.lastAddAt !== undefined) session.lastAddAt = prev.lastAddAt;
   refill(board, session, C, rng);
   if (wanted) preferPair(board, session, wanted[0], wanted[1]);
   return session;
 }
+
+/**
+ * Whether a connection may say hello as `voter`: it keeps the voter of its first hello. The app opens a new
+ * connection for each voter; one connection changing voters would vote as many people.
+ */
+export const keepsVoter = (prev: Pick<Session, 'voter'> | null, voter: string): boolean =>
+  prev === null || prev.voter === voter;
 
 /**
  * Puts a pair first in the session's queue (the duel a shared link names). Nothing happens when the pair isn't

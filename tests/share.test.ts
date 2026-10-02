@@ -75,6 +75,8 @@ describe('card keys and addresses', () => {
     ['og', 'b', ALIAS, 'p0', '5.png'],
     ['og', 'b', ALIAS, 'p0.p1', '5.png', 'more'],
     ['og', 'x', ALIAS, '5.png'],
+    ['og', 'b', 'not-an-alias', '5.png'],
+    ['og', 'b', '0OIl0OIl0O', '5.png'],
   ])('reads no card from %j', (...parts) => {
     expect(parseCardPath(parts)).toBeNull();
   });

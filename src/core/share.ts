@@ -1,4 +1,4 @@
-import { LIMITS } from './board.ts';
+import { ALIAS_RE, LIMITS } from './board.ts';
 import type { BoardView, RankingView } from './protocol.ts';
 import { agreement, ownRanking } from './published.ts';
 import { compute } from './scoring.ts';
@@ -247,7 +247,7 @@ export const cardPath = (alias: string, pair: readonly [string, string] | null, 
 /** Reads a card address back: `og/b/<alias>[/<a>.<b>]/<version>.png`, split on `/`. */
 export function parseCardPath(parts: readonly string[]): { alias: string; pair: [string, string] | null } | null {
   const [og, b, alias, ...rest] = parts;
-  if (og !== 'og' || b !== 'b' || !alias || rest.length < 1 || rest.length > 2) return null;
+  if (og !== 'og' || b !== 'b' || !alias || !ALIAS_RE.test(alias) || rest.length < 1 || rest.length > 2) return null;
   const version = rest[rest.length - 1] ?? '';
   if (!/^\d+\.png$/.test(version)) return null;
   if (rest.length === 1) return { alias, pair: null };

@@ -12,9 +12,6 @@ const ITEM_ID_RE = /^[\w-]{1,32}$/;
 
 export const pictureKey = (alias: string, id: string): string => `img/${alias}/${id}.jpg`;
 
-/** The public address of an item's picture, relative to the site's root. */
-export const picturePath = (alias: string, id: string): string => `/img/b/${alias}/${id}.jpg`;
-
 /** Reads a public picture address back: `img/b/<alias>/<item>.jpg`, split on `/`. */
 export function parsePicturePath(parts: readonly string[]): { alias: string; id: string } | null {
   const [img, b, alias, file, ...more] = parts;

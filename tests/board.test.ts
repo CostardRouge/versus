@@ -17,6 +17,7 @@ import {
   DEFAULT_SETTINGS,
   editItem,
   itemId,
+  keepsVoter,
   LIMITS,
   lastActivity,
   lastVote,
@@ -652,8 +653,29 @@ describe('sessions', () => {
     expect(s.queue).toHaveLength(LIMITS.queue);
     expect(new Set(keys(s.queue)).size).toBe(LIMITS.queue);
     expect(s).toMatchObject({ voter: V2, owner: false, skipped: [], lastActionAt: 0 });
-    // Saying hello again keeps the rate limit.
-    expect(openSession(b, V2, false, crowd(b), rng, T0).lastActionAt).toBe(T0);
+    // Saying hello again keeps the rate limits: the last vote, and the last item added.
+    expect(openSession(b, V2, false, crowd(b), rng, { lastActionAt: T0 }).lastActionAt).toBe(T0);
+    const again = (prev: { lastActionAt: number; lastAddAt?: number }) =>
+      openSession(b, V2, false, crowd(b), mulberry32(1), prev);
+    expect(again({ lastActionAt: T0, lastAddAt: T0 }).lastAddAt).toBe(T0);
+    expect(again({ lastActionAt: T0 })).not.toHaveProperty('lastAddAt');
+  });
+
+  it('keeps one voter per connection', () => {
+    const b = board(4);
+    const s = openSession(b, V2, false, crowd(b), mulberry32(1));
+    expect(keepsVoter(null, V1)).toBe(true);
+    expect(keepsVoter(s, V2)).toBe(true);
+    expect(keepsVoter(s, V1)).toBe(false);
+  });
+
+  it("doesn't let a new hello dodge the delay between two items added", () => {
+    const b = board(3);
+    updateSettings(b, { visitorsAddItems: true }, T0);
+    const first = openSession(b, V2, false, crowd(b), mulberry32(1));
+    value(sessionAdd(b, first, { label: 'A', fill: null, img: null }, 'a', T0));
+    const again = openSession(b, V2, false, crowd(b), mulberry32(1), first);
+    expect(errorOf(sessionAdd(b, again, { label: 'B', fill: null, img: null }, 'b', T0 + 1))).toBe('too_fast');
   });
 
   it('accepts votes only on assigned pairs, not too fast, and refills', () => {
@@ -737,7 +759,7 @@ describe('sessions', () => {
 
   it('serves the duel a shared link asked for first, when the voter can still vote on it', () => {
     const b = board(6);
-    const s = openSession(b, V2, false, crowd(b), rng, 0, ['i4', 'i5']);
+    const s = openSession(b, V2, false, crowd(b), rng, null, ['i4', 'i5']);
     expect(s.queue[0]).toEqual(['i4', 'i5']);
     expect(s.queue).toHaveLength(LIMITS.queue);
     expect(new Set(keys(s.queue)).size).toBe(LIMITS.queue);
