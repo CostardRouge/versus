@@ -29,6 +29,7 @@ published or closed ──withdraw──▶ local copy (server data deleted)
 
 - **Share as an image** (D102, D103), from three places: the board page (the crowd's standings as this viewer may see them, or the items when the crowd is hidden), the duel on screen (its two cards, with a link that opens the board on that duel, D105), and the end-of-vote page (the viewer's ranking facing the crowd's, with the agreement; their own ranking alone while the crowd stays hidden). Local rankings have it too, from the Ranking tab, with a link to the site.
 - The panel shows the card in the format chosen (post 4:5, story 9:16, landscape), and offers the system share sheet with the image and a message that carries the link, or copying the message, copying the image, downloading it. The format chosen stays for the session.
+- **Which picture** (D117): where the page has several views of the result, the panel opens on the one on screen and offers the others above the formats. The end-of-vote page: the crowd's podium, the voter's podium, the voter facing the crowd (the crowd's two only while it is visible). A local ranking's Ranking tab: its podium, or its lines facing the method they compare it with.
 - **Make my own** (D106): on the board page and the end-of-vote page (not for the author), and on a card under Your votes, a button makes a ranking of this browser with the board's title and items, without votes, to change and publish.
 
 ## Moderation

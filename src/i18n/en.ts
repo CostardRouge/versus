@@ -282,6 +282,7 @@ export const en = {
   shareResultTitle: 'Share your result',
   shareDuelTitle: 'Share this duel',
   shareDuel: 'Share this duel',
+  shareView: 'Picture',
   shareFormat: 'Format',
   fmtPost: 'Post · 4:5',
   fmtStory: 'Story · 9:16',

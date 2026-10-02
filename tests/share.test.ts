@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { mkItem, mkRank } from '../src/core/model';
 import type { RankingView } from '../src/core/protocol';
-import { pushDuel } from '../src/core/scoring';
+import { compute, pushDuel } from '../src/core/scoring';
 import {
   CARD_MAX_BYTES,
   CARD_SIZES,
   type CardTexts,
   cardKey,
   cardPath,
+  compareSpec,
   crowdSpec,
   duelQuery,
   duelSpec,
@@ -158,6 +159,21 @@ describe('card specs', () => {
     expect(duo.mine.map((x) => x.it.id)).toEqual(['i0', 'i2', 'i1']);
     expect(duo.agree).toBe(67);
     expect(duoSpec(view, crowd, mine.slice(0, 1), 'bt', '', '', TEXTS).agree).toBeNull();
+  });
+
+  it('sets a ranking against itself by another method', () => {
+    const r = mkRank('Pizzas');
+    r.items = view.items;
+    const unplayed = compareSpec(r, 'win', ['Balanced', 'Simple'], '', '', TEXTS);
+    expect(unplayed.ranked).toBe(false);
+    pushDuel(r, 'i2', 'i0', 1);
+    pushDuel(r, 'i2', 'i1', 1);
+    pushDuel(r, 'i1', 'i0', 1);
+    const spec = compareSpec(r, 'win', ['Balanced', 'Simple'], '3 duels', 'https://x.example/', TEXTS);
+    expect(spec).toMatchObject({ kind: 'compare', title: 'Pizzas', ranked: true, agree: null, pair: null });
+    expect(spec.columns).toEqual(['Balanced', 'Simple']);
+    expect(spec.mine.map((x) => x.it.id)).toEqual(compute(r).order.map((i) => i.id));
+    expect(spec.rows.map((x) => x.it.id)).toEqual(compute({ ...r, method: 'win' }).order.map((i) => i.id));
   });
 
   it('describes a duel', () => {

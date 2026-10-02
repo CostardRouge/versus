@@ -33,7 +33,7 @@ Referrer: the other site the visitor came from (origin and path only), then, ins
 | `board-published` | A ranking is published | `method`, `visibility`, `items`, `votes` (the author's duels carried over), `pictures` (how many were sent for review) |
 | `board-joined` | First vote on a board from this browser (its "Your votes" card appears) | none |
 | `board-finished` | The voter has voted every pair (end-of-vote page, D64) | `items` |
-| `shared` | A result or a duel shared as an image (D102, D103) | `kind` (`ranking`, `crowd`, `duo`, `duel`), `format` (`post`, `story`, `landscape`), `how` (`share-image`, `share-text`, `copy-text`, `copy-image`, `download`) |
+| `shared` | A result or a duel shared as an image (D102, D103) | `kind` (`ranking`, `crowd`, `duo`, `compare`, `duel`), `format` (`post`, `story`, `landscape`), `how` (`share-image`, `share-text`, `copy-text`, `copy-image`, `download`) |
 | `app-installed` | The browser reports the app installed | none |
 | `rankings-exported` | A file was saved or shared (D97) | `what` (`all` or `one`), `rankings`, `votes` (counts) |
 | `rankings-imported` | A file brought something new | `rankings` (added), `same` (already here), `votes` (cards added) |

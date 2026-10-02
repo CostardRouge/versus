@@ -51,6 +51,8 @@ let playing = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 export const finalePlaying = (): boolean => playing;
+/** Whose podium the page shows: the crowd's or the voter's. */
+export const podiumWho = (): 'crowd' | 'me' => who;
 export function setPodiumWho(w: string | undefined): void {
   who = w === 'me' ? 'me' : 'crowd';
 }

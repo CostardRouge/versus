@@ -2480,6 +2480,11 @@ body.dropping .drop-overlay {
   color: var(--muted);
   white-space: nowrap;
 }
+/* The picture's names are longer than the formats': they may take two lines on a phone. */
+.share-views button {
+  white-space: normal;
+  line-height: 1.2;
+}
 .share-fmts button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);

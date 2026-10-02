@@ -286,6 +286,7 @@ export const fr: Messages = {
   shareResultTitle: 'Partager ton résultat',
   shareDuelTitle: 'Partager ce duel',
   shareDuel: 'Partager ce duel',
+  shareView: 'Image',
   shareFormat: 'Format',
   fmtPost: 'Post · 4:5',
   fmtStory: 'Story · 9:16',

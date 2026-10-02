@@ -321,6 +321,11 @@ describe('voting', () => {
     click('[data-action="b-finale-view"][data-view="podium"]');
     expect($('#fin-pod-h')?.textContent).toBe('Your podium');
     expect($('[data-action="b-finale-who"]')).toBeNull();
+    // Shared, it is the voter's podium alone: nothing else to pick.
+    click('[data-action="share-finale"]');
+    expect($('[data-action="share-view"]')).toBeNull();
+    expect($('.share-msg')?.textContent).toContain('Pizzas · 3 votes · You');
+    click('#m-ok');
     click('[data-action="b-finale-close"]');
     ws.receive(state());
   });
@@ -827,7 +832,7 @@ describe('sharing', () => {
     click('#m-ok');
   });
 
-  it('shares the end-of-vote page as you against the crowd, and offers your own version', async () => {
+  it('shares the end-of-vote page as the picture on screen, and offers the others', async () => {
     const ws = FakeSocket.last();
     ws.receive({
       ...state(),
@@ -840,13 +845,40 @@ describe('sharing', () => {
     } as ServerMessage);
     click('[data-action="b-finale"]');
     expect($('#fin [data-action="b-make-mine"]')).not.toBeNull();
+    // The page shows the crowd's podium: so does the picture.
+    click('[data-action="b-finale-view"][data-view="podium"]');
     click('[data-action="share-finale"]');
     expect($('#m-title')?.textContent).toBe('Share your result');
     await flush();
+    const pressed = () => $('[data-action="share-view"][aria-pressed="true"]')?.dataset.view;
+    expect([...document.querySelectorAll<HTMLElement>('[data-action="share-view"]')].map((b) => b.textContent)).toEqual(
+      ['The crowd’s podium', 'Your podium', 'You vs the crowd'],
+    );
+    expect(pressed()).toBe('crowd');
+    expect($('#share-preview canvas')).not.toBeNull();
+    expect($('.share-msg')?.textContent).toContain('Pizzas · 3 votes · 2 voters · 100% in agreement with the crowd');
+    // Another picture: the card and the message follow, the format stays.
+    click('[data-action="share-view"][data-view="duo"]');
+    await flush();
+    expect(pressed()).toBe('duo');
+    expect($('#share-preview canvas')).not.toBeNull();
     const msg = $('.share-msg')?.textContent ?? '';
     expect(msg).toContain('I agree with the crowd 100% of the time.');
     expect(msg).toContain('My top 3: Margherita · Regina · Calzone');
     expect(msg).toContain('The crowd’s top 3: Margherita · Regina · Calzone');
+    click('[data-action="share-view"][data-view="mine"]');
+    expect($('.share-msg')?.textContent).toContain('Pizzas · 3 votes · You');
+    click('#m-ok');
+    // On the lines, the picture opens on the lines.
+    click('[data-action="b-finale-view"][data-view="duo"]');
+    click('[data-action="share-finale"]');
+    expect(pressed()).toBe('duo');
+    click('#m-ok');
+    // On the voter's podium, on theirs.
+    click('[data-action="b-finale-view"][data-view="podium"]');
+    click('[data-action="b-finale-who"][data-who="me"]');
+    click('[data-action="share-finale"]');
+    expect(pressed()).toBe('mine');
     click('#m-ok');
     click('[data-action="b-make-mine"]');
     expect(($('#rank-title') as HTMLInputElement).value).toBe('Pizzas');
