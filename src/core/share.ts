@@ -25,7 +25,11 @@ export const CARD_MAX_BYTES = 400_000;
 /** Duel cards stored per board: enough for the duels people share, not for someone filling the bucket. */
 export const CARD_LIMIT = 40;
 
-export type CardKind = 'ranking' | 'crowd' | 'duo' | 'duel';
+/**
+ * ranking: a ranking's podium and rows; crowd: a board's; duo: the sharer's order facing the crowd's; compare: one
+ * ranking by two methods, facing each other; duel: two items.
+ */
+export type CardKind = 'ranking' | 'crowd' | 'duo' | 'compare' | 'duel';
 
 export interface CardRow {
   it: Item;
@@ -56,8 +60,10 @@ export interface CardSpec {
   rows: CardRow[];
   /** False when `rows` are the items in board order, not a ranking (no duels yet, or a crowd hidden from the sharer). */
   ranked: boolean;
-  /** duo: the sharer's own order, matched with `rows` by item id. */
+  /** duo: the sharer's own order, compare: the ranking's method's, matched with `rows` by item id (the left column). */
   mine: CardRow[];
+  /** duo and compare: the columns' names, left then right (the sharer and the crowd by default). */
+  columns?: [string, string];
   /** duo: agreement with the crowd in percent, when there are enough decisive votes. */
   agree: number | null;
   /** duel: the two items facing each other. */
@@ -158,6 +164,35 @@ export function duoSpec(
     ranked: true,
     mine: own.order.map((it) => ({ it, meta: '' })),
     agree: share === null ? null : Math.round(share * 100),
+    pair: null,
+    url,
+    texts,
+  };
+}
+
+/**
+ * A ranking by its method (left) facing the same duels by `other` (right), joined by lines: the Ranking tab's lines
+ * view. `names` are the two methods' names.
+ */
+export function compareSpec(
+  r: Ranking,
+  other: MethodKey,
+  names: [string, string],
+  subtitle: string,
+  url: string,
+  texts: CardTexts,
+): CardSpec {
+  const own = compute(r);
+  const alt = compute({ ...r, method: other });
+  return {
+    kind: 'compare',
+    title: r.title,
+    subtitle,
+    rows: alt.order.map((it) => ({ it, meta: '' })),
+    ranked: own.n > 0,
+    mine: own.order.map((it) => ({ it, meta: '' })),
+    columns: names,
+    agree: null,
     pair: null,
     url,
     texts,

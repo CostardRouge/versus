@@ -1,5 +1,5 @@
 import { fillCSS } from '../core/colors';
-import { compute, METHOD_KEYS, remaining, stability } from '../core/scoring';
+import { compute, METHOD_KEYS, methodOf, remaining, stability } from '../core/scoring';
 import type { Computed, Item, ItemStats, MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, pct, plural, t } from '../i18n';
@@ -15,7 +15,8 @@ import { renderMain } from './workspace';
  */
 
 type RankView = 'podium' | 'lines';
-const rankView = (): RankView => (S.prefs.rankView === 'lines' ? 'lines' : 'podium');
+/** The Ranking tab's view, remembered in this browser: podium first. */
+export const rankView = (): RankView => (S.prefs.rankView === 'lines' ? 'lines' : 'podium');
 
 /** The method the lines compare with, while the page is open. */
 let other: MethodKey | null = null;
@@ -38,10 +39,16 @@ function viewsHTML(): string {
   return `<span class="res-views" role="group" aria-label="${t('rankViews')}">${btn('podium', t('rankPodium'), podiumSvg)}${btn('lines', t('rankLines'), linesSvg)}</span>`;
 }
 
+/** The method the lines compare the ranking's with: the one picked, else Balanced, else the first one possible. */
+export function compareWith(r: Ranking): MethodKey | undefined {
+  const options = comparable(r, methodOf(r));
+  return other && options.includes(other) ? other : (options.find((x) => x === 'bt') ?? options[0]);
+}
+
 function slopeHTML(r: Ranking, C: Computed): string {
   const m = C.m;
   const options = comparable(r, m);
-  const k = other && options.includes(other) ? other : (options.find((x) => x === 'bt') ?? options[0]);
+  const k = compareWith(r);
   if (!k) return '';
   const D = compute({ ...r, method: k });
   const pos = (Cx: Computed, it: Item, i: number) => (Cx.m === 'sort' && !stat(Cx, it.id).placed ? '·' : String(i + 1));

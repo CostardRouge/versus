@@ -1,7 +1,7 @@
 import { trackEvent } from '../audience';
 import { fillInk, hslToHex, normHex, rgbOf } from '../core/colors';
 import type { RankingView } from '../core/protocol';
-import { lastDuelPerPair, ownRanking } from '../core/published';
+import { agreement, lastDuelPerPair, ownRanking } from '../core/published';
 import { methodOf, validHistory } from '../core/scoring';
 import {
   CARD_FORMATS,
@@ -11,6 +11,7 @@ import {
   type CardRow,
   type CardSpec,
   type CardTexts,
+  compareSpec,
   crowdSpec,
   duelQuery,
   duelSpec,
@@ -22,10 +23,12 @@ import {
 import type { Fill, Item, ItemStats, MethodKey, Ranking } from '../core/types';
 import { esc, initials } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
-import { boardShareData, boardURL } from './board';
+import { boardShareData, boardURL, resultView } from './board';
 import { $, ask, copyText, doc, toast } from './dom';
+import { podiumWho } from './finale';
 import { fmtScore } from './format';
 import { putCard } from './remote';
+import { compareWith, rankView } from './results';
 import { siteURL } from './router';
 
 /**
@@ -483,7 +486,8 @@ function frame(ctx: Ctx, P: Palette, spec: CardSpec, format: CardFormat, W: numb
   ctx.fillText(spec.texts.brand, pad + 68 * u, top0 + 27 * u + 2 * u);
   // Footer: "Vote at" or "Made with Versus", and the link without its scheme.
   const link = spec.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const lead = spec.kind === 'ranking' && !spec.url.includes('/b/') ? spec.texts.made : spec.texts.vote;
+  const local = (spec.kind === 'ranking' || spec.kind === 'compare') && !spec.url.includes('/b/');
+  const lead = local ? spec.texts.made : spec.texts.vote;
   ctx.font = font(500, 22 * u, P.mono);
   const linkW = ctx.measureText(link).width;
   ctx.font = font(600, 24 * u, P.body);
@@ -591,7 +595,10 @@ function drawStandingsWide(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: nu
   drawStandings(ctx, P, spec, right, u, CARD_ROWS.landscape, images);
 }
 
-/** The sharer's order facing the crowd's, joined by lines; the agreement in big figures. */
+/**
+ * Two orders of the same items facing each other, joined by lines: the sharer's and the crowd's (the agreement in
+ * big figures), or a ranking's by two methods.
+ */
 function drawDuo(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, wide: boolean, images: Images): void {
   const top = wide ? heading(ctx, P, spec, { ...box, w: box.w * 0.6 }, u, 2, 42) : heading(ctx, P, spec, box, u, 2);
   let y = top + 28 * u;
@@ -618,12 +625,13 @@ function drawDuo(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, wide
     }
   }
   if (wide) y = top + 20 * u;
-  // Two columns with a gap for the lines.
+  // Two columns with a gap for the lines. Upright, rows grow to fill the card when there are few of them.
   const gap = wide ? 150 * u : 130 * u;
   const colW = (box.w - gap) / 2;
-  const rowH = wide ? 40 * u : 56 * u;
   const headH = wide ? 34 * u : 40 * u;
-  const maxRows = Math.max(1, Math.min(spec.mine.length, Math.floor((box.y + box.h - y - headH) / rowH)));
+  const room = box.y + box.h - y - headH;
+  const rowH = wide ? 40 * u : Math.max(56 * u, Math.min(88 * u, room / Math.max(1, spec.mine.length)));
+  const maxRows = Math.max(1, Math.min(spec.mine.length, Math.floor(room / rowH)));
   // A column's label: a colored dot at the outer edge, the text next to it.
   const label = (text: string, x: number, dot: string, align: CanvasTextAlign) => {
     const left = align === 'left';
@@ -638,8 +646,9 @@ function drawDuo(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, wide
     ctx.arc(left ? x + 7 * u : x - 7 * u, cy, 7 * u, 0, Math.PI * 2);
     ctx.fill();
   };
-  label(spec.texts.me, box.x, P.a, 'left');
-  label(spec.texts.crowd, box.x + box.w, P.b, 'right');
+  const [leftName, rightName] = spec.columns ?? [spec.texts.me, spec.texts.crowd];
+  label(leftName, box.x, P.a, 'left');
+  label(rightName, box.x + box.w, P.b, 'right');
   y += headH;
   const mine = spec.mine.slice(0, maxRows);
   const crowd = spec.rows.slice(0, maxRows);
@@ -783,7 +792,7 @@ export function drawCard(spec: CardSpec, format: CardFormat, P: Palette, images:
   const u = wide ? W / 1200 : W / 1080;
   const box = frame(ctx, P, spec, format, W, H, u);
   if (spec.kind === 'duel' && spec.pair) drawDuel(ctx, P, spec, box, u, wide, images);
-  else if (spec.kind === 'duo') drawDuo(ctx, P, spec, box, u, wide, images);
+  else if (spec.kind === 'duo' || spec.kind === 'compare') drawDuo(ctx, P, spec, box, u, wide, images);
   else if (wide) drawStandingsWide(ctx, P, spec, box, u, images);
   else {
     const y = heading(ctx, P, spec, box, u, format === 'story' ? 3 : 2);
@@ -875,14 +884,18 @@ export function shareMessage(spec: CardSpec): string {
   if (spec.kind === 'duel' && spec.pair) {
     return `${t('shareMsgOr', { a: spec.pair[0].label, b: spec.pair[1].label })} ${vote}`;
   }
+  const three = (rows: readonly CardRow[]) =>
+    rows
+      .slice(0, 3)
+      .map((r) => r.it.label)
+      .join(' · ');
   if (spec.kind === 'duo') {
     const agree = spec.agree === null ? '' : `${t('shareAgree', { pct: pct(spec.agree) })}\n`;
-    const three = (rows: readonly CardRow[]) =>
-      rows
-        .slice(0, 3)
-        .map((r) => r.it.label)
-        .join(' · ');
     return `${spec.title}\n${agree}${t('shareMyTop')} ${three(spec.mine)}\n${t('shareCrowdTop')} ${three(spec.rows)}\n\n${vote}`;
+  }
+  if (spec.kind === 'compare') {
+    const [a, b] = spec.columns ?? ['', ''];
+    return `${spec.title} · ${spec.subtitle}\n${a}: ${three(spec.mine)}\n${b}: ${three(spec.rows)}\n\n${t('cardMade')} · ${spec.url}`;
   }
   const head = spec.subtitle ? `${spec.title} · ${spec.subtitle}` : spec.title;
   const foot = spec.kind === 'crowd' ? vote : `${t('cardMade')} · ${spec.url}`;
@@ -893,12 +906,22 @@ export function shareMessage(spec: CardSpec): string {
 
 const countsLine = (votes: number, voters: number): string => `${plural(votes, 'vote')} · ${plural(voters, 'voter')}`;
 
-/** A local ranking, from the Ranking tab. */
+/** A local ranking, from the Ranking tab: its podium and rows. */
 export function localCardSpec(r: Ranking): CardSpec {
   const spec = localSpec(r, '', siteURL(), texts(), scoreMeta);
   const duels = validHistory(r).length;
   spec.subtitle = `${plural(r.items.length, 'item')} · ${plural(duels, 'duel')} · ${M(methodOf(r)).name}`;
   return spec;
+}
+
+/** A local ranking by its method facing the one the Ranking tab's lines compare it with; null when there is none. */
+export function compareCardSpec(r: Ranking): CardSpec | null {
+  const m = methodOf(r);
+  const other = compareWith(r);
+  const duels = validHistory(r).length;
+  if (!other || !duels || r.items.length < 2) return null;
+  const sub = `${plural(r.items.length, 'item')} · ${plural(duels, 'duel')}`;
+  return compareSpec(r, other, [M(m).name, M(other).name], sub, siteURL(), texts());
 }
 
 /** The board on screen: the crowd's standings as this viewer may see them. */
@@ -919,21 +942,37 @@ export function duelCardSpec(): CardSpec | null {
   return duelSpec(b.view.title, A, B, `${boardURL(b.alias)}${duelQuery(A.id, B.id)}`, texts());
 }
 
-/** The end-of-vote page: the viewer facing the crowd, or their own result while the crowd stays hidden. */
-export function finaleCardSpec(): CardSpec | null {
+/** The pictures the end-of-vote page can be shared as: the crowd's podium, the voter's, and the voter facing the crowd. */
+export interface FinaleCards {
+  crowd: CardSpec | null;
+  mine: CardSpec;
+  duo: CardSpec | null;
+}
+
+/** The end-of-vote page's cards; the crowd's two are null while it stays hidden from this voter. */
+export function finaleCards(): FinaleCards | null {
   const b = boardShareData();
   if (!b) return null;
-  const sub = countsLine(b.counts.votes, b.counts.voters);
-  if (b.ranking) return duoSpec(b.view, b.ranking, b.mine, b.view.settings.method, sub, boardURL(b.alias), texts());
-  const own = ownRanking(b.view.items, b.mine, b.view.settings.method);
-  return rankingSpec(
+  const counts = countsLine(b.counts.votes, b.counts.voters);
+  const url = boardURL(b.alias);
+  const method = b.view.settings.method;
+  const own = ownRanking(b.view.items, b.mine, method);
+  const mine = rankingSpec(
     b.view.title,
     own,
     `${plural(b.mine.length, 'vote')} · ${t('finMe')}`,
-    boardURL(b.alias),
+    url,
     texts(),
     scoreMeta,
   );
+  if (!b.ranking) return { crowd: null, mine, duo: null };
+  const share = agreement(b.mine, b.ranking);
+  const sub = share === null ? counts : `${counts} · ${t('agreeShort', { pct: pct(Math.round(share * 100)) })}`;
+  return {
+    crowd: crowdSpec(b.view, b.ranking, sub, url, texts(), crowdMeta),
+    mine,
+    duo: duoSpec(b.view, b.ranking, b.mine, method, counts, url, texts()),
+  };
 }
 
 // ─── The cards links unfurl with ────────────────────────────────────────────
@@ -974,13 +1013,24 @@ export function uploadPublishedCard(r: Ranking, alias: string, withVotes: boolea
 
 // ─── The share panel ────────────────────────────────────────────────────────
 
+/** One of the pictures a share can show (a podium, lines), named as the page names its view. */
+export interface ShareView {
+  key: string;
+  label: string;
+  spec: CardSpec;
+}
+
 interface Panel {
+  views: ShareView[];
+  /** The picture shown: the view on screen when the panel opened, or the one picked in it. */
+  view: ShareView;
   spec: CardSpec;
   kind: 'rank' | 'board' | 'duel' | 'finale';
   format: CardFormat;
   message: string;
-  canvases: Partial<Record<CardFormat, Promise<HTMLCanvasElement | null>>>;
-  /** Drawing in progress, so a format switch mid-way doesn't show a stale card. */
+  /** Drawn cards, by view and format. */
+  canvases: Partial<Record<string, Promise<HTMLCanvasElement | null>>>;
+  /** Drawing in progress, so a format or picture switch mid-way doesn't show a stale card. */
   drawing: number;
 }
 
@@ -999,8 +1049,19 @@ function panelHTML(p: Panel): string {
     (f) =>
       `<button type="button" data-action="share-fmt" data-fmt="${f}" aria-pressed="${f === p.format}">${t(FORMAT_KEYS[f])}</button>`,
   ).join('');
+  // Which picture, when the page has more than one view of the result (D117).
+  const views =
+    p.views.length > 1
+      ? `<div class="share-fmts share-views" role="group" aria-label="${t('shareView')}">${p.views
+          .map(
+            (v) =>
+              `<button type="button" data-action="share-view" data-view="${esc(v.key)}" aria-pressed="${v === p.view}">${esc(v.label)}</button>`,
+          )
+          .join('')}</div>`
+      : '';
   return `<div class="share" id="share">
     <div class="share-preview ${p.format}" id="share-preview" aria-label="${t('sharePreviewAlt')}" role="img"><span class="share-wait">…</span></div>
+    ${views}
     <div class="share-fmts" role="group" aria-label="${t('shareFormat')}">${fmts}</div>
     <div class="share-acts">
       ${canShareFiles() ? `<button class="btn primary" type="button" data-action="share-native">${t('shareNative')}</button>` : ''}
@@ -1008,15 +1069,16 @@ function panelHTML(p: Panel): string {
       ${canCopyImage() ? `<button class="btn" type="button" data-action="share-copy-image">${t('shareCopyImage')}</button>` : ''}
       <button class="btn" type="button" data-action="share-download">${t('shareDownload')}</button>
     </div>
-    <p class="share-msg">${esc(p.message)}</p>
+    <p class="share-msg" id="share-msg">${esc(p.message)}</p>
   </div>`;
 }
 
 function canvasOf(p: Panel, format: CardFormat): Promise<HTMLCanvasElement | null> {
-  let c = p.canvases[format];
+  const key = `${p.view.key}/${format}`;
+  let c = p.canvases[key];
   if (!c) {
     c = renderCard(p.spec, format);
-    p.canvases[format] = c;
+    p.canvases[key] = c;
   }
   return c;
 }
@@ -1043,9 +1105,24 @@ const TITLES: Record<Panel['kind'], MsgKey> = {
   finale: 'shareResultTitle',
 };
 
-/** Opens the panel for a card: preview, formats and the ways to share it. */
-export function openShare(spec: CardSpec, kind: Panel['kind']): void {
-  const p: Panel = { spec, kind, format: lastFormat, message: shareMessage(spec), canvases: {}, drawing: 0 };
+/**
+ * Opens the panel for a card: preview, formats and the ways to share it. Given several views (a podium, lines), it
+ * offers to switch between them, starting from `current`: the one on screen.
+ */
+export function openShare(card: CardSpec | ShareView[], kind: Panel['kind'], current?: string): void {
+  const views = Array.isArray(card) ? card : [{ key: 'card', label: '', spec: card }];
+  const view = views.find((v) => v.key === current) ?? views[0];
+  if (!view) return;
+  const p: Panel = {
+    views,
+    view,
+    spec: view.spec,
+    kind,
+    format: lastFormat,
+    message: shareMessage(view.spec),
+    canvases: {},
+    drawing: 0,
+  };
   panel = p;
   void ask({ title: t(TITLES[kind]), html: panelHTML(p), ok: t('done'), cancel: false }).then(() => {
     if (panel === p) panel = null;
@@ -1053,10 +1130,29 @@ export function openShare(spec: CardSpec, kind: Panel['kind']): void {
   void showPreview(p);
 }
 
-/** The Ranking tab of a local ranking. */
+/** Another picture in the open panel: the card and its message change, the format stays. */
+export function shareView(key: string | undefined): void {
+  const p = panel;
+  const view = p?.views.find((v) => v.key === key);
+  if (!p || !view || view === p.view) return;
+  p.view = view;
+  p.spec = view.spec;
+  p.message = shareMessage(view.spec);
+  for (const b of doc.querySelectorAll<HTMLElement>('[data-action="share-view"]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.view === key));
+  }
+  const msg = $('#share-msg');
+  if (msg) msg.textContent = p.message;
+  void showPreview(p);
+}
+
+/** The Ranking tab of a local ranking: its podium, or its lines facing another method, as on screen. */
 export function shareLocal(r: Ranking | undefined): void {
   if (!r || r.items.length < 2) return;
-  openShare(localCardSpec(r), 'rank');
+  const lines = compareCardSpec(r);
+  const views: ShareView[] = [{ key: 'podium', label: t('rankPodium'), spec: localCardSpec(r) }];
+  if (lines) views.push({ key: 'lines', label: t('rankLines'), spec: lines });
+  openShare(views, 'rank', rankView());
 }
 
 /** The board page: the crowd's standings; its landscape card also becomes the link's preview. */
@@ -1077,10 +1173,19 @@ export function shareDuel(): void {
   openShare(spec, 'duel');
 }
 
-/** The end-of-vote page: the viewer against the crowd. */
+/**
+ * The end-of-vote page: the crowd's podium, the voter's, or the voter facing the crowd, starting from the view on
+ * screen. While the crowd stays hidden, the voter's podium only.
+ */
 export function shareFinale(): void {
-  const spec = finaleCardSpec();
-  if (spec) openShare(spec, 'finale');
+  const cards = finaleCards();
+  if (!cards) return;
+  const views: ShareView[] = [];
+  if (cards.crowd) views.push({ key: 'crowd', label: t('finCrowdPodium'), spec: cards.crowd });
+  views.push({ key: 'mine', label: t('finMyPodium'), spec: cards.mine });
+  if (cards.duo) views.push({ key: 'duo', label: t('finDuo'), spec: cards.duo });
+  const current = resultView() === 'duo' ? 'duo' : podiumWho() === 'me' ? 'mine' : 'crowd';
+  openShare(views, 'finale', current);
 }
 
 export function shareFormat(fmt: string | undefined): void {

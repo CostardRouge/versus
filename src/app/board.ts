@@ -582,7 +582,8 @@ export function boardKeydown(e: KeyboardEvent, tg: HTMLElement): void {
 
 // ─── End of the vote ────────────────────────────────────────────────────────
 
-const resultView = (): ResultView => (S.prefs.resultView === 'duo' ? 'duo' : 'podium');
+/** The end-of-vote page's view, remembered in this browser: podium first. */
+export const resultView = (): ResultView => (S.prefs.resultView === 'duo' ? 'duo' : 'podium');
 
 const finaleData = (b: Board, v: BoardView): FinaleData => ({
   title: v.title,

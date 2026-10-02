@@ -65,6 +65,7 @@ import {
   shareFormat,
   shareLocal,
   shareNative,
+  shareView,
 } from './share';
 import { drawSlopes } from './slope';
 import { cur, S, save } from './state';
@@ -173,6 +174,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'share-fmt':
       shareFormat(el.dataset.fmt);
+      break;
+    case 'share-view':
+      shareView(el.dataset.view);
       break;
     case 'share-native':
       void shareNative();

@@ -118,6 +118,33 @@ describe('sharing a local ranking', () => {
     anchorClick.mockRestore();
   });
 
+  it('opens on the picture the Ranking tab shows, and switches to the other', async () => {
+    const pressed = () => $('[data-action="share-view"][aria-pressed="true"]')?.dataset.view;
+    // Opened from the podium: the podium, and the lines one click away.
+    expect(pressed()).toBe('podium');
+    expect([...document.querySelectorAll<HTMLElement>('[data-action="share-view"]')].map((b) => b.textContent)).toEqual(
+      ['Podium', 'Compare two methods'],
+    );
+    click('[data-action="share-view"][data-view="lines"]');
+    await flush();
+    expect(pressed()).toBe('lines');
+    // The format chosen stays.
+    expect(($('#share-preview canvas') as HTMLCanvasElement).width).toBe(1200);
+    const msg = $('.share-msg')?.textContent ?? '';
+    expect(msg).toContain('Pâtisseries préférées · 3 items · 3 duels');
+    expect(msg).toMatch(/\nBalanced: .+\nDynamic: .+/);
+    click('#m-ok');
+    // Opened from the lines, comparing with Simple: those lines.
+    click('[data-action="rank-view"][data-view="lines"]');
+    click('[data-action="set-compare"][data-m="win"]');
+    click('[data-action="share-rank"]');
+    await flush();
+    expect(pressed()).toBe('lines');
+    expect($('.share-msg')?.textContent).toMatch(/\nBalanced: .+\nSimple: .+/);
+    click('[data-action="share-view"][data-view="podium"]');
+    expect($('.share-msg')?.textContent).toContain('Pâtisseries préférées · 3 items · 3 duels · Balanced');
+  });
+
   it('keeps quiet when the person closes the share sheet, and says so when sharing fails', async () => {
     share.mockRejectedValueOnce(new DOMException('closed', 'AbortError'));
     $('#toast')?.classList.remove('show');
