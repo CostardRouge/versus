@@ -338,6 +338,16 @@ describe('icons', () => {
   });
 });
 
+describe('share target', () => {
+  it('posts shares where the service worker picks them up', () => {
+    const target = manifest().share_target as { action: string; method: string; params: { files: { name: string }[] } };
+    const sw = readFileSync(resolve(process.cwd(), 'src/sw/sw.ts'), 'utf8');
+    expect(target.method).toBe('POST');
+    expect(sw).toContain(`const SHARE_PATH = '${target.action.replace('./', '')}';`);
+    expect(sw).toContain(`.getAll('${target.params.files[0]?.name}')`);
+  });
+});
+
 describe('generated files', () => {
   it('writes a manifest that parses and names the app', () => {
     const m = JSON.parse(files['manifest.webmanifest']?.body ?? '');

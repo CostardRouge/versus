@@ -60,6 +60,11 @@ function addItems(r: Ranking, items: Typed[]): Item[] {
 export function addList(r: Ranking, text: string): boolean {
   const labels = parseList(text);
   if (labels.length < 2) return false;
+  addLabelList(r, labels);
+  return true;
+}
+/** Labels read from a list (pasted, typed or shared from another app): those not in the ranking yet, with a toast that can undo. */
+export function addLabelList(r: Ranking, labels: string[]): void {
   const { fresh, dupes } = freshLabels(
     labels,
     r.items.map((i) => i.label),
@@ -68,7 +73,7 @@ export function addList(r: Ranking, text: string): boolean {
   const n = added.length;
   if (!n) {
     toast(t('allDupes'));
-    return true;
+    return;
   }
   const items = plural(n, 'item');
   const msg = dupes
@@ -76,7 +81,6 @@ export function addList(r: Ranking, text: string): boolean {
     : t('itemsAdded', { items, n });
   const ids = new Set(added.map((i) => i.id));
   toast(msg, { label: t('undoToast'), run: () => dropItems(r, ids) });
-  return true;
 }
 /** What was typed in the add field and sent: a list, or one item. False when there was nothing to add. */
 export function addTyped(r: Ranking, text: string): boolean {

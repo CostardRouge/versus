@@ -6,9 +6,11 @@
  * worker waits until the page asks it to take over (src/app/pwa.ts), which the user decides: a deploy never
  * reloads the app in the middle of a duel.
  *
- * Only the site's own files go through here. The published boards API, other origins and anything but GET
- * reach the network untouched. The app (app/) opens from the cache; the home pages (the root, fr/) come from
- * the network when there is one, so they are always current, and from the cache offline.
+ * Only the site's own files go through here, plus what other apps share to Versus (the manifest's
+ * share_target): set aside in a cache of its own, then picked up by the app (src/app/inbox.ts). The published
+ * boards API, other origins and anything else but GET reach the network untouched. The app (app/) opens from
+ * the cache; the home pages (the root, fr/) come from the network when there is one, so they are always
+ * current, and from the cache offline.
  */
 
 declare const self: ServiceWorkerGlobalScope;
@@ -29,6 +31,11 @@ const HOMES: Record<string, string> = {
   'fr/': at('./fr/'),
   'fr/index.html': at('./fr/'),
 };
+/** Where the manifest's share_target posts, and the cache that holds a share until the app picks it up. */
+const SHARE_PATH = 'app/share-target';
+const INBOX = `${PREFIX}inbox`;
+/** As many files as one drop takes (items.ts). */
+const SHARE_FILES = 60;
 
 self.addEventListener('install', (event) => {
   // `reload` skips the HTTP cache, which could still hold the previous deploy's page.
@@ -40,7 +47,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       for (const key of await caches.keys()) {
-        if (key.startsWith(PREFIX) && key !== CACHE) await caches.delete(key);
+        if (key.startsWith(PREFIX) && key !== CACHE && key !== INBOX) await caches.delete(key);
       }
       await self.clients.claim();
     })(),
@@ -53,11 +60,11 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
   const path = url.pathname.slice(scope.pathname.length);
-  if (path.startsWith('api/')) return;
+  if (req.method === 'POST' && path === SHARE_PATH) event.respondWith(receive(req));
+  if (req.method !== 'GET' || path.startsWith('api/')) return;
   if (req.mode === 'navigate') {
     // Every address under app/ is a view of the one app page (app/demo/…, app/b/…, D92); anything else opened
     // directly (robots.txt, llms.txt…) goes to the network.
@@ -93,6 +100,41 @@ async function file(req: Request, event: FetchEvent): Promise<Response> {
   const res = await fetch(req);
   if (res.ok) event.waitUntil(cache.put(req, res.clone()));
   return res;
+}
+
+/**
+ * A share from another app: its title, text, link and files go to the inbox (replacing one never picked up),
+ * then the app opens and picks them up. Whatever happens, the app opens: at worst with nothing to add.
+ */
+async function receive(req: Request): Promise<Response> {
+  try {
+    const form = await req.formData();
+    await caches.delete(INBOX);
+    const inbox = await caches.open(INBOX);
+    const text = (name: string): string => {
+      const v = form.get(name);
+      return typeof v === 'string' ? v : '';
+    };
+    const files = form
+      .getAll('files')
+      .filter((f): f is File => typeof f !== 'string')
+      .slice(0, SHARE_FILES);
+    const list = await Promise.all(
+      files.map(async (f, i) => {
+        const key = at(`app/inbox/${i}`);
+        await inbox.put(key, new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }));
+        return { key, name: f.name, type: f.type };
+      }),
+    );
+    const meta = { title: text('title'), text: text('text'), url: text('url'), files: list };
+    await inbox.put(
+      at('app/inbox/meta'),
+      new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } }),
+    );
+  } catch {
+    /* nothing to pick up */
+  }
+  return Response.redirect(at('./app/'), 303);
 }
 
 export {};

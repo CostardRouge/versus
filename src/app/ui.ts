@@ -5,6 +5,7 @@ import { initDom } from './dom';
 import { bindEvents } from './events';
 import { applyStatic } from './header';
 import { hasImageRefs, loadImages, tidyImages } from './images';
+import { receiveShare } from './inbox';
 import { initPwa } from './pwa';
 import { routeFromURL } from './rankings';
 import { S, save } from './state';
@@ -43,6 +44,8 @@ function start(): void {
   applyStatic();
   // The address names the view: the gallery, a ranking, a demo or a published board.
   routeFromURL();
+  // Photos, text or a file another app shared to Versus (the manifest's share_target).
+  void receiveShare();
   // Unused images, once the app is up: never in the way of the first render.
   setTimeout(() => void tidyImages(S.ranks), 5000);
 }
