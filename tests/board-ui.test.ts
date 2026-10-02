@@ -98,6 +98,24 @@ const state = (over: Partial<BoardView> = {}, owner = false): ServerMessage => (
   ],
 });
 const stored = (): Ranking[] => JSON.parse(localStorage.getItem('versus-v1') ?? '[]');
+const labels = (): string[] =>
+  [...document.querySelectorAll<HTMLInputElement>('#item-list .row-label')].map((i) => i.value);
+const submit = (v: string) => {
+  ($('#add-input') as HTMLInputElement).value = v;
+  $('#add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+};
+const paste = (text: string) => {
+  const e = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(e, 'clipboardData', { value: { files: [], getData: () => text } });
+  $('#add-input')?.dispatchEvent(e);
+  return e.defaultPrevented;
+};
+/** A ranking where the given items have that many votes each. */
+const voted = (votes: Record<string, number>): RankingView => {
+  const rv = ranking(['p0', 'p1', 'p2']);
+  for (const [id, n] of Object.entries(votes)) (rv.stats[id] as ItemScore).w = n;
+  return rv;
+};
 
 beforeAll(async () => {
   vi.useFakeTimers();
@@ -209,9 +227,16 @@ describe('publishing', () => {
     ws.open();
     expect(ws.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
     ws.receive(state({}, true));
-    expect($('.b-title')?.textContent).toBe('Pizzas');
-    expect($('#b-admin')).not.toBeNull();
+    // Its author gets the workspace of a local ranking (D116): the title, the score, the items pane.
+    expect(($('#rank-title') as HTMLInputElement).value).toBe('Pizzas');
+    expect($('.ws')?.dataset.alias).toBe(ALIAS);
+    expect($('[data-action="b-settings"]')?.textContent).toContain('Published');
+    expect($('#b-counts')?.textContent).toContain('3 votes');
+    expect(labels()).toEqual(['Margherita', 'Regina', 'Calzone']);
+    click('.tab[data-tab="results"]');
     expect(document.querySelectorAll('#b-rank .b-rows li')).toHaveLength(3);
+    click('.tab[data-tab="duel"]');
+    expect($('#b-main .card-a')).not.toBeNull();
   });
 });
 
@@ -327,12 +352,11 @@ describe('voting', () => {
     expect($('#b-rank')?.textContent).toContain('hidden until the author closes the vote');
   });
 
-  it('lets visitors suggest items when the author allows it', () => {
+  it('lets visitors suggest items when the author allows it, with the same field', () => {
     const ws = FakeSocket.last();
     ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
-    const input = $('#b-add-input') as HTMLInputElement;
-    input.value = '#ff8800';
-    $('#b-add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect($('.b-suggest #add-input')).not.toBeNull();
+    submit('#ff8800');
     expect(ws.sent.at(-1)).toEqual({
       t: 'add',
       item: { label: '#FF8800', fill: { type: 'solid', colors: ['#ff8800'] } },
@@ -340,22 +364,25 @@ describe('voting', () => {
     ws.receive({ t: 'error', code: 'too_fast' });
     ws.receive({ t: 'pairs', pairs: [], mine: 0 });
     expect($('#toast')?.textContent).toBe('Wait a few seconds before adding another item.');
-    expect(($('#b-add-input') as HTMLInputElement).value).toBe('#ff8800');
+    expect(($('#add-input') as HTMLInputElement).value).toBe('#ff8800');
     ws.receive(state());
-    expect($('#b-add-input')).toBeNull();
+    expect($('#add-input')).toBeNull();
   });
 });
 
 describe('author', () => {
-  it('adds and removes items as the author', async () => {
+  it('adds one item or a pasted list, then removes items as the author', async () => {
     const ws = FakeSocket.last();
     ws.receive(state({}, true));
-    respond = (c) =>
-      c.method === 'POST'
-        ? { status: 200, body: { id: 'n1', label: 'Hawaii', img: null, fill: null, h: 1 } }
-        : { status: 200, body: 2 };
-    ($('#b-add-input') as HTMLInputElement).value = 'Hawaii';
-    $('#b-add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const added = (label: string) => ({ id: `n-${label}`, label, img: null, fill: null, h: 1 });
+    respond = (c) => {
+      if (c.method === 'POST') {
+        const list = (c.body as { items?: { label: string }[] }).items;
+        return { status: 200, body: list ? list.map((x) => added(x.label)) : added('Hawaii') };
+      }
+      return { status: 200, body: 0 };
+    };
+    submit('Hawaii');
     await flush();
     expect(calls.at(-1)).toMatchObject({
       method: 'POST',
@@ -364,31 +391,126 @@ describe('author', () => {
       auth: `Bearer ${OWNER}`,
     });
     expect($('#toast')?.textContent).toBe('Item added');
-    click('[data-action="b-remove-item"][data-id="p1"]');
-    expect($('#m-title')?.textContent).toBe('Remove Regina?');
-    click('#m-ok');
+    expect(($('#add-input') as HTMLInputElement).value).toBe('');
+
+    // A list adds its new labels in one request, and can be undone.
+    expect(paste('- Quattro\n- regina\n- Napoli')).toBe(true);
+    await flush();
+    expect(calls.at(-1)?.body).toEqual({
+      items: [
+        { label: 'Quattro', fill: null },
+        { label: 'Napoli', fill: null },
+      ],
+    });
+    expect($('#toast')?.textContent).toBe('2 items added · 1 duplicate skippedUndo');
+    calls.length = 0;
+    click('[data-action="toast-act"]');
+    await flush();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      `DELETE /api/boards/${ALIAS}/items/n-Quattro`,
+      `DELETE /api/boards/${ALIAS}/items/n-Napoli`,
+    ]);
+
+    // Without votes an item goes at once, and Undo brings it back.
+    click('[data-action="remove-item"][data-id="p1"]');
+    expect($('#modal')?.hidden).toBe(true);
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p1` });
-    expect($('#toast')?.textContent).toBe('Item removed');
+    expect($('#toast')?.textContent).toBe('“Regina” removed.Undo');
+    click('[data-action="toast-act"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'POST', body: { label: 'Regina', fill: null } });
+
+    // With votes, after a confirmation.
+    ws.receive(state({ ranking: voted({ p0: 2 }) }, true));
+    expect($('#item-list li[data-id="p0"] .rt')?.textContent).toBe('2 votes');
     respond = () => ({ status: 409, body: { error: 'too_few' } });
-    click('[data-action="b-remove-item"][data-id="p0"]');
+    click('[data-action="remove-item"][data-id="p0"]');
+    expect($('#m-title')?.textContent).toBe('Remove Margherita?');
+    expect($('#m-body')?.textContent).toBe('Its 2 votes will be deleted for everyone.');
     click('#m-ok');
     await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p0` });
     expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
   });
 
-  it('recolors a color item: a draft until validated, then its votes go after a confirmation', async () => {
+  it('renames an item: at once without votes, asking what its votes become otherwise', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ ranking: voted({ p0: 3 }) }, true));
+    respond = (c) => ({ status: 200, body: (c.body as { reset?: boolean }).reset ? 3 : 0 });
+    const rename = (id: string, v: string) => {
+      const input = $(`#item-list .row-label[data-id="${id}"]`) as HTMLInputElement;
+      input.value = v;
+      change(input);
+      return input;
+    };
+    rename('p2', ' Calzone fritto ');
+    await flush();
+    expect($('#modal')?.hidden).toBe(true);
+    expect(calls.at(-1)).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}/items/p2`,
+      body: { label: 'Calzone fritto', reset: false },
+      auth: `Bearer ${OWNER}`,
+    });
+
+    // With votes: kept by default (a correction)…
+    rename('p0', 'Marinara');
+    expect($('#m-title')?.textContent).toBe('Rename “Margherita” to “Marinara”?');
+    expect($('#m-body p')?.textContent).toBe('Margherita has 3 votes. What happens to them?');
+    expect(($('#m-body input[value="keep"]') as HTMLInputElement).checked).toBe(true);
+    click('#m-ok');
+    await flush();
+    expect(calls.at(-1)?.body).toEqual({ label: 'Marinara', reset: false });
+    expect($('#toast')?.textContent).toBe('Renamed. Votes kept: 3.');
+
+    // …or dropped (another choice).
+    rename('p0', 'Sushi');
+    ($('#m-body input[value="reset"]') as HTMLInputElement).checked = true;
+    click('#m-ok');
+    await flush();
+    expect(calls.at(-1)?.body).toEqual({ label: 'Sushi', reset: true });
+    expect($('#toast')?.textContent).toBe('Renamed. Sushi starts again from zero.');
+
+    // Cancelled, or a name already there: the name goes back, nothing is sent.
+    calls.length = 0;
+    const input = rename('p0', 'Pepperoni');
+    click('#m-cancel');
+    await flush();
+    expect(input.value).toBe('Margherita');
+    rename('p2', 'regina');
+    expect($('#toast')?.textContent).toBe('This item is already there.');
+    expect(($('#item-list .row-label[data-id="p2"]') as HTMLInputElement).value).toBe('Calzone');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('keeps what the author is typing when the board changes', () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({}, true));
+    const input = $('#item-list .row-label[data-id="p1"]') as HTMLInputElement;
+    input.focus();
+    input.value = 'Regina Mar';
+    ($('#add-input') as HTMLInputElement).value = 'Bianca';
+    ws.receive({ t: 'ranking', counts: { votes: 4, voters: 2, online: 2 }, ranking: ranking(['p1', 'p0', 'p2']) });
+    ws.receive(state({ counts: { votes: 4, voters: 3, online: 2 } }, true));
+    expect(($('#item-list .row-label[data-id="p1"]') as HTMLInputElement).value).toBe('Regina Mar');
+    expect(document.activeElement).toBe($('#item-list .row-label[data-id="p1"]'));
+    expect(($('#add-input') as HTMLInputElement).value).toBe('Bianca');
+    ($('#add-input') as HTMLInputElement).value = '';
+    (document.activeElement as HTMLElement).blur();
+  });
+
+  it('recolors a color item: a draft until validated, then the author says what its votes become', async () => {
     const ws = FakeSocket.last();
     const red = { type: 'solid' as const, colors: ['#aa0000'] };
     const colored = [{ ...items[0], label: 'Rouge', fill: red }, { ...items[1], label: 'Carmin', fill: red }, items[2]];
-    const rv = ranking(['p0', 'p1', 'p2']);
-    (rv.stats.p1 as ItemScore).w = 2;
-    ws.receive(state({ items: colored, ranking: rv } as Partial<BoardView>, true));
-    expect($('#b-admin .b-twin')?.textContent).toBe('Same color as Carmin');
-    expect(document.querySelectorAll('#b-admin [data-action="b-edit-color"]')).toHaveLength(2);
+    ws.receive(state({ items: colored, ranking: voted({ p1: 2 }) } as Partial<BoardView>, true));
+    expect($('#item-list li[data-id="p0"] .row-note')?.textContent).toBe('Same color as Carmin');
+    expect(document.querySelectorAll('#item-list [data-action="edit-color"]')).toHaveLength(2);
+    calls.length = 0;
 
     const edit = (hexValue: string) => {
-      click('[data-action="b-edit-color"][data-id="p1"]');
+      click('[data-action="edit-color"][data-id="p1"]');
       expect($('#cp-twin')?.textContent).toBe('Same color as Rouge');
       const hex = $('#cpop .cp-hex') as HTMLInputElement;
       hex.value = hexValue;
@@ -405,50 +527,97 @@ describe('author', () => {
     respond = () => ({ status: 200, body: 2 });
     click('[data-action="cp-ok"]');
     expect($('#m-title')?.textContent).toBe('Change the color of Carmin?');
-    expect($('#m-body')?.textContent).toContain('Its 2 votes were cast on the old color');
+    expect($('#m-body p')?.textContent).toBe('Carmin has 2 votes, cast on the old color. What happens to them?');
+    // The color is the item: starting again is checked first.
+    expect(($('#m-body input[value="reset"]') as HTMLInputElement).checked).toBe(true);
     click('#m-ok');
     await flush();
     expect(calls.at(-1)).toMatchObject({
       method: 'PATCH',
       url: `/api/boards/${ALIAS}/items/p1`,
-      body: { fill: { type: 'solid', colors: ['#2743f5'] } },
+      body: { fill: { type: 'solid', colors: ['#2743f5'] }, reset: true },
       auth: `Bearer ${OWNER}`,
     });
     expect($('#toast')?.textContent).toBe('Color changed. Carmin starts again from zero.');
 
-    // An item without votes changes without a confirmation; a closed board has no editor.
-    click('[data-action="b-edit-color"][data-id="p0"]');
+    // An item without votes changes without a question.
+    respond = () => ({ status: 200, body: 0 });
+    click('[data-action="edit-color"][data-id="p0"]');
     ($('#cpop .cp-sw') as HTMLElement).click();
     click('[data-action="cp-ok"]');
     await flush();
-    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', url: `/api/boards/${ALIAS}/items/p0` });
+    expect(calls.at(-1)).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}/items/p0`,
+      body: { reset: false },
+    });
+    expect($('#toast')?.textContent).toBe('Color changed');
+
+    // A closed vote: the list is read-only, and says how to change it.
     ws.receive(state({ items: colored, status: 'closed' } as Partial<BoardView>, true));
-    expect($('#b-admin [data-action="b-edit-color"]')).toBeNull();
+    expect($('#item-list [data-action="edit-color"]')).toBeNull();
+    expect($('#item-list .row-label')).toBeNull();
+    expect($('#add-input')).toBeNull();
+    expect($('.ed-frozen')?.textContent).toContain('The vote is closed: reopen it to change the items.');
+    expect($('.ed-frozen [data-action="b-reopen"]')).not.toBeNull();
   });
 
-  it('saves settings and closes the vote through the API', async () => {
+  it('renames the board, switches its method and saves its settings through the API', async () => {
     const ws = FakeSocket.last();
     ws.receive(state({}, true));
+    calls.length = 0;
     respond = (c) => ({ status: 200, body: c.method === 'PATCH' ? view().settings : 'closed' });
-    const blind = $('#b-admin input[name="b-vis"][value="blind"]') as HTMLInputElement;
+    const title = $('#rank-title') as HTMLInputElement;
+    title.value = ' Pizzas du vendredi ';
+    change(title);
+    await flush();
+    expect(calls.at(-1)).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}`,
+      body: { title: 'Pizzas du vendredi' },
+    });
+    // An empty title puts the current one back.
+    title.value = ' ';
+    change(title);
+    expect(title.value).toBe('Pizzas');
+    expect(calls).toHaveLength(1);
+
+    // The score menu offers the crowd's methods; Exact sort is shown, and can't be picked.
+    click('[data-action="method-menu"]');
+    expect($('.mopt[data-m="sort"]')?.getAttribute('aria-disabled')).toBe('true');
+    click('.mopt[data-m="sort"]');
+    click('.mopt[data-m="elo"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', body: { method: 'elo' } });
+    expect($('#toast')?.textContent).toBe('Dynamic method: ranking recalculated');
+
+    click('[data-action="b-settings"]');
+    expect($('#m-title')?.textContent).toBe('Published ranking settings');
+    expect($('#b-settings input[name="b-m"]')).toBeNull();
+    const blind = $('#b-settings input[name="b-vis"][value="blind"]') as HTMLInputElement;
     blind.checked = true;
     change(blind);
     await flush();
-    const patch = calls.find((c) => c.method === 'PATCH');
-    expect(patch).toMatchObject({ url: `/api/boards/${ALIAS}`, auth: `Bearer ${OWNER}` });
-    expect(patch?.body).toMatchObject({ visibility: 'blind' });
-    click('[data-action="b-close"]');
+    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', url: `/api/boards/${ALIAS}`, auth: `Bearer ${OWNER}` });
+    expect(calls.at(-1)?.body).toMatchObject({ visibility: 'blind' });
+    // Closing the vote from the settings closes them first.
+    click('#b-settings [data-action="b-close"]');
+    expect($('#modal')?.hidden).toBe(true);
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'POST', url: `/api/boards/${ALIAS}/close` });
     ws.receive(state({ status: 'closed' }, true));
+    expect($('[data-action="b-settings"]')?.classList.contains('pub-closed')).toBe(true);
     expect($('#b-main')?.textContent).toContain('The vote is closed');
     expect(stored().find((r) => r.pub)?.pub?.status).toBe('closed');
+    // The local ranking follows the board's title.
+    ws.receive(state({ title: 'Pizzas du vendredi', status: 'closed' }, true));
+    expect(stored().find((r) => r.pub)?.title).toBe('Pizzas du vendredi');
   });
 
   it('withdraws into a local copy with the crowd votes', async () => {
     const copy = {
       id: 'x',
-      title: 'Pizzas',
+      title: 'Pizzas du vendredi',
       method: 'elo',
       items,
       history: [
@@ -460,11 +629,13 @@ describe('author', () => {
       updated: 1,
     };
     respond = () => ({ status: 200, body: copy });
-    click('[data-action="b-withdraw"]');
+    click('[data-action="b-settings"]');
+    click('#b-settings [data-action="b-withdraw"]');
+    expect($('#m-title')?.textContent).toBe('Withdraw this ranking?');
     click('#m-ok');
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', auth: `Bearer ${OWNER}` });
-    const local = stored().find((r) => r.title === 'New ranking' && r.history.length === 2);
+    const local = stored().find((r) => r.title === 'Pizzas du vendredi' && r.history.length === 2);
     expect(local?.pub).toBeUndefined();
     expect(local?.method).toBe('elo');
     expect(location.pathname).toMatch(/^\/r\/\w+\/ranking$/);
@@ -507,7 +678,7 @@ describe('links', () => {
   });
 
   it('lets the author take back the local version of a board that is gone', async () => {
-    const local = stored().find((r) => r.title === 'New ranking' && r.history.length === 2) as Ranking;
+    const local = stored().find((r) => r.title === 'Pizzas du vendredi' && r.history.length === 2) as Ranking;
     click('[data-action="back"]');
     click(`.rcard [data-action="open"][data-id="${local.id}"][data-tab="duel"]`);
     click('[data-action="publish"]');
@@ -520,7 +691,7 @@ describe('links', () => {
     click('[data-action="b-unlink"]');
     expect(stored().find((r) => r.id === local.id)?.pub).toBeUndefined();
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}').Zz3dEf7hJk).toBeUndefined();
-    expect(($('#rank-title') as HTMLInputElement).value).toBe('New ranking');
+    expect(($('#rank-title') as HTMLInputElement).value).toBe('Pizzas du vendredi');
   });
 
   it('asks the API when the connection fails and reconnects if the board exists', async () => {
@@ -682,15 +853,17 @@ describe('sharing', () => {
     expect($('#toast')?.textContent).toBe('Your own version, ready to change and publish');
   });
 
-  it('shows no "make my own" to the author', () => {
+  it('shows no "make my own" to the author, who shares from the Ranking tab', () => {
     click('[data-action="back"]');
-    history.pushState(null, '', `/b/${ALIAS}`);
+    history.pushState(null, '', `/b/${ALIAS}#owner=${OWNER}`);
     window.dispatchEvent(new PopStateEvent('popstate'));
     const ws = FakeSocket.last();
     ws.open();
     ws.receive(state({}, true));
-    expect($('.b-head [data-action="b-make-mine"]')).toBeNull();
-    expect($('.b-head [data-action="share-board"]')).not.toBeNull();
+    expect($('[data-action="b-make-mine"]')).toBeNull();
+    click('.tab[data-tab="results"]');
+    expect($('.b-results [data-action="share-board"]')).not.toBeNull();
+    click('.tab[data-tab="duel"]');
     click('[data-action="back"]');
   });
 });
@@ -728,6 +901,25 @@ describe('reporting', () => {
 
 describe('pictures for review', () => {
   const PICS = 'P1cTuReS7b';
+
+  it('tells the author when the server takes no pictures', async () => {
+    respond = (c) => (c.url === '/api/config' ? { status: 200, body: { images: 'off' } } : { status: 404, body: {} });
+    history.pushState(null, '', `/b/${ALIAS}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({}, true));
+    expect($('[data-action="pick-files"]')).toBeNull();
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    const file = new File(['x'], 'beach.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(drop, 'dataTransfer', { value: { types: ['Files'], files: [file] } });
+    document.body.dispatchEvent(drop);
+    await flush();
+    expect($('#toast')?.textContent).toBe('Pictures aren’t open on published rankings yet. Add a name instead.');
+    // Nothing became a ranking of this browser.
+    expect(stored().some((r) => r.title.startsWith('Images'))).toBe(false);
+    click('[data-action="back"]');
+  });
 
   it('announces the pictures and sends them after publishing, when the server reviews them', async () => {
     respond = (c) => {
@@ -772,7 +964,10 @@ describe('pictures for review', () => {
         true,
       ),
     );
-    expect($('#b-admin .b-pic')?.textContent).toBe('Picture awaiting review');
+    expect($('#item-list li[data-id="i1"] .row-note')?.textContent).toBe('Picture awaiting review');
+    // Images added later go the same way: announced, then sent.
+    await flush();
+    expect($('[data-action="pick-files"]')).not.toBeNull();
     click('[data-action="back"]');
   });
 });

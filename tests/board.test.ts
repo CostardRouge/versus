@@ -4,6 +4,7 @@ import {
   ADD_INTERVAL_MS,
   ALIAS_RE,
   addItem,
+  addItems,
   addReport,
   assignPairs,
   boardMeta,
@@ -14,6 +15,7 @@ import {
   crowd,
   DEFAULT_MODERATION,
   DEFAULT_SETTINGS,
+  editItem,
   itemId,
   LIMITS,
   lastActivity,
@@ -23,13 +25,14 @@ import {
   moderate,
   openSession,
   type PublishInput,
+  parseItemEdit,
   parseModeration,
   parseNewItem,
   parsePublish,
   parseReport,
+  parseTitle,
   patchSettings,
   preferPair,
-  recolorItem,
   refill,
   removeItem,
   restoreBoard,
@@ -301,6 +304,18 @@ describe('board state', () => {
     expect(b.settings.visibility).toBe('blind');
     expect(lastActivity(b)).toBe(T0 + 30);
   });
+
+  it('takes a new title from the author, when it is one', () => {
+    const b = board();
+    updateSettings(b, { title: '  Un nom pour le chat ' }, T0);
+    expect(b.title).toBe('Un nom pour le chat');
+    updateSettings(b, { title: '   ' }, T0);
+    updateSettings(b, { title: 'x'.repeat(LIMITS.title + 1) }, T0);
+    updateSettings(b, { title: 42 }, T0);
+    expect(b.title).toBe('Un nom pour le chat');
+    expect(parseTitle(' Ok ')).toBe('Ok');
+    expect(parseTitle(null)).toBeNull();
+  });
 });
 
 describe('votes', () => {
@@ -511,7 +526,59 @@ describe('items after publication', () => {
     expect(errorOf(removeItem(b, 'i2', T0))).toBe('too_few');
   });
 
-  it('recolors a color item, dropping its votes, and the label follows a color code', () => {
+  it("adds a list at once, leaving out what it can't add", () => {
+    const b = board(LIMITS.items - 2);
+    let n = 0;
+    const newId = () => `n${n++}`;
+    const item = (label: string) => ({ label, fill: null, img: null });
+    const added = value(addItems(b, [item('A'), item('Item 3'), item('B'), item('C')], newId, T0 + 3));
+    expect(added.map((i) => i.label)).toEqual(['A', 'B']);
+    expect(b.items).toHaveLength(LIMITS.items);
+    expect(errorOf(addItems(b, [item('D')], newId, T0))).toBe('full');
+    expect(value(addItems(b, [], newId, T0))).toEqual([]);
+  });
+
+  it('reads an item edit: a label and/or a fill, and whether its votes go', () => {
+    const red = { type: 'solid', colors: ['#aa0000'] };
+    expect(value(parseItemEdit({ label: '  Moustache ' }))).toEqual({ label: 'Moustache', reset: false });
+    expect(value(parseItemEdit({ label: 'Sushi', reset: true }))).toEqual({ label: 'Sushi', reset: true });
+    expect(value(parseItemEdit({ fill: red, reset: false }))).toEqual({ fill: red, reset: false });
+    // A color alone, as apps from before D116 send it, still starts the item again.
+    expect(value(parseItemEdit({ fill: red }))).toEqual({ fill: red, reset: true });
+    expect(errorOf(parseItemEdit({}))).toBe('bad_request');
+    expect(errorOf(parseItemEdit({ label: '  ' }))).toBe('bad_request');
+    expect(errorOf(parseItemEdit({ label: 'x'.repeat(LIMITS.label + 1) }))).toBe('bad_request');
+    expect(errorOf(parseItemEdit({ label: 3 }))).toBe('bad_request');
+    expect(errorOf(parseItemEdit({ fill: null }))).toBe('bad_request');
+    expect(errorOf(parseItemEdit({ label: 'x', reset: 'yes' }))).toBe('bad_request');
+    expect(errorOf(parseItemEdit('x'))).toBe('bad_request');
+  });
+
+  it('renames an item, keeping its votes or starting it again from zero', () => {
+    const b = board(4);
+    value(castVote(b, V1, 'i0', 'i1', 1, T0));
+    value(castVote(b, V2, 'i0', 'i2', 0, T0));
+    value(castVote(b, V2, 'i2', 'i3', 1, T0));
+    const kept = value(editItem(b, 'i0', { label: 'Moustache', reset: false }, T0 + 4));
+    expect(kept.removed).toEqual([]);
+    expect(kept.item).toEqual({ id: 'i0', label: 'Moustache', img: null, fill: null, h: 10 });
+    expect(b.items[0]).toBe(kept.item);
+    expect(b.votes.size).toBe(3);
+    expect(lastActivity(b)).toBe(T0 + 4);
+    const reset = value(editItem(b, 'i0', { label: 'Sushi', reset: true }, T0 + 5));
+    expect(reset.removed).toHaveLength(2);
+    expect(b.votes.size).toBe(1);
+    expect(b.voters.has(V1)).toBe(false);
+    // Changing only the case is a rename; the same label is nothing, and no vote goes.
+    value(castVote(b, V1, 'i0', 'i1', 1, T0));
+    expect(value(editItem(b, 'i0', { label: 'SUSHI', reset: false }, T0 + 6)).item.label).toBe('SUSHI');
+    const same = value(editItem(b, 'i0', { label: 'SUSHI', reset: true }, T0 + 9));
+    expect(same.removed).toEqual([]);
+    expect(b.votes.size).toBe(2);
+    expect(lastActivity(b)).toBe(T0 + 6);
+  });
+
+  it('recolors a color item, its votes kept or dropped, and a label that was the code follows it', () => {
     const b = board(4);
     const solid = (c: string) => ({ type: 'solid' as const, colors: [c] });
     b.items[0] = { ...(b.items[0] as Item), label: 'Ocre', fill: solid('#3e4c5e') };
@@ -519,35 +586,39 @@ describe('items after publication', () => {
     value(castVote(b, V1, 'i0', 'i1', 1, T0));
     value(castVote(b, V2, 'i0', 'i2', 0, T0));
     value(castVote(b, V2, 'i2', 'i3', 1, T0));
-    const r = value(recolorItem(b, 'i0', solid('#d9a441'), T0 + 7));
+    const r = value(editItem(b, 'i0', { fill: solid('#d9a441'), reset: true }, T0 + 7));
     expect(r.removed).toHaveLength(2);
     expect(r.item).toMatchObject({ id: 'i0', label: 'Ocre', fill: solid('#d9a441') });
     expect(b.items[0]).toBe(r.item);
     expect(b.votes.size).toBe(1);
-    expect(b.voters.has(V1)).toBe(false);
     expect(lastActivity(b)).toBe(T0 + 7);
-    // Same color again: nothing to drop.
+    // Same color again: nothing changes, nothing to drop.
     value(castVote(b, V2, 'i0', 'i3', 1, T0));
-    expect(value(recolorItem(b, 'i0', solid('#D9A441'), T0)).removed).toEqual([]);
+    expect(value(editItem(b, 'i0', { fill: solid('#D9A441'), reset: true }, T0)).removed).toEqual([]);
     expect(b.votes.size).toBe(2);
-    // A label that was the code follows the new one.
-    const coded = value(recolorItem(b, 'i1', { type: 'gradient', colors: ['#111111', '#222222'] }, T0)).item;
-    expect(coded.label).toBe('#111111 → #222222');
-    expect(coded.h).toBe(hueOf(coded.label));
+    // A shade retouched can keep its votes.
+    expect(value(editItem(b, 'i0', { fill: solid('#d9a442'), reset: false }, T0)).removed).toEqual([]);
+    expect(b.votes.size).toBe(2);
+    // A label that was the code follows the new one, unless a label comes with it.
+    const coded = value(
+      editItem(b, 'i1', { fill: { type: 'gradient', colors: ['#111111', '#222222'] }, reset: true }, T0),
+    );
+    expect(coded.item.label).toBe('#111111 → #222222');
+    const named = value(editItem(b, 'i1', { label: 'Nuit', fill: solid('#000000'), reset: false }, T0)).item;
+    expect(named).toMatchObject({ label: 'Nuit', fill: solid('#000000') });
   });
 
-  it('refuses to recolor text items, unknown items, bad fills, taken labels and closed boards', () => {
+  it('refuses a color for text items, unknown items, taken labels and closed boards', () => {
     const b = board(3);
     const solid = (c: string) => ({ type: 'solid' as const, colors: [c] });
     b.items[0] = { ...(b.items[0] as Item), label: '#AA0000', fill: solid('#aa0000') };
     b.items[1] = { ...(b.items[1] as Item), label: '#BB0000' };
-    expect(errorOf(recolorItem(b, 'i2', solid('#123456'), T0))).toBe('bad_request');
-    expect(errorOf(recolorItem(b, 'nope', solid('#123456'), T0))).toBe('not_found');
-    expect(errorOf(recolorItem(b, 'i0', { type: 'solid', colors: ['red'] }, T0))).toBe('bad_request');
-    expect(errorOf(recolorItem(b, 'i0', null, T0))).toBe('bad_request');
-    expect(errorOf(recolorItem(b, 'i0', solid('#bb0000'), T0))).toBe('exists');
+    expect(errorOf(editItem(b, 'i2', { fill: solid('#123456'), reset: true }, T0))).toBe('bad_request');
+    expect(errorOf(editItem(b, 'nope', { label: 'x', reset: false }, T0))).toBe('not_found');
+    expect(errorOf(editItem(b, 'i0', { fill: solid('#bb0000'), reset: true }, T0))).toBe('exists');
+    expect(errorOf(editItem(b, 'i2', { label: '#bb0000', reset: false }, T0))).toBe('exists');
     setStatus(b, 'closed', T0);
-    expect(errorOf(recolorItem(b, 'i0', solid('#123456'), T0))).toBe('closed');
+    expect(errorOf(editItem(b, 'i2', { label: 'Late', reset: false }, T0))).toBe('closed');
   });
 
   it('lets visitors add only when allowed, a few seconds apart; the author always', () => {

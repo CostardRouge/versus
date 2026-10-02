@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated 2026-09-30.
+Last updated 2026-10-02.
 
 ## Done
 
@@ -34,6 +34,7 @@ Last updated 2026-09-30.
 - Pictures on published boards through review (D113, D114, `docs/published-boards.md#images`): off by default (`IMAGES_UPLOAD`), announced at publication and sent to R2 afterwards, shown as text until the admin approves them from the moderation page (a filter, the pictures with Approve and Refuse), public under `/img/b/…` once approved, deleted when refused or with their item or board.
 - Official templates and public lists (D114 to D112, `docs/published-boards.md#official-templates-and-the-popular-section`): thirteen fixed lists on divisive topics published by the Worker as real boards (EN and FR, never expiring), each with an indexable page at `/t/<slug>/` and `/fr/t/<slug>/` (crowd ranking as text, hreflang, JSON-LD, `noindex` until 30 voters), the Popular section of the gallery (featured boards and templates, the liveliest first, with Vote and Make my own), and a sitemap the Worker completes with the template pages that have a crowd.
 - A way back to the home page from the app (D115): a discreet link in the footer closing the gallery; the installed app follows it too.
+- One items editor for every ranking (D116): the author of a published board works in the workspace a local ranking has, with the same items pane; any item can be renamed or recolored, the author saying whether its votes stay or go; lists, colors and images (through review) added as in a local ranking; the title editable and the settings behind the Published button. Visitors suggest items with the same field.
 
 ## Next (suggested order)
 

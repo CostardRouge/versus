@@ -609,8 +609,7 @@ kbd {
   display: flex;
   gap: 8px;
 }
-#add-input,
-#b-add-input {
+#add-input {
   flex: 1;
   min-width: 0;
   border: 1px solid var(--line);
@@ -618,8 +617,7 @@ kbd {
   border-radius: 12px;
   padding: 10px 12px;
 }
-#add-input:focus,
-#b-add-input:focus {
+#add-input:focus {
   outline: 2px solid var(--a);
   outline-offset: 0;
   border-color: transparent;
@@ -740,6 +738,41 @@ kbd {
 .row-label:focus {
   background: var(--surface);
   outline: 1px solid var(--line);
+}
+/* A name that can't change (a closed vote), and a word under a name (picture under review, same color). */
+.row-text {
+  padding: 4px 6px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.row-note {
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--muted);
+}
+.row-note.bad {
+  color: var(--bad);
+  font-weight: 600;
+}
+.ed-frozen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13.5px;
 }
 .rt {
   text-align: right;
@@ -1389,6 +1422,13 @@ kbd {
 .mopt[aria-checked="true"] {
   background: var(--surface-2);
 }
+.mopt[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.55;
+}
+.mopt[aria-disabled="true"]:hover {
+  background: transparent;
+}
 .mopt-top {
   display: flex;
   align-items: center;
@@ -1613,6 +1653,20 @@ kbd {
 }
 .pub-btn svg {
   flex: none;
+}
+/* A published board's own button: its settings. Closed, it goes quiet. */
+.pub-caret {
+  margin-left: -2px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.pub-btn.pub-closed {
+  color: var(--ink);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.pub-btn.pub-closed:hover {
+  box-shadow: inset 0 0 0 1px var(--muted);
 }
 /* Forces the header's controls onto their own line (medium widths only). */
 .ws-break {
@@ -2198,8 +2252,7 @@ body.dropping .drop-overlay {
 .pub-votes {
   margin-bottom: 14px;
 }
-.more summary,
-.b-admin summary {
+.more summary {
   cursor: pointer;
   font-weight: 700;
   color: var(--ink);
@@ -2239,8 +2292,7 @@ body.dropping .drop-overlay {
   flex-direction: column;
   gap: 14px;
 }
-.b-rank,
-.b-admin {
+.b-rank {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -2310,19 +2362,52 @@ body.dropping .drop-overlay {
 .b-foot {
   margin: 12px 0 0;
 }
-.b-admin-body {
+/* The author's settings dialog: links, visibility, options, lifecycle. */
+.b-settings {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 14px;
+  gap: 14px;
 }
-.b-admin-body .set {
+.b-settings .set {
   margin: 0;
 }
-.b-admin-actions {
+.b-set-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+/* What an edit does to an item's votes (D116): keep them or start again from zero. */
+.votes-set {
+  margin: 14px 0 0;
+}
+.votes-opt {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.votes-opt:has(input:checked) {
+  border-color: var(--a);
+  background: color-mix(in oklab, var(--surface) 90%, var(--a));
+}
+.votes-opt input {
+  margin-top: 3px !important;
+}
+.votes-opt b {
+  display: block;
+}
+.votes-opt small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.b-results .b-rank {
+  max-width: 640px;
 }
 @media (max-width: 859px) {
   .b-body {
@@ -2331,44 +2416,6 @@ body.dropping .drop-overlay {
   .b-side {
     position: static;
   }
-}
-.b-items {
-  list-style: none;
-  margin: 0 0 10px;
-  padding: 0;
-  max-height: 320px;
-  overflow: auto;
-}
-.b-items li {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
-}
-.b-items .thumb {
-  width: 28px;
-  height: 28px;
-}
-.b-item {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.3;
-}
-.b-twin {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--bad);
-}
-/* An item's picture, sent for review or refused: why the item shows as text, for the author. */
-.b-pic {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-}
-.b-pic-no {
-  color: var(--bad);
 }
 .b-suggest {
   background: var(--surface);

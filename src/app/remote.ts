@@ -48,18 +48,32 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
 export const publishBoard = (req: PublishRequest & { turnstile?: string }) =>
   call<{ alias: string; owner: string }>('POST', '', req);
 export const fetchBoard = (alias: string) => call<BoardView>('GET', `/${alias}`);
-export const patchBoard = (alias: string, token: string, patch: Partial<BoardSettings>) =>
+/** The board's settings, and its title. */
+export const patchBoard = (alias: string, token: string, patch: Partial<BoardSettings> & { title?: string }) =>
   call<BoardSettings>('PATCH', `/${alias}`, patch, token);
 export const setBoardStatus = (alias: string, token: string, status: BoardStatus) =>
   call<BoardStatus>('POST', `/${alias}/${status === 'closed' ? 'close' : 'reopen'}`, undefined, token);
-export const addBoardItem = (alias: string, token: string, item: { label: string; fill: Fill | null }) =>
+/** An item the author adds; `pic: 'pending'` announces a picture, sent next with `putItemImage`. */
+export interface NewBoardItem {
+  label: string;
+  fill: Fill | null;
+  pic?: 'pending';
+}
+export const addBoardItem = (alias: string, token: string, item: NewBoardItem) =>
   call<Item>('POST', `/${alias}/items`, item, token);
+/** Several items in one request (a pasted list, images); resolves with those added, taken labels left out. */
+export const addBoardItems = (alias: string, token: string, items: NewBoardItem[]) =>
+  call<Item[]>('POST', `/${alias}/items`, { items }, token);
 /** Removes an item and the votes that involve it; resolves with how many votes went. */
 export const removeBoardItem = (alias: string, token: string, id: string) =>
   call<number>('DELETE', `/${alias}/items/${encodeURIComponent(id)}`, undefined, token);
-/** Gives a color item a new fill; its votes are dropped. Resolves with how many votes went. */
-export const recolorBoardItem = (alias: string, token: string, id: string, fill: Fill) =>
-  call<number>('PATCH', `/${alias}/items/${encodeURIComponent(id)}`, { fill }, token);
+/** Renames an item or gives a color item a new fill; its votes go with `reset`. Resolves with how many went. */
+export const editBoardItem = (
+  alias: string,
+  token: string,
+  id: string,
+  edit: { label?: string; fill?: Fill; reset: boolean },
+) => call<number>('PATCH', `/${alias}/items/${encodeURIComponent(id)}`, edit, token);
 /** Deletes the board; the server hands back the author's local copy. */
 export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DELETE', `/${alias}`, undefined, token);
 /** Boards as this voter may see them, for "Your votes"; null for a board that no longer exists. */
@@ -76,12 +90,23 @@ export const reportBoard = (alias: string, report: { voter: string; reason: Repo
 
 let configCache: Promise<ServerConfig> | null = null;
 
-/** What the server allows (pictures for review or not), asked once per session; `off` when it can't be reached. */
+/**
+ * What the server allows: pictures for review, or not (`off`, also when it can't be reached). A yes is kept for the
+ * session; a no is asked again next time (the browser keeps the answer five minutes), so pictures turned on show up
+ * without a reload.
+ */
 export function fetchConfig(): Promise<ServerConfig> {
-  configCache ??= call<ServerConfig>('GET', '', undefined, undefined, '/api/config').catch(() => {
-    configCache = null;
-    return { images: 'off' } as ServerConfig;
-  });
+  configCache ??= call<ServerConfig | null>('GET', '', undefined, undefined, '/api/config').then(
+    (c): ServerConfig => {
+      if (c?.images === 'review') return { images: 'review' };
+      configCache = null;
+      return { images: 'off' };
+    },
+    (): ServerConfig => {
+      configCache = null;
+      return { images: 'off' };
+    },
+  );
   return configCache;
 }
 
@@ -110,7 +135,7 @@ export async function putCard(alias: string, png: Blob, pair: readonly [string, 
   return data.url;
 }
 
-/** An item's picture, announced at publication, sent for the moderator's review (the author's token). */
+/** An item's picture, announced when the item was published or added, sent for review (the author's token). */
 export const putItemImage = (alias: string, token: string, id: string, jpeg: Blob): Promise<unknown> =>
   upload(`/api/boards/${alias}/items/${encodeURIComponent(id)}/image`, jpeg, token);
 

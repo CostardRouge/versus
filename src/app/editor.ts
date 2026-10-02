@@ -1,0 +1,209 @@
+import { fillCode, fillCSS, hslToHex, isHex, normHex } from '../core/colors';
+import { LABEL_MAX, parseList } from '../core/list';
+import type { Fill, Item } from '../core/types';
+import { esc } from '../core/util';
+import { plural, t } from '../i18n';
+import { $, $$, ask, doc, imgSvg, reduced, thumbHTML } from './dom';
+
+/**
+ * The item editor every ranking shares (D116): the add field (a name, a pasted list, a #hex code), images and
+ * colors, and the list whose names are edited in place. A local ranking and a published board's author get the
+ * same pane (`items.ts`, `author.ts`); a visitor suggesting an item gets the same field. Only what each may do,
+ * and what a change costs (votes on a published board), differ.
+ */
+
+/** The add field: a name, a list (typed, pasted or dropped) or a #hex code. One per page. */
+export const addFormHTML = (placeholder: string, label: string, disabled = false): string =>
+  `<form id="add-form" class="add" autocomplete="off">
+    <input id="add-input" placeholder="${esc(placeholder)}" aria-label="${esc(label)}" maxlength="${LABEL_MAX}" ${disabled ? 'disabled' : ''}>
+    <button class="add-btn" type="submit" aria-label="${t('add')}" ${disabled ? 'disabled' : ''}>+</button>
+  </form>`;
+
+export interface PaneSpec {
+  /** Why nothing can change right now (a closed vote), with what to do: the list is then read-only. */
+  frozen?: string;
+  /** Whether images can be added (a board only takes them when the server reviews pictures). */
+  images: boolean;
+  foot: string;
+}
+
+/** The items pane: heading, add field, images and colors, the list (filled by `listHTML`) and a word of help. */
+export function paneHTML(p: PaneSpec): string {
+  const tools = p.frozen
+    ? `<div class="ed-frozen" role="note">${p.frozen}</div>`
+    : `${addFormHTML(t('addPlaceholder'), t('itemNameAria'))}
+      ${p.images ? `<button class="drop" type="button" data-action="pick-files">${imgSvg}<span>${t('imagesDrop')}</span></button><input type="file" id="file-input" accept="image/*" multiple hidden>` : ''}
+      <div class="add-color">
+        <input type="color" id="c1" value="#2743f5" aria-label="${t('colorAria')}">
+        <input type="color" id="c2" value="#e4492a" aria-label="${t('color2Aria')}" hidden>
+        <label class="grad-toggle" for="c-grad"><input type="checkbox" id="c-grad"> ${t('gradient')}</label>
+        <button class="btn sm" type="button" data-action="add-color">${t('addColor')}</button>
+      </div>`;
+  return `<div class="aside-head"><h2>${t('itemsTitle')}</h2><span class="mono muted" id="aside-count"></span></div>
+    ${tools}
+    <ol class="list" id="item-list"></ol>
+    <p class="aside-foot">${p.foot}</p>`;
+}
+
+/** One line of the list. */
+export interface Row {
+  it: Item;
+  pos: string;
+  /** Right of the name: a score, or how many votes the item has on a published board. */
+  meta: string;
+  metaTitle?: string;
+  dim?: boolean;
+  /** Places gained (positive) or lost since the last duel. */
+  moved?: number;
+  /** A word under the name: a picture under review, another item of the same color. */
+  note?: { text: string; bad?: boolean };
+}
+
+function swatchHTML(it: Item, editable: boolean): string {
+  if (!it.fill || !editable) return thumbHTML(it);
+  return `<button class="thumb thumb-btn" type="button" data-action="edit-color" data-id="${esc(it.id)}" style="background:${fillCSS(it.fill)}" aria-label="${esc(t('editColorAria', { label: it.label }))}" title="${t('editColor')}"></button>`;
+}
+
+export function rowHTML(row: Row, editable: boolean): string {
+  const { it, moved = 0 } = row;
+  const name = editable
+    ? `<input class="row-label" data-id="${esc(it.id)}" value="${esc(it.label)}" aria-label="${esc(t('renameAria', { label: it.label }))}" maxlength="${LABEL_MAX}">`
+    : `<span class="row-text">${esc(it.label)}</span>`;
+  const label = row.note
+    ? `<span class="row-main">${name}<small class="row-note ${row.note.bad ? 'bad' : ''}">${esc(row.note.text)}</small></span>`
+    : name;
+  const remove = editable
+    ? `<button class="rm" type="button" data-action="remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">×</button>`
+    : '<span></span>';
+  return `<li data-id="${esc(it.id)}">
+      <span class="pos mono">${row.pos}</span>
+      ${swatchHTML(it, editable)}
+      ${label}
+      <span class="rt mono ${row.dim ? 'dim' : ''}" ${row.metaTitle ? `title="${esc(row.metaTitle)}"` : ''}>${row.meta}</span>
+      <span class="dl mono ${moved > 0 ? 'up' : moved < 0 ? 'down' : ''}">${moved > 0 ? `↑${moved}` : moved < 0 ? `↓${-moved}` : ''}</span>
+      ${remove}
+    </li>`;
+}
+
+/**
+ * Fills the list, rows sliding from their old place to the new one (none under reduced motion); a row that
+ * wasn't there pops in.
+ */
+export function renderRows(rows: readonly Row[], editable: boolean, animate: boolean): void {
+  const ul = $('#item-list');
+  if (!ul) return;
+  const before: Record<string, number> = {};
+  if (animate) for (const li of $$('li[data-id]', ul)) before[li.dataset.id ?? ''] = li.getBoundingClientRect().top;
+  ul.innerHTML = rows.length
+    ? rows.map((r) => rowHTML(r, editable)).join('')
+    : `<li class="empty">${t('emptyList')}</li>`;
+  const count = $('#aside-count');
+  if (count) count.textContent = plural(rows.length, 'item');
+  const n = $('#n-items');
+  if (n) n.textContent = String(rows.length);
+  if (!animate || reduced) return;
+  for (const li of $$('li[data-id]', ul)) {
+    const b = before[li.dataset.id ?? ''];
+    if (b === undefined) {
+      li.classList.add('new');
+      continue;
+    }
+    const d = b - li.getBoundingClientRect().top;
+    if (Math.abs(d) > 1 && typeof li.animate === 'function') {
+      li.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], {
+        duration: 520,
+        easing: 'cubic-bezier(.2,.8,.2,1)',
+      });
+    }
+  }
+}
+
+/** A new item's content: its label, and its fill when it is a color. */
+export interface Typed {
+  label: string;
+  fill: Fill | null;
+}
+
+/** A label as an item: a #hex code becomes a color, named after its code. */
+export function typed(label: string): Typed {
+  const v = label.trim();
+  if (!isHex(v)) return { label: v, fill: null };
+  return { label: normHex(v).toUpperCase(), fill: { type: 'solid', colors: [normHex(v)] } };
+}
+
+/** What was typed or pasted in the add field, as items: one per label of a list (core/list.ts). */
+export const typedItems = (text: string): Typed[] => parseList(text).map(typed);
+
+/** The color picked beside the add field, solid or gradient; the pickers then offer a new color. */
+export function takeColor(): Typed | null {
+  const c1 = $<HTMLInputElement>('#c1');
+  const c2 = $<HTMLInputElement>('#c2');
+  const g = $<HTMLInputElement>('#c-grad');
+  if (!c1 || !c2 || !g) return null;
+  const fill: Fill = g.checked
+    ? { type: 'gradient', colors: [c1.value, c2.value] }
+    : { type: 'solid', colors: [c1.value] };
+  const h = Math.floor(Math.random() * 360);
+  c1.value = hslToHex(h, 72, 52);
+  c2.value = hslToHex(h + 110, 72, 52);
+  return { label: fillCode(fill), fill };
+}
+
+/** An image file as the app keeps it: at most 640 px, JPEG 0.82, as a data URL. */
+export function fileToThumb(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 640;
+        const sc = Math.min(1, max / Math.max(img.width, img.height));
+        const c = doc.createElement('canvas');
+        c.width = Math.round(img.width * sc);
+        c.height = Math.round(img.height * sc);
+        c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = reject;
+      img.src = String(fr.result);
+    };
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+/** An image's label, from its file name: "beach_day-2.jpg" becomes "Beach day 2". */
+export function imageName(file: File): string {
+  const name =
+    (file.name || 'Image')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[-_]+/g, ' ')
+      .trim() || 'Image';
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** The image files among dropped or pasted files. */
+export const imageFiles = (files: FileList | File[]): File[] => [...files].filter((f) => f.type?.startsWith('image/'));
+
+export type VotesChoice = 'keep' | 'reset';
+
+/**
+ * What an edit does to an item's votes on a published board (D116): keep them (a correction, the same choice) or
+ * start the item again from zero (another choice). `reset` is the answer checked first. Null when cancelled.
+ */
+export async function askVotes(o: {
+  title: string;
+  body: string;
+  ok: string;
+  reset: boolean;
+}): Promise<VotesChoice | null> {
+  const choice = (v: VotesChoice, title: string, text: string) =>
+    `<label class="opt votes-opt"><input type="radio" name="votes-choice" value="${v}" ${(v === 'reset') === o.reset ? 'checked' : ''}><span><b>${esc(title)}</b><small>${esc(text)}</small></span></label>`;
+  const html = `<p>${esc(o.body)}</p>
+    <fieldset class="set votes-set"><legend class="sr-only">${t('votesChoice')}</legend>
+      ${choice('keep', t('keepVotes'), t('keepVotesBody'))}
+      ${choice('reset', t('resetVotes'), t('resetVotesBody'))}
+    </fieldset>`;
+  if (!(await ask({ title: o.title, html, ok: o.ok }))) return null;
+  return $<HTMLInputElement>('#m-body input[name="votes-choice"]:checked')?.value === 'reset' ? 'reset' : 'keep';
+}

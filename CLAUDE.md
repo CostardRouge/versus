@@ -87,15 +87,20 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   about.ts            the page text closing the gallery (what Versus is, how it works, methods) and its footer line (home page,
                       author, source, legal notice, D115); its static English copy
                       with the page's h1 is in index.html for crawlers without JavaScript (build/seo.ts)
-  workspace.ts        workspace shell, tabs, method menu, renderMain() (duel or results)
-  items.ts            side list (live-sorted, FLIP) and item edits (add text/colors/images, rename, remove)
+  workspace.ts        workspace shell (shared with a board's author), tabs, method menu, renderMain() (duel or results)
+  editor.ts           the items pane every ranking shares (D116): add field, images and colors, the list (FLIP), the
+                      question on an item's votes; a visitor's suggestion uses its add field
+  items.ts            a local ranking's items in the editor: live-sorted list and edits (add text/colors/images, rename, remove)
   duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
   results.ts          podium or lines comparing two methods (switch), table, method comparison, copy
   ending.ts           end of a local ranking: announcement with confetti and a countdown to the Ranking tab
   slope.ts            lines between two rankings (end-of-vote page, method comparison): drawing and hover
   color.ts            color editor popover
-  publish.ts          publish modal and the settings form shared with the author panel
-  board.ts            published board page: server-assigned duels, crowd ranking (live or frozen), author panel, report form
+  publish.ts          publish modal and the settings forms shared with the board's settings
+  board.ts            published board page: connection, server-assigned duels, crowd ranking (live or frozen), suggestions,
+                      report form, withdraw; its author gets author.ts instead
+  author.ts           a published board seen by its author (D116): the workspace with the items pane, title, method, the
+                      settings behind the Published button, and item edits through the API (votes kept or reset)
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   share.ts            share as an image: draws the card on a canvas (tokens, fonts), the share panel (share sheet, copy,
                       download), and sends a board's or a duel's landscape card for its link preview
@@ -139,7 +144,8 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Addresses:** every view has a path under `app/` (D92, `core/route.ts`): open views through `open()` / `openBoard()` / `goBack()` / `setTab()`, which keep the address bar in step, never with `history` directly. Links the app builds come from `routeURL()`; an author's token only ever goes in the fragment. A duel link adds `?duel=<a>.<b>` (`core/share.ts`), read once and dropped from the address.
 - **Sharing (D102 to D106):** images are drawn in the browser (`app/share.ts`), never on the Worker; a board's link preview card is the landscape one, sent with `putCard()` and served by `worker/src/cards.ts`. New share entry points build a `CardSpec` in `core/share.ts` and call `openShare()`.
 - **Official templates and public lists (D110 to D112):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
-- **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author panel does (text until approved).
+- **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author's items list does (text until approved).
+- **Items (D116):** one items pane for every ranking (`app/editor.ts`): a local ranking (`items.ts`) and a board's author (`author.ts`) fill it, a visitor's suggestion uses its add field. On a published board, an edit of an item with votes asks whether they stay (`askVotes`); the rule is `editItem` in `core/board.ts`. Don't build a second form for items.
 - **Moderation (D107 to D109, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
