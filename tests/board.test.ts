@@ -10,6 +10,7 @@ import {
   boardMeta,
   canSeeRanking,
   castVote,
+  cleanText,
   clearReports,
   createBoard,
   crowd,
@@ -96,6 +97,48 @@ describe('makeAlias', () => {
     const bytes = (n: number) => new Uint8Array(n).fill(calls++ === 0 ? 250 : 57);
     expect(makeAlias(bytes)).toBe('zzzzzzzzzz');
     expect(calls).toBe(2);
+  });
+});
+
+describe('cleanText', () => {
+  it('drops what nobody sees, keeps what emoji need, and normalizes', () => {
+    expect(cleanText('  Pizzas  ')).toBe('Pizzas');
+    // Bidi overrides, isolates and marks: a title can't read backwards or hide its end.
+    expect(cleanText('\u202Etxt.exe\u202C')).toBe('txt.exe');
+    expect(cleanText('\u2066Left\u2069\u200E\u200F\u061C')).toBe('Left');
+    expect(cleanText('Zero\u200Bwidth\uFEFF')).toBe('Zerowidth');
+    // C0 and C1 controls go; line breaks and tabs become spaces.
+    expect(cleanText('a\u0000b\u0007c\u009Bd\u007F')).toBe('abcd');
+    expect(cleanText('Line\nbreak\tand\r\ntab')).toBe('Line break and  tab');
+    // Joiners stay: emoji sequences and some scripts need them.
+    expect(cleanText(' 👩\u200D💻 ')).toBe('👩\u200D💻');
+    expect(cleanText('می\u200Cخواهم')).toBe('می\u200Cخواهم');
+    // One way to write each character (NFC): a combining accent becomes the accented letter.
+    expect(cleanText('Cafe\u0301')).toBe('Café');
+    expect(cleanText('Cafe\u0301')).toHaveLength(4);
+    expect(cleanText('\u200B \u202E ')).toBe('');
+  });
+
+  it('applies to titles, labels, item edits and report notes', () => {
+    expect(parseTitle('\u202ESpoof\u202C')).toBe('Spoof');
+    expect(parseTitle('\u200B\u2066 \u2069')).toBeNull();
+    expect(parseTitle(`${'x'.repeat(LIMITS.title)}\u200B`)).toBe('x'.repeat(LIMITS.title));
+    expect(value(parseNewItem({ label: ' Cre\u0300me\u200E ' })).label).toBe('Crème');
+    expect(errorOf(parseNewItem({ label: '\u200B\uFEFF' }))).toBe('bad_request');
+    expect(value(parseItemEdit({ label: '\u2067Moustache\u2069' })).label).toBe('Moustache');
+    expect(errorOf(parseItemEdit({ label: '\u0000' }))).toBe('bad_request');
+    expect(value(parseReport({ voter: V1, reason: 'spam', note: '\u202Ead\nhere ' })).note).toBe('ad here');
+    const pub = value(
+      parsePublish({
+        title: 'T\u0007',
+        voter: V1,
+        items: [
+          { id: 'a', label: 'A\u200F' },
+          { id: 'b', label: 'B' },
+        ],
+      }),
+    );
+    expect([pub.title, ...pub.items.map((i) => i.label)]).toEqual(['T', 'A', 'B']);
   });
 });
 

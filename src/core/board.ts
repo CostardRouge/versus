@@ -98,6 +98,21 @@ export const isRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 export const isOutcome = (x: unknown): x is Outcome => x === 0 || x === 0.5 || x === 1;
 
+/**
+ * Characters nobody sees or types on purpose: C0 and C1 controls, the zero-width space, the byte order mark, and
+ * the explicit bidi marks, embeddings and isolates, which can reorder what follows them (a label that reads
+ * backwards, a title that hides its end). The zero-width joiner and non-joiner stay: emoji and scripts need them.
+ */
+const INVISIBLE_RE = /[\p{Cc}\u061C\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu;
+
+/** Text from untrusted input as boards keep it: line breaks and tabs as spaces, invisible characters out, NFC, trimmed. */
+export const cleanText = (s: string): string =>
+  s
+    .replace(/[\t\n\v\f\r\u0085]/g, ' ')
+    .replace(INVISIBLE_RE, '')
+    .normalize('NFC')
+    .trim();
+
 /** Short shareable alias in base58 (no 0, O, I, l), drawn without modulo bias. */
 export function makeAlias(randomBytes: (n: number) => Uint8Array): string {
   let out = '';
@@ -151,7 +166,7 @@ export function parseNewItem(x: unknown, images: ImagePolicy = 'off'): Result<Ne
   }
   const fill = parseFill(x.fill);
   if (fill === undefined) return fail('bad_request');
-  const label = x.label.trim();
+  const label = cleanText(x.label);
   if (label.length > LIMITS.label || (!label && !fill)) return fail('bad_request');
   return ok({ label, fill, img, ...(pic ? { pic } : {}) });
 }
@@ -342,7 +357,7 @@ export function parseReport(x: unknown): Result<ReportInput> {
   if (!isRecord(x) || typeof x.voter !== 'string' || !VOTER_RE.test(x.voter)) return fail('bad_request');
   if (!REPORT_REASONS.includes(x.reason as ReportReason)) return fail('bad_request');
   if (x.note !== undefined && typeof x.note !== 'string') return fail('bad_request');
-  const note = (x.note ?? '').trim().slice(0, LIMITS.note);
+  const note = cleanText(x.note ?? '').slice(0, LIMITS.note);
   return ok({ voter: x.voter, reason: x.reason as ReportReason, note });
 }
 
@@ -402,9 +417,9 @@ export function setStatus(board: SharedBoard, status: BoardStatus, now: number):
   board.touched = now;
 }
 
-/** A title from untrusted input: trimmed, 1 to LIMITS.title characters; null otherwise. */
+/** A title from untrusted input: cleaned (`cleanText`), 1 to LIMITS.title characters; null otherwise. */
 export function parseTitle(x: unknown): string | null {
-  const title = typeof x === 'string' ? x.trim() : '';
+  const title = typeof x === 'string' ? cleanText(x) : '';
   return title && title.length <= LIMITS.title ? title : null;
 }
 
@@ -514,7 +529,7 @@ export function parseItemEdit(x: unknown): Result<ItemEdit> {
   if (!isRecord(x)) return fail('bad_request');
   const out: ItemEdit = { reset: false };
   if (x.label !== undefined) {
-    const label = typeof x.label === 'string' ? x.label.trim() : '';
+    const label = typeof x.label === 'string' ? cleanText(x.label) : '';
     if (!label || label.length > LIMITS.label) return fail('bad_request');
     out.label = label;
   }
