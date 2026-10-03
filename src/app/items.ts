@@ -12,6 +12,7 @@ import {
   imageFiles,
   imageName,
   type Row,
+  relabelRow,
   renderRows,
   type Typed,
   takeColor,
@@ -84,9 +85,20 @@ function addList(r: Ranking, text: string): boolean {
   addedToast(added.length, dupes, () => dropItems(r, ids));
   return true;
 }
-/** What was typed in the add field and sent: a list, or one item. False when there was nothing to add. */
+/**
+ * What was typed in the add field and sent: a list, or one item. False when nothing was added: nothing typed, or a
+ * label the ranking has already (refused, as on a board), left in the field to change.
+ */
 function addTyped(r: Ranking, text: string): boolean {
-  return addList(r, text) || addItems(r, parseList(text).map(typed)).length > 0;
+  if (addList(r, text)) return true;
+  const [one] = parseList(text).map(typed);
+  if (!one) return false;
+  const key = labelKey(one.label);
+  if (one.label && r.items.some((i) => labelKey(i.label) === key)) {
+    toast(t('itemExists'));
+    return false;
+  }
+  return addItems(r, [one]).length > 0;
 }
 function addColor(r: Ranking): void {
   const color = takeColor();
@@ -175,6 +187,7 @@ function renameItem(r: Ranking, input: HTMLInputElement): void {
   r.updated = Date.now();
   save();
   keepName(it.id);
+  relabelRow(it);
   if (effTab() === 'results' || r.pair?.includes(it.id)) renderMain(r);
 }
 

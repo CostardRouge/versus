@@ -370,6 +370,8 @@ export const fr: Messages = {
   finOwnFrom: 'Ton classement vient de tes {votes}.',
   finVoteNew: 'Voter les nouvelles paires',
   finSeeBoard: 'Voir le classement en direct',
+  finSeeFinal: 'Voir le classement final',
+  finBackBoard: 'Retour au classement',
   finCta: 'Envie de faire voter tes amis ?',
   voteClosed: 'Le vote est clos',
   voteClosedBody: 'Voici le classement final.',

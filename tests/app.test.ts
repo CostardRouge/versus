@@ -161,6 +161,23 @@ describe('app', () => {
     }
     expect(document.querySelectorAll('#item-list li[data-id]')).toHaveLength(2);
     expect($('.thumb-btn')?.getAttribute('aria-label')).toContain('#2743F5');
+    // A label the ranking has already is refused, as on a board, and left in the field to change.
+    input.value = ' tea ';
+    $('#add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(document.querySelectorAll('#item-list li[data-id]')).toHaveLength(2);
+    expect($('#toast')?.textContent).toBe('This item is already there.');
+    expect(input.value).toBe(' tea ');
+    input.value = '';
+    // A color named by its code follows the color, and so do the names of its row's controls.
+    click('.thumb-btn');
+    const hex = $('#cpop .cp-hex') as HTMLInputElement;
+    hex.value = '#e4492a';
+    hex.dispatchEvent(new Event('input', { bubbles: true }));
+    const row = $('.thumb-btn')?.closest('li');
+    expect(row?.querySelector<HTMLInputElement>('.row-label')?.value).toBe('#E4492A');
+    expect(row?.querySelector('.thumb-btn')?.getAttribute('aria-label')).toBe('Change the color of #E4492A');
+    expect(row?.querySelector('.rm')?.getAttribute('aria-label')).toBe('Remove #E4492A');
+    click('[data-action="cp-done"]');
   });
 
   it('announces the end of an exact sort in one sentence, focusing the way to the ranking', () => {
@@ -276,6 +293,12 @@ describe('app', () => {
     a.dispatchEvent(new Event('change', { bubbles: true }));
     expect(a.value).toBe(label);
     expect($('#toast')?.textContent).toBe('This item is already there.');
+    // A name that is free: the row's controls are named after it at once.
+    a.value = 'Matcha';
+    a.dispatchEvent(new Event('change', { bubbles: true }));
+    const row = a.closest('li');
+    expect(a.getAttribute('aria-label')).toBe('Rename Matcha');
+    expect(row?.querySelector('.rm')?.getAttribute('aria-label')).toBe('Remove Matcha');
   });
 
   it('asks a destructive question starting on Cancel, keeping Tab inside and the page out of reach', async () => {

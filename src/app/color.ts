@@ -19,6 +19,7 @@ import { esc } from '../core/util';
 import { t } from '../i18n';
 import { $, $$, doc, keepFocus, narrow } from './dom';
 import { cardHTML } from './duel';
+import { relabelRow } from './editor';
 import { cur, save } from './state';
 import { effTab, renderMain, toggleMethodMenu } from './workspace';
 
@@ -107,7 +108,7 @@ function show(it: Item, anchor: HTMLElement): void {
   // The focus goes in, on phones too: there to the Solid/Gradient switch, so no keyboard covers the editor.
   (narrow.matches ? $('.cp-seg [aria-pressed="true"]', pop) : $('.cp-hex', pop))?.focus();
 }
-export function openColor(id: string, anchor: HTMLElement): void {
+function openColor(id: string, anchor: HTMLElement): void {
   const r = cur();
   const it = r ? getItem(r, id) : undefined;
   if (!it) return;
@@ -229,13 +230,9 @@ function applyFill(commit: boolean): void {
   }
   const r = cur();
   if (boardEdit || !r) return;
-  const row = $(`#item-list li[data-id="${it.id}"]`);
-  if (row) {
-    const th = $('.thumb-btn', row);
-    if (th) th.style.background = css;
-    const input = $<HTMLInputElement>('.row-label', row);
-    if (cp.follow && input) input.value = it.label;
-  }
+  const th = $<HTMLElement>(`#item-list .thumb-btn[data-id="${it.id}"]`);
+  if (th) th.style.background = css;
+  if (cp.follow) relabelRow(it);
   const card = $(`.card[data-id="${it.id}"]`);
   if (card) {
     $('#stage')?.classList.remove('enter');

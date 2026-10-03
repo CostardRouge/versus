@@ -422,9 +422,19 @@ kbd {
   font-size: 12.5px;
   font-weight: 600;
 }
+/* A gone board's tiles fade under a veil; their words and numbers stay above it, readable. */
 .rcard.gone .mosaic {
   filter: grayscale(1);
-  opacity: 0.45;
+}
+.rcard.gone .tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--surface);
+  opacity: 0.55;
+}
+.rcard.gone .tile b {
+  position: relative;
 }
 .rcard.gone h3 {
   color: var(--muted);

@@ -50,9 +50,16 @@ export function drawSlopes(): void {
  * Pointing at an item (in either ranking, or its line) highlights it on both sides. Its rows are also toggle
  * buttons, for touch and the keyboard: a tap, Enter or Space keeps the item highlighted, a second one lets go.
  */
-export function bindSlopes(root: ParentNode = doc): void {
+function bindSlopes(root: ParentNode = doc): void {
   for (const box of $$('[data-slope]', root)) {
     const rows = $$('[data-slope-l] li[data-id], [data-slope-r] li[data-id]', box);
+    // A list holds list items only: with buttons for rows, each column's list is a group named by its heading.
+    for (const col of $$('[data-slope-l], [data-slope-r]', box)) {
+      const list = col.querySelector('ol');
+      list?.setAttribute('role', 'group');
+      const name = col.querySelector('p')?.textContent?.trim();
+      if (name) list?.setAttribute('aria-label', name);
+    }
     let kept: string | null = null;
     const light = (key: string | null) => {
       box.classList.toggle('hovering', key !== null);

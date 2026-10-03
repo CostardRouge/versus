@@ -69,6 +69,9 @@ for (const theme of ['light', 'dark'] as const) {
       await checkA11y(page, 'duel');
       await page.getByRole('tab', { name: 'Ranking' }).click();
       await checkA11y(page, 'ranking');
+      await page.locator('[data-action="rank-view"][data-view="lines"]').click();
+      await expect(page.locator('.slope-l li[data-id]').first()).toBeVisible();
+      await checkA11y(page, 'ranking as lines between two methods');
       if (isMobile) {
         await page.getByRole('tab', { name: 'Items' }).click();
         await checkA11y(page, 'items');
@@ -106,6 +109,47 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto(`app/b/${ALIAS}`);
       await expect(page.locator('#b-main .card')).toHaveCount(2);
       await checkA11y(page, 'board');
+    });
+
+    test('the end-of-vote page, in its two views', async ({ page }) => {
+      const mine = [
+        { a: 'p0', b: 'p1', s: 1 as const },
+        { a: 'p1', b: 'p2', s: 1 as const },
+        { a: 'p0', b: 'p2', s: 0 as const },
+      ];
+      await page.routeWebSocket(`**/api/boards/${ALIAS}`, (ws) => {
+        ws.onMessage(() =>
+          ws.send(JSON.stringify({ t: 'state', board: view, owner: false, mine, pairs: [] } as ServerMessage)),
+        );
+      });
+      await page.goto(`app/b/${ALIAS}`);
+      await page.locator('[data-action="b-finale"]').click();
+      await expect(page.locator('#fin .fin-pd')).toHaveCount(3);
+      await checkA11y(page, 'end of the vote: podium');
+      await page.locator('[data-action="b-finale-view"][data-view="duo"]').click();
+      await expect(page.locator('#fin .fin-mine li')).toHaveCount(3);
+      await checkA11y(page, 'end of the vote: face to face');
+    });
+
+    test('a board gone, under "Your votes"', async ({ page }) => {
+      await page.routeWebSocket(`**/api/boards/${ALIAS}`, (ws) => {
+        const send = (m: ServerMessage) => ws.send(JSON.stringify(m));
+        ws.onMessage((data) => {
+          const m = JSON.parse(String(data)) as { t: string };
+          if (m.t === 'hello') send({ t: 'state', board: view, owner: false, mine: [], pairs: [['p0', 'p1']] });
+          // The first vote keeps a card under "Your votes"; then the board is withdrawn.
+          else if (m.t === 'vote') {
+            send({ t: 'pairs', pairs: [], mine: 1 });
+            setTimeout(() => ws.close({ code: 4004 }), 300);
+          }
+        });
+      });
+      await page.goto(`app/b/${ALIAS}`);
+      await page.locator('[data-action="b-pick"][data-side="a"]').click();
+      await expect(page.getByRole('heading', { level: 1 })).toContainText('withdrawn');
+      await page.locator('.board .ws-head [data-action="back"]').click();
+      await expect(page.locator('.rcard.gone')).toHaveCount(1);
+      await checkA11y(page, 'gallery with a board gone');
     });
   });
 }

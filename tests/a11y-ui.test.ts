@@ -455,6 +455,9 @@ describe('beyond the pointer', () => {
     const both = () => [...document.querySelectorAll<HTMLElement>(`.slope li[data-id="${id}"]`)];
     expect(row.tabIndex).toBe(0);
     expect(row.getAttribute('role')).toBe('button');
+    // Buttons for rows: each column's list is a group named by its heading, not a list of buttons.
+    expect(row.parentElement?.getAttribute('role')).toBe('group');
+    expect(row.parentElement?.getAttribute('aria-label')).toBe($('.slope-l .slope-h').textContent?.trim());
     expect(row.getAttribute('aria-pressed')).toBe('false');
     row.focus();
     expect(key('Enter').defaultPrevented).toBe(true);
@@ -583,6 +586,26 @@ describe('Back and addresses', () => {
     expect(location.pathname).toBe('/');
     expect($('#view h1').textContent).toBe('Your rankings');
     back.mockRestore();
+  });
+
+  it('closes what was open over a view Back leaves: a question, the color editor', async () => {
+    popTo('/demo/accent');
+    click('.tab[data-tab="results"]');
+    const duelsBefore = duels('demo-accent');
+    click('[data-action="reset"]');
+    expect($('#modal').hidden).toBe(false);
+    popTo('/');
+    // Answered "no": nothing is reset later about a view that is gone, and the page isn't left out of reach.
+    expect($('#modal').hidden).toBe(true);
+    expect($('#app').hasAttribute('inert')).toBe(false);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(duels('demo-accent')).toBe(duelsBefore);
+    popTo('/demo/accent');
+    click('.tab[data-tab="duel"]');
+    click('.thumb-btn');
+    expect($('#cpop').hidden).toBe(false);
+    popTo('/');
+    expect($('#cpop').hidden).toBe(true);
   });
 
   it('adds the gallery’s entry for a view reached straight from its address', () => {

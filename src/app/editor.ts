@@ -178,6 +178,22 @@ function patchRow(li: Element, row: Row): void {
   }
 }
 
+/**
+ * A row whose item was renamed in place (its name field, or a color named by its code): the field and the names of
+ * its controls follow, and the row counts as drawn with that name.
+ */
+export function relabelRow(it: Item): void {
+  const li = $(`#item-list li[data-id="${it.id}"]`);
+  if (!li) return;
+  const name = $<HTMLInputElement>('.row-label', li);
+  if (name && name.value !== it.label) name.value = it.label;
+  name?.setAttribute('aria-label', t('renameAria', { label: it.label }));
+  $('.rm', li)?.setAttribute('aria-label', t('removeAria', { label: it.label }));
+  $('.thumb-btn', li)?.setAttribute('aria-label', t('editColorAria', { label: it.label }));
+  const was = drawn.get(li);
+  if (was) drawn.set(li, { ...was, label: it.label });
+}
+
 function rowElement(row: Row, editable: boolean): Element {
   const tpl = doc.createElement('template');
   tpl.innerHTML = rowHTML(row, editable);

@@ -29,7 +29,7 @@ import {
   suggesting,
 } from './board-state';
 import { closeColor } from './color';
-import { $, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
+import { $, ask, copyText, doc, focusKey, focusOn, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML, controlsHTML, duelKeys, outcomeOf, playPick } from './duel';
 import { addFormHTML, typed } from './editor';
 import { errorKey, OWNER_ERRORS, REPORT_ERRORS } from './errors';
@@ -96,26 +96,13 @@ export interface FocusMark {
   end: number | null;
 }
 
-/** The data attributes that tell one control from its siblings, after its data-action. */
-const MARK_KEYS = ['action', 'id', 'side', 'view', 'who', 'tab', 'm', 'alias'] as const;
-const attr = (k: string, v: string): string => `[data-${k}="${v.replace(/["\\]/g, '\\$&')}"]`;
-
-function markOf(el: HTMLElement): string | null {
-  if (el.id) return `#${el.id}`;
-  const d = el.dataset;
-  if (d.action) return MARK_KEYS.map((k) => (d[k] === undefined ? '' : attr(k, d[k]))).join('');
-  if (el.classList.contains('row-label') && d.id) return `#item-list .row-label${attr('id', d.id)}`;
-  if (el.classList.contains('card') && d.side) return `.card${attr('side', d.side)}`;
-  return null;
-}
-
 /**
  * Where the focus is, when it is inside `root` (the part about to be redrawn): a live update must never send a
  * keyboard or screen reader user back to the top of the page.
  */
 export function focusMark(root: Element | null = $('#view')): FocusMark | null {
   const el = doc.activeElement as HTMLInputElement | null;
-  const sel = el && root?.contains(el) && el !== root ? markOf(el) : null;
+  const sel = el && root?.contains(el) && el !== root ? focusKey(el) : null;
   if (!el || !sel) return null;
   let start: number | null = null;
   let end: number | null = null;
@@ -129,11 +116,19 @@ export function focusMark(root: Element | null = $('#view')): FocusMark | null {
   return { sel, value: text ? el.value : null, start, end };
 }
 
-/** Puts the focus (and a text field's caret) back on the control `mark` names, if it is still there. */
-export function refocus(mark: FocusMark | null): void {
+/**
+ * Puts the focus (and a text field's caret) back on the control `mark` names, if it is still there; else on
+ * `fallback`'s (a heading takes it without entering the Tab order).
+ */
+export function refocus(mark: FocusMark | null, fallback?: () => HTMLElement | null): void {
   if (!mark) return;
-  const el = $<HTMLInputElement>(mark.sel);
-  if (!el || el === doc.activeElement || el.disabled) return;
+  const found = $<HTMLInputElement>(mark.sel);
+  const el = found && !found.disabled ? found : (fallback?.() as HTMLInputElement | null | undefined);
+  if (!el || el === doc.activeElement) return;
+  if (el.matches('#view h1, #view h2')) {
+    focusOn(el);
+    return;
+  }
   el.focus({ preventScroll: true });
   if (mark.start === null) return;
   try {
@@ -247,7 +242,10 @@ function onConnection(board: Board, c: Connection): void {
     // Still waiting for the first state: the message changes in place, so screen readers hear it.
     const wait = $('#b-wait');
     if (wait && (c === 'connecting' || c === 'lost')) {
-      wait.innerHTML = waitText(board);
+      // The same heading, new words: it keeps the focus if it has it.
+      const words = wait.querySelector('.q');
+      if (words) words.textContent = c === 'lost' ? t('boardOffline') : t('connecting');
+      else wait.innerHTML = waitText(board);
       const acts = $('#b-wait-acts');
       if (acts) acts.hidden = !board.failed;
     } else renderBoard();
@@ -386,7 +384,9 @@ export function addBusy(busy: boolean): void {
   else btn.removeAttribute('aria-busy');
 }
 
-const waitText = (b: Board): string => `<h2 class="q">${b.conn === 'lost' ? t('boardOffline') : t('connecting')}</h2>`;
+/** The waiting words, the page's heading when nothing else names it yet (`h1`): the focus has somewhere to land. */
+const waitText = (b: Board, tag: 'h1' | 'h2' = $('#view .b-title') ? 'h2' : 'h1'): string =>
+  `<${tag} class="q">${b.conn === 'lost' ? t('boardOffline') : t('connecting')}</${tag}>`;
 
 /**
  * The board's first state hasn't come: connecting, or offline and trying again, with a way to try at once or to
@@ -402,7 +402,7 @@ function waitHTML(b: Board, back: string): string {
     <div class="ws-head b-head">${back}${j ? `<h1 class="b-title">${esc(j.title)}</h1>` : ''}</div>
     ${snap}
     <div class="empty-duel">
-      <div id="b-wait" role="status">${waitText(b)}</div>
+      <div id="b-wait" role="status">${waitText(b, j ? 'h2' : 'h1')}</div>
       <p class="b-wait-acts" id="b-wait-acts" ${b.failed ? '' : 'hidden'}>
         <button class="btn primary" type="button" data-action="b-retry">${t('retry')}</button>
         <button class="btn" type="button" data-action="back">${t('yourRankings')}</button>
@@ -422,7 +422,7 @@ function boardHTML(b: Board): string {
       ? `<button class="btn primary" type="button" data-action="b-unlink">${t('keepLocal')}</button>`
       : `<button class="btn primary" type="button" data-action="back">${t('yourRankings')}</button>`;
     return `<div class="board"><div class="ws-head">${back}</div>
-      <div class="empty-duel"><h2 class="q">${gone ? t('boardGone') : t('boardUnavailable')}</h2>${action}</div></div>`;
+      <div class="empty-duel"><h1 class="q">${gone ? t('boardGone') : t('boardUnavailable')}</h1>${action}</div></div>`;
   }
   const closed = v.status === 'closed';
   // Voters can start their own version from these items; the author has the ranking already.
@@ -495,7 +495,8 @@ export function renderDuel(): void {
   main.dataset.duel = duelKey(b);
   bindStage(boardPick, () => boardState()?.busy ?? true);
   if (authoring(b)) markAuthorPair();
-  refocus(mark);
+  // A card or Undo gone with the pair (the last vote, the only one undone): the new pair, else what stands instead.
+  refocus(mark, () => $('#stage .card-a') ?? $('#b-main .q') ?? $('#view h1'));
 }
 
 const rankHeadHTML = (): string => `<div class="b-rank-head"><h2>${t('crowdTitle')}</h2>
@@ -553,9 +554,13 @@ export function renderRanking(): void {
     body = $('#b-rank-body', el);
   }
   if (!body) return;
+  // Live or paused means something only while a ranking shows and votes still come in.
+  const toggle = $('.live-toggle', el);
+  if (toggle) toggle.hidden = !b.shown || b.view.status === 'closed';
   const mark = focusMark(body);
   body.innerHTML = rankingHTML(b, b.view);
-  refocus(mark);
+  // Refresh and Reset go once used: the Live switch, the next control up, else the heading.
+  refocus(mark, () => (toggle?.hidden ? $('#b-rank h2') : $('#b-live')));
 }
 
 // ─── Voting ─────────────────────────────────────────────────────────────────
@@ -716,6 +721,7 @@ export function openFinale(): void {
   b.finale = true;
   pushLayer('finale');
   renderBoard('play');
+  focusOn($('#fin'));
   window.scrollTo?.(0, 0);
 }
 
@@ -737,6 +743,10 @@ function hideFinale(): void {
   b.finale = false;
   resetFinale();
   renderBoard();
+  // Back on the board: where the result page opens again, else its heading.
+  const again = $('[data-action="b-finale"]');
+  if (again) again.focus();
+  else focusOn($('#view h1'));
   window.scrollTo?.(0, 0);
 }
 
@@ -757,6 +767,7 @@ export function followLayer(): void {
   else if (votedAll(b, b.view)) {
     b.finale = true;
     renderBoard();
+    focusOn($('#fin'));
   } else dropLayer();
 }
 
@@ -816,6 +827,8 @@ export function boardSuggest(text: string): void {
     return;
   }
   castSuggest(b, text);
+  // The button is disabled while the suggestion waits: the focus stays on the field, not lost with it.
+  $('#add-input')?.focus();
   addBusy(true);
 }
 

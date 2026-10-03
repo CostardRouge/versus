@@ -25,12 +25,6 @@ export const CARD_MAX_BYTES = 400_000;
 /** Duel cards stored per board: enough for the duels people share, not for someone filling the bucket. */
 export const CARD_LIMIT = 40;
 
-/**
- * ranking: a ranking's podium and rows; crowd: a board's; duo: the sharer's order facing the crowd's; compare: one
- * ranking by two methods, facing each other; duel: two items.
- */
-export type CardKind = CardSpec['kind'];
-
 export interface CardRow {
   it: Item;
   /** Score or record, as printed on the card (may be empty). */
@@ -97,6 +91,7 @@ export interface DuelCard extends CardBase {
   pair: [Item, Item];
 }
 
+/** What a shared image shows, by kind: standings, two orders facing each other, or one duel. */
 export type CardSpec = StandingsCard | DuoCard | CompareCard | DuelCard;
 
 /** Every item a card shows, for its pictures to load. */

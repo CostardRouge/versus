@@ -156,8 +156,16 @@ function actionsHTML(c: Ctx, delay: number): string {
   const cta = c.d.owner
     ? ''
     : `<p class="fin-cta">${t('finCta')} <button class="link" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}" aria-describedby="fin-mine-hint">${t('makeMine')}</button><span id="fin-mine-hint" hidden>${esc(t('makeMineHint'))}</span></p>`;
+  // Where the button goes: new pairs to vote, the crowd's ranking (live, or final once closed), or the board's page.
+  const main = c.left
+    ? t('finVoteNew')
+    : !c.d.crowd
+      ? t('finBackBoard')
+      : c.d.status === 'closed'
+        ? t('finSeeFinal')
+        : t('finSeeBoard');
   return `<div class="fin-acts rv" style="--d:${delay}s">
-    <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${c.left ? t('finVoteNew') : t('finSeeBoard')}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button></div>
+    <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${main}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button></div>
     ${cta}
   </div>`;
 }
@@ -239,7 +247,7 @@ function podiumHTML(c: Ctx): string {
         <span class="fin-cap">${t('finPairsVoted')}</span>
       </div>
       <div class="rv" style="--d:0.3s">
-        <h1 class="fin-h">${c.left ? t('finNewTitle', { pairs: plural(c.left, 'pair') }) : t('votedAll')}</h1>
+        <h1 class="fin-h" id="fin-h">${c.left ? t('finNewTitle', { pairs: plural(c.left, 'pair') }) : t('votedAll')}</h1>
         <p class="fin-sub">${sub}</p>
       </div>
     </header>
@@ -326,7 +334,7 @@ function duoHTML(c: Ctx): string {
   }
   return `<header class="rv" style="--d:0.1s">
       <p class="fin-eyebrow">${barHTML(c)}<span class="mono">${t('finPairs', { n: countHTML(d.count), total: c.pairs })} · ${status}</span></p>
-      <h1 class="fin-h">${title}</h1>
+      <h1 class="fin-h" id="fin-h">${title}</h1>
       <p class="fin-sub">${esc(sub)}</p>
     </header>
     <div class="fin-grid fin-grid-duo">
@@ -346,7 +354,8 @@ function duoHTML(c: Ctx): string {
 
 export function finaleHTML(d: FinaleData): string {
   const c = ctxOf(d);
-  return `<div class="fin" id="fin">${topHTML(d)}<div class="fin-body">${d.view === 'duo' ? duoHTML(c) : podiumHTML(c)}</div></div>`;
+  // A region named by its heading: the focus lands on it when the page opens, its blocks still appearing.
+  return `<div class="fin" id="fin" role="region" aria-labelledby="fin-h">${topHTML(d)}<div class="fin-body">${d.view === 'duo' ? duoHTML(c) : podiumHTML(c)}</div></div>`;
 }
 
 function countUp(el: HTMLElement): void {

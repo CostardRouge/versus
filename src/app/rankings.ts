@@ -10,7 +10,7 @@ import { uid } from '../core/util';
 import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
 import { enterBoard, followLayer, leaveBoard, renderBoard } from './board';
 import { closeColor } from './color';
-import { $, ask, focusOn, keepFocus, narrow, toast } from './dom';
+import { $, ask, closeModal, focusOn, keepFocus, narrow, toast } from './dom';
 import { clearEnding } from './ending';
 import { galleryHTML, setNotice } from './gallery';
 import { applyStatic, viewTitle } from './header';
@@ -21,7 +21,7 @@ import { online } from './remote';
 import { backIsGallery, currentPath, routeURL, stashedURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
 import { savePrefs } from './storage';
-import { setTab, wsHTML } from './workspace';
+import { setTab, toggleMethodMenu, wsHTML } from './workspace';
 
 /** Top-level view switch (gallery, workspace or published board), navigation and actions on whole rankings. */
 
@@ -284,6 +284,11 @@ function route(): void {
   const route = parseRoute(currentPath());
   // The gallery on screen already (the step back "‹ Rankings" takes, goBack): nothing to draw again.
   if (booted && route?.view === 'gallery' && S.route.view === 'gallery' && $('#view .gallery')) return;
+  // Back or Forward leaves the view: what was open over it closes first (a dialog answered "no"), so nothing is
+  // confirmed later about a view that is gone, and the page behind isn't left inert.
+  closeModal(false);
+  closeColor();
+  toggleMethodMenu(false);
   if (route?.view === 'board') {
     owner ??= parseOwnerFragment(location.hash);
     // A duel link (`?duel=a.b`): the board opens on that duel; the address loses the query once open.

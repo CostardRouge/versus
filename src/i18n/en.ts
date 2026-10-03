@@ -366,6 +366,8 @@ export const en = {
   finOwnFrom: 'Your ranking comes from your {votes}.',
   finVoteNew: 'Vote on the new pairs',
   finSeeBoard: 'See the live ranking',
+  finSeeFinal: 'See the final ranking',
+  finBackBoard: 'Back to the ranking',
   finCta: 'Want your friends to vote?',
   voteClosed: 'The vote is closed',
   voteClosedBody: 'Here is the final ranking.',

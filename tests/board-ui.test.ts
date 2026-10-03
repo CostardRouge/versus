@@ -205,8 +205,11 @@ describe('publishing', () => {
       c.method === 'PUT'
         ? { status: 201, body: { url: `http://localhost:3000/og/b/${ALIAS}/1.png` } }
         : { status: 201, body: { alias: ALIAS, owner: OWNER } };
+    const entries = history.length;
     click('#m-ok');
     await flush();
+    // The board takes the ranking's place in the history: Back doesn't land on an address that sends forward again.
+    expect(history.length).toBe(entries);
 
     const post = calls.find((c) => c.method === 'POST');
     expect(post?.url).toBe('/api/boards');
@@ -319,6 +322,7 @@ describe('voting', () => {
     ws.receive({ t: 'ranking', counts: { votes: 9, voters: 3, online: 2 }, ranking: ranking(['p0', 'p1', 'p2']) });
 
     // Back to the board, and to the result again.
+    expect($('.fin-btns [data-action="b-finale-close"]')?.textContent).toBe('See the live ranking');
     click('[data-action="b-finale-close"]');
     expect($('#fin')).toBeNull();
     expect($('#b-main')?.textContent).toContain('You voted on every pair');
@@ -336,8 +340,11 @@ describe('voting', () => {
       { a: 'p1', b: 'p0', s: 1 as const },
     ];
     ws.receive({ ...state(blind), mine, pairs: [] } as ServerMessage);
+    // Nothing to pause while no ranking shows.
+    expect($('.live-toggle')?.hidden).toBe(true);
     click('[data-action="b-finale"]');
     expect($('#fin h1')?.textContent).toBe('Your winner: Calzone.');
+    expect($('.fin-btns [data-action="b-finale-close"]')?.textContent).toBe('Back to the ranking');
     expect(document.querySelectorAll('#fin .fin-ph')).toHaveLength(3);
     expect($('#fin .fin-locked')).not.toBeNull();
     click('[data-action="b-finale-view"][data-view="podium"]');
@@ -350,6 +357,7 @@ describe('voting', () => {
     click('#m-ok');
     click('[data-action="b-finale-close"]');
     ws.receive(state());
+    expect($('.live-toggle')?.hidden).toBe(false);
   });
 
   it('gives the end-of-vote page a history entry of its own: Back closes it, at the same address', async () => {
@@ -542,6 +550,72 @@ describe('voting', () => {
     expect($('#toast')?.textContent).toBe('Too many attempts. Try again in a minute.');
     await vi.advanceTimersByTimeAsync(600);
   });
+
+  it('keeps the focus on the page when what had it goes: Undo, Refresh, the add button, the result page', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    // The page's heading, where the focus lands on opening it, keeps it when a new state draws the page again.
+    const heading = $('#view h1') as HTMLElement;
+    heading.tabIndex = -1;
+    heading.focus();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    expect($('#view h1')).not.toBe(heading);
+    expect(document.activeElement).toBe($('#view h1'));
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+    // The only vote undone: Undo turns disabled, the focus goes to the pair it brings back.
+    const undo = $('[data-action="b-undo"]') as HTMLButtonElement;
+    undo.focus();
+    undo.click();
+    expect(($('[data-action="b-undo"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(document.activeElement).toBe($('#stage .card-a'));
+    ws.receive({
+      t: 'pairs',
+      pairs: [
+        ['p0', 'p1'],
+        ['p1', 'p2'],
+      ],
+      mine: 0,
+    });
+
+    // Refresh goes once used: the Live switch above it takes the focus.
+    const liveBox = $('#b-live') as HTMLInputElement;
+    liveBox.checked = false;
+    change(liveBox);
+    ws.receive({ t: 'ranking', counts: { votes: 5, voters: 2, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    const refresh = $('[data-action="b-refresh"]') as HTMLButtonElement;
+    refresh.focus();
+    refresh.click();
+    expect($('[data-action="b-refresh"]')).toBeNull();
+    expect(document.activeElement).toBe($('#b-live'));
+    ($('#b-live') as HTMLInputElement).checked = true;
+    change($('#b-live') as HTMLInputElement);
+
+    // The + button turns disabled while a suggestion waits: the field keeps the focus.
+    ($('#add-form .add-btn') as HTMLButtonElement).focus();
+    submit('Hawaii');
+    expect(document.activeElement).toBe($('#add-input'));
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    ($('#add-input') as HTMLInputElement).value = '';
+
+    // A closed vote: nothing live to pause; its result page shows the final ranking, and takes the focus.
+    const all = [
+      { a: 'p0', b: 'p1', s: 1 as const },
+      { a: 'p1', b: 'p2', s: 1 as const },
+      { a: 'p0', b: 'p2', s: 1 as const },
+    ];
+    ws.receive({ ...state({ status: 'closed' }), mine: all, pairs: [] } as ServerMessage);
+    expect($('.live-toggle')?.hidden).toBe(true);
+    click('[data-action="b-finale"]');
+    expect(document.activeElement).toBe($('#fin'));
+    expect($('#fin')?.getAttribute('aria-labelledby')).toBe('fin-h');
+    expect($('.fin-btns [data-action="b-finale-close"]')?.textContent).toBe('See the final ranking');
+    click('[data-action="b-finale-close"]');
+    expect(document.activeElement).toBe($('[data-action="b-finale"]'));
+    await vi.advanceTimersByTimeAsync(5);
+    ws.receive(state());
+  });
 });
 
 describe('author', () => {
@@ -585,8 +659,10 @@ describe('author', () => {
       `DELETE /api/boards/${ALIAS}/items/n-Napoli`,
     ]);
 
-    // Without votes an item goes at once, and Undo brings it back.
+    // Without votes an item goes at once, and Undo brings it back. The focus moves on to the next row's name.
+    $('[data-action="remove-item"][data-id="p1"]')?.focus();
     click('[data-action="remove-item"][data-id="p1"]');
+    expect(document.activeElement).toBe($('#item-list .row-label[data-id="p2"]'));
     expect($('#modal')?.hidden).toBe(true);
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p1` });
@@ -766,6 +842,20 @@ describe('author', () => {
       body: { reset: false },
     });
     expect($('#toast')?.textContent).toBe('Color changed');
+
+    // An item named by its code takes the new one: the message says so.
+    const coded = [{ ...items[0], label: '#AA0000', fill: red }, items[1], items[2]];
+    ws.receive(state({ items: coded, ranking: voted({ p0: 2 }) } as Partial<BoardView>, true));
+    respond = () => ({ status: 200, body: 2 });
+    click('[data-action="edit-color"][data-id="p0"]');
+    const hex = $('#cpop .cp-hex') as HTMLInputElement;
+    hex.value = '#2743f5';
+    hex.dispatchEvent(new Event('input', { bubbles: true }));
+    change(hex);
+    click('[data-action="cp-ok"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('Color changed. #2743F5 starts again from zero.');
 
     // A closed vote: the list is read-only, and says how to change it.
     ws.receive(state({ items: colored, status: 'closed' } as Partial<BoardView>, true));
@@ -989,7 +1079,7 @@ describe('links', () => {
     const ws = FakeSocket.last();
     ws.receive(state());
     ws.drop(4004);
-    expect($('#view')?.textContent).toContain('doesn’t exist or was withdrawn');
+    expect($('#view h1')?.textContent).toContain('doesn’t exist or was withdrawn');
     click('.board [data-action="back"]');
     expect($('h1')?.textContent).toBe('Your rankings');
   });
@@ -1476,7 +1566,8 @@ describe('offline', () => {
     expect(wait?.getAttribute('role')).toBe('status');
     expect(wait?.textContent).toBe('Offline or the server can’t be reached — trying again');
     // The card under "Your votes": the title and the counts of the last visit.
-    expect($('.board .b-title')?.textContent).toBe('Pizzas');
+    expect($('#view h1.b-title')?.textContent).toBe('Pizzas');
+    expect($('#b-wait h2')?.textContent).toBe('Offline or the server can’t be reached — trying again');
     expect($('.board .b-counts')?.textContent).toContain('Your votes: 1');
     // Retry connects at once; the message changes in place.
     click('[data-action="b-retry"]');
@@ -1496,6 +1587,8 @@ describe('offline', () => {
     FakeSocket.last().drop(1006);
     await flush();
     expect($('.board .b-title')).toBeNull();
+    // Nothing names the page yet: the waiting words are its heading.
+    expect($('#b-wait h1')?.textContent).toBe('Offline or the server can’t be reached — trying again');
     click('#b-wait-acts [data-action="back"]');
     expect($('h1')?.textContent).toBe('Your rankings');
   });

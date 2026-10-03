@@ -38,7 +38,7 @@ export function visibilityHTML(prefix: string, s: BoardSettings): string {
 }
 
 /** Results visibility and scoring method. Exact sort is listed but can't be picked, with the reason. */
-export function settingsHTML(prefix: string, s: BoardSettings): string {
+function settingsHTML(prefix: string, s: BoardSettings): string {
   const method = (k: MethodKey) =>
     `<label class="opt">${radio(prefix, 'm', k, s.method === k)} <b>${M(k).name}</b> <span class="muted mono">${M(k).tech}</span></label>`;
   return `${visibilityHTML(prefix, s)}
@@ -179,6 +179,7 @@ async function publish(r: Ranking): Promise<void> {
     void sendPictures(alias, owner, announced);
   }
   const copied = await copyText(boardURL(alias));
-  openBoard(alias);
+  // The ranking's address now opens its board: Back must not land on it, only to be sent forward again.
+  openBoard(alias, { replace: S.route.view === 'rank' && S.route.id === r.id });
   toast(t(copied ? 'published' : 'publishedShare'));
 }

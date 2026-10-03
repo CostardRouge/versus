@@ -102,7 +102,7 @@ The board's Durable Object assigns pairs, not the browser:
 
 ## Live updates
 
-- On by default; each viewer can turn them off (remembered in this browser's preferences).
+- On by default; each viewer can turn them off (remembered in this browser's preferences). The switch shows only while a ranking is visible and the vote is open: there is nothing to pause otherwise.
 - On: the ranking reorders at most once per second, only when it changed, with a soft animation (none under `prefers-reduced-motion`).
 - Off: the ranking stays frozen and a badge shows "37 new votes · Refresh".
 - Items whose error margins overlap are shown as neck and neck rather than in a falsely precise order, so close items don't flicker.
@@ -118,7 +118,7 @@ When a voter has voted on every pair (n(n−1)/2), their result gets a page of i
   - **You vs the crowd**: the voter's ranking (computed in the browser from their votes) facing the crowd's, each item linked by a line; crossing lines are where they disagree. The heading names the crowd's winner; a list shows the voter's picks the crowd contradicts.
 - Visibility still applies: on a blind board the crowd's side waits for the closing and the voter sees their own ranking.
 - The crowd's side follows live updates (a new order re-renders it), or waits for "Refresh" when they are off.
-- If the author adds items, the page says how many new pairs there are and its main button goes back to voting.
+- Its main button goes back to the board, named for what waits there: the new pairs to vote when the author added items, the live ranking, the final one once closed, or the board itself while the crowd's ranking is hidden.
 
 ## Your votes (the voter's gallery)
 

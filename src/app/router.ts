@@ -28,7 +28,7 @@ export function currentPath(): string {
   }
 }
 
-export function routeOfState(): Route {
+function routeOfState(): Route {
   const r = S.route;
   if (r.view === 'board') return { view: 'board', alias: r.alias };
   if (r.view === 'rank') return { view: 'rank', id: r.id, tab: r.tab };

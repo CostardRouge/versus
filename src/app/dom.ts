@@ -135,10 +135,15 @@ export function focusOn(el: HTMLElement | null): void {
 }
 
 /** The data attributes that tell what a control does and to what; a duel card is known by its side alone. */
-const FOCUS_DATA = ['action', 'side', 'id', 'm', 'tab', 'view', 'fmt', 'type', 'alias', 'i'];
+const FOCUS_DATA = ['action', 'side', 'id', 'm', 'tab', 'view', 'who', 'fmt', 'type', 'alias', 'i'];
 const quote = (v: string): string => `"${v.replace(/["\\]/g, '\\$&')}"`;
-function focusKey(el: HTMLElement): string | null {
+/**
+ * What finds a focused element again once a render replaced it: its id, the view's heading (where the focus lands
+ * on a change of view), or what it does and to what. Null for anything else.
+ */
+export function focusKey(el: HTMLElement): string | null {
   if (el.id) return `#${el.id}`;
+  if (el.matches('#view h1')) return '#view h1';
   const keys = FOCUS_DATA.filter((k) => el.dataset[k] !== undefined && !(k === 'id' && el.dataset.side));
   if (!keys.length) return null;
   const cls = el.classList[0] ? `.${el.classList[0]}` : '';
@@ -156,7 +161,10 @@ export function keepFocus(render: () => void, fallback?: () => HTMLElement | nul
   render();
   if (!(at instanceof HTMLElement) || at === doc.body || at.isConnected) return;
   const same = key ? $<HTMLButtonElement>(key) : null;
-  (same && !same.disabled && !same.closest('[hidden]') ? same : fallback?.())?.focus();
+  const target = same && !same.disabled && !same.closest('[hidden]') ? same : fallback?.();
+  // A heading takes the focus without entering the Tab order (focusOn).
+  if (target?.matches('#view h1')) focusOn(target);
+  else target?.focus();
 }
 /**
  * Confirm modal. `html` replaces the text body with markup the caller reads back after OK (a small

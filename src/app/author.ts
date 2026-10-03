@@ -1,5 +1,5 @@
 import { CROWD_METHODS, LIMITS } from '../core/board';
-import { colorTwin, sameFill } from '../core/colors';
+import { colorTwin, fillCode, namedByCode, sameFill } from '../core/colors';
 import { freshLabels, labelKey, parseList } from '../core/list';
 import type { BoardView } from '../core/protocol';
 import { dataURLBytes } from '../core/published';
@@ -227,7 +227,7 @@ function renderAuthorMain(): void {
 // ─── The board: title, method, settings ─────────────────────────────────────
 
 /** A new title for everyone; an empty one puts the current title back. */
-export async function authorRetitle(input: HTMLInputElement): Promise<void> {
+async function authorRetitle(input: HTMLInputElement): Promise<void> {
   const b = authored();
   if (!b) return;
   const title = input.value.trim();
@@ -593,8 +593,21 @@ async function authorRecolor(id: string, fill: Fill): Promise<void> {
     if (!choice) return;
     reset = choice === 'reset';
   }
+  // An item named by its code takes the new one (editItem, core/board.ts): the message names it so.
+  const label = namedByCode(it.label, it.fill) ? fillCode(fill) : it.label;
   const n = await ownerCall((alias, token) => editBoardItem(alias, token, id, { fill, reset }));
-  if (n !== null) toast(n ? t('recoloredReset', { label: it.label }) : t('recolored'));
+  if (n !== null) toast(n ? t('recoloredReset', { label }) : t('recolored'));
+}
+
+/**
+ * Before an item's row goes (the server's redraw takes its ×): the focus moves on to the next row's name, the previous
+ * one at the end, or the add field, where the redraw keeps it.
+ */
+function focusPast(id: string): void {
+  const row = $(`#item-list li[data-id="${id}"]`);
+  const next = (row?.nextElementSibling ?? row?.previousElementSibling) as HTMLElement | null | undefined;
+  const name = next?.dataset.id ? $(`#item-list .row-label[data-id="${next.dataset.id}"]`) : null;
+  (name ?? $('#add-input'))?.focus();
 }
 
 /**
@@ -606,7 +619,10 @@ async function authorRemove(id: string | undefined): Promise<void> {
   const it = id ? itemOf(id) : undefined;
   if (!b || !id || !it) return;
   const votes = votesOf(b, id);
-  const remove = () => ownerCall((alias, token) => removeBoardItem(alias, token, id));
+  const remove = () => {
+    focusPast(id);
+    return ownerCall((alias, token) => removeBoardItem(alias, token, id));
+  };
   if (votes || it.img || it.pic) {
     const ok = await ask({
       title: t('removeItemTitle', { label: it.label }),
@@ -622,13 +638,22 @@ async function authorRemove(id: string | undefined): Promise<void> {
   const back = { label: it.label, fill: it.fill };
   toast(t('itemRemovedNamed', { label: it.label }), {
     label: t('undoToast'),
-    run: () => void ownerCall((alias, token) => addBoardItem(alias, token, back)),
+    // Put back (with a new id): the toast's button is gone, the add field takes the focus.
+    run: () => {
+      void ownerCall((alias, token) => addBoardItem(alias, token, back)).then(() => {
+        if (doc.activeElement === doc.body) $('#add-input')?.focus();
+      });
+    },
   });
 }
 
 /** The items pane of a published board's author (ItemsHost, editor.ts): every edit goes through the server. */
 export const authorHost: ItemsHost = {
-  add: (input) => void authorAdd(input.value),
+  add(input) {
+    // The + button turns busy while the server answers: the field keeps the focus, as on a local ranking.
+    input.focus();
+    void authorAdd(input.value);
+  },
   addList(text) {
     if (parseList(text).length < 2) return false;
     void authorAdd(text);
