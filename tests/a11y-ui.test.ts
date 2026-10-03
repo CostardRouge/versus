@@ -2,8 +2,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { toast, toastMs } from '../src/app/dom';
+import { reduced, toast, toastMs } from '../src/app/dom';
+import { finaleHTML, mountFinale, resetFinale } from '../src/app/finale';
 import { mount } from '../src/app/ui';
+import { mkItem } from '../src/core/model';
 
 /** Keyboard and screen reader behaviour of the app (the audit's A11Y findings), on the demos. */
 
@@ -433,5 +435,49 @@ describe('beyond the pointer', () => {
     expect(row.getAttribute('aria-pressed')).toBe('true');
     expect($('.slope-foot').textContent).toContain('Point at, tap or select an item to follow it.');
     click('[data-action="rank-view"][data-view="podium"]');
+  });
+});
+
+describe('motion', () => {
+  it('follows a motion setting changed while the page is open', () => {
+    expect(reduced).toBe(false);
+    setMedia('reduced', true);
+    expect(reduced).toBe(true);
+    setMedia('reduced', false);
+    expect(reduced).toBe(false);
+  });
+
+  it('keeps the end-of-vote page’s blocks out of reach until they show', () => {
+    const [a, b, c] = [mkItem('Apple'), mkItem('Banana'), mkItem('Cherry')];
+    const mine = [
+      { a: a.id, b: b.id, s: 1 as const },
+      { a: a.id, b: c.id, s: 1 as const },
+      { a: b.id, b: c.id, s: 1 as const },
+    ];
+    const host = document.createElement('div');
+    host.innerHTML = finaleHTML({
+      title: 'Fruit',
+      status: 'open',
+      countsLine: '',
+      items: [a, b, c],
+      method: 'bt',
+      mine,
+      count: 3,
+      crowd: null,
+      owner: false,
+      view: 'podium',
+    });
+    document.body.append(host);
+    mountFinale('play', () => {});
+    const at = (sel: string) => host.querySelector(sel)?.hasAttribute('inert');
+    expect(at('.fin-top')).toBe(false);
+    expect(at('.fin-acts')).toBe(true);
+    vi.advanceTimersByTime(1000);
+    expect(at('.fin-hero .rv')).toBe(false);
+    expect(at('.fin-acts')).toBe(true);
+    vi.advanceTimersByTime(4000);
+    expect(host.querySelectorAll('[inert]')).toHaveLength(0);
+    resetFinale();
+    host.remove();
   });
 });

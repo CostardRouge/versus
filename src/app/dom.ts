@@ -26,7 +26,12 @@ const media = (q: string): MQ =>
 export function initDom(d: Document): void {
   doc = d;
   narrow = media('(max-width: 859px)');
-  reduced = media('(prefers-reduced-motion: reduce)').matches;
+  // Followed while the page is open: someone turning motion off mid-session gets it at once.
+  const calm = media('(prefers-reduced-motion: reduce)');
+  reduced = calm.matches;
+  calm.addEventListener('change', () => {
+    reduced = calm.matches;
+  });
 }
 
 export const trashSvg =

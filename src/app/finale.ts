@@ -59,6 +59,7 @@ export function setPodiumWho(w: string | undefined): void {
 export function resetFinale(): void {
   who = 'crowd';
   clearTimeout(timer);
+  clearShows();
   playing = false;
 }
 
@@ -360,16 +361,34 @@ function countUp(el: HTMLElement): void {
   requestAnimationFrame(tick);
 }
 
+/** The timers that let the reveal's blocks be reached as they appear. */
+let shows: ReturnType<typeof setTimeout>[] = [];
+function clearShows(): void {
+  for (const s of shows) clearTimeout(s);
+  shows = [];
+}
+/** Blocks still to appear are out of reach (Tab, a screen reader) until their turn: nothing focused unseen. */
+function holdUnrevealed(fin: HTMLElement): void {
+  for (const el of $$('.rv', fin)) {
+    const at = Number.parseFloat(el.style.getPropertyValue('--d')) || 0;
+    if (at <= 0) continue;
+    el.setAttribute('inert', '');
+    shows.push(setTimeout(() => el.removeAttribute('inert'), at * 1000));
+  }
+}
+
 /** After finaleHTML is in the page: runs the reveal (or a fade), draws the lines, binds the hover. */
 export function mountFinale(mode: FinaleMode, onSettled: () => void): void {
   const fin = $('#fin');
   if (!fin) return;
   clearTimeout(timer);
+  clearShows();
   playing = false;
   if (mode === 'swap') fin.classList.add('swap');
   if (mode === 'play' && !reduced) {
     fin.classList.add('play');
     playing = true;
+    holdUnrevealed(fin);
     if (typeof requestAnimationFrame === 'function') for (const el of $$('[data-count]', fin)) countUp(el);
     timer = setTimeout(() => {
       playing = false;
