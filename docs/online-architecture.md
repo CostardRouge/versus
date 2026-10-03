@@ -18,7 +18,7 @@ Browser (Vite app, local-first)
    ▼
 Cloudflare static assets: the app (dist/), served by the same Worker, same origin as the API
    ▼
-Worker (router: publish/join board, owner and admin auth, per-IP rate limits, Turnstile at publication)
+Worker (router: publish/join board, owner and admin auth, per-IP rate limits, Turnstile at publication and first votes on official boards)
    ├─ D1: board registry (alias, title, status, language, counts, reports, hidden, featured, last activity),
    │      for the admin page and the public lists
    ▼
@@ -49,7 +49,7 @@ Why each piece:
 - `worker/src/cards.ts`: link previews (D104). Stores the 1200×630 PNG the app drew for a board or one of its duels in R2 (`og/<alias>.png`, `og/<alias>/<a>.<b>.png`; 400 KB at most, 40 duel cards per board; who may send which is `cardUpload` in `src/core/share.ts`: the board's card its author, a duel's card anyone while it has none), serves it under `/og/b/…/<version>.png` (24 h cache; the site's `og.png` when there is none), and rewrites the head of `/app/b/<alias>[?duel=a.b]` with the board's title, a description in its language (`src/i18n/unfurl.ts`) and the card. The cards go with the board (withdrawal, takedown, expiry).
 - `worker/src/registry.ts` + `worker/migrations/`: the D1 registry, whose row is the admin list's (`AdminRow` in `src/core/protocol.ts`): alias, title, status, language, counts, report count, hidden and featured flags, the template key, the votes of the last 7 days, the crowd's first three labels, creation and activity. Each board writes its row on publication, status, item, flag and report changes, at each new voter up to 100 (the public lists and the index threshold watch the first voters), then at most once a day for votes; the row goes when the board does. `0002_moderation.sql` added the language, the flags and the report count; `0003_templates.sql` the template key, the recent votes, the top labels and the unique index on (template, language); `0004_pictures.sql` the count of pictures awaiting review. The registry also answers the Popular section (`popularBoards`), the template pages (`templateBoard`) and the sitemap (`indexableTemplates`), so no board wakes for a list.
 - Limits: the `PUBLISH_LIMIT` (5 publications per minute), `API_LIMIT` (120 requests per minute, WebSocket connections included) and `SUMMARY_LIMIT` (10 "Your votes" refreshes per minute, each waking up to 24 boards) rate limiting bindings, keyed by client IP; votes and skips are limited per connection (150 ms), item suggestions per connection (5 s). A connection keeps the voter of its first `hello` (another voter id is refused), and a new `hello` keeps both delays. A board takes the first votes of at most 30 new voters per address in 10 minutes (`admitNewVoter`; beyond, `rate_limited`): the board counts them in memory under a short hash of the address and its alias, carried as the WebSocket's tag (it survives hibernation), and never stores it.
-- `worker/src/turnstile.ts`: with `TURNSTILE_SECRET` set, publishing requires a Turnstile token (the app shows the widget when `VITE_TURNSTILE_SITE_KEY` is set).
+- `worker/src/turnstile.ts`: with `TURNSTILE_SECRET` set, publishing requires a Turnstile token (the app shows the widget when `VITE_TURNSTILE_SITE_KEY` is set), and so does a voter's first vote on the site's own boards: the vote is refused with `captcha`, the app shows the widget and sends `{ t: 'check', token }` on the socket, and the connection's session remembers it passed (`human`, `needsCheck` in core). Turnstile gets 5 seconds to answer.
 - `worker/src/board-object.ts`: `BoardObject`, a thin adapter around `src/core/board.ts`. Loads the board from SQLite when it wakes (synchronous reads; a `reports` table besides `meta` and `votes`, created on wake for older boards), keeps each voter's session (queue, skipped pairs, rate limit) in the WebSocket attachment so it survives hibernation, caches the crowd ranking for 1 s, broadcasts at most once per second. Moderation flags live in the board's meta, reports one row per voter.
 - Protocol (`src/core/protocol.ts`): the client sends `hello` (voter id, owner token for the author, the pair a duel link asked for), then `vote`, `skip`, `undo`, `reset`; the server answers `state`, `pairs`, `ranking` (null when not entitled) and `error`.
 - App side: `src/app/remote.ts` (fetch helpers and a WebSocket that says hello on every connection, reconnects with a growing delay and asks the API whether a board still exists before calling it gone), `src/app/board.ts` (board page), `src/app/publish.ts` (publish modal). The app reaches the API at `/api` on its own origin, or `VITE_API_URL`; a production build without either hides publishing.
@@ -85,7 +85,7 @@ Sources: [Durable Objects pricing](https://developers.cloudflare.com/durable-obj
 - Spectators are read-only; voting may require a lightweight session.
 - If ever needed: shard votes across several objects by voter and merge (BT is order-independent, and sharding by voter keeps one voice per pair exact).
 
-**Multiplied identities.** A voter is an anonymous id per browser, so a private window is a new voter. One voice per pair and server-assigned pairs cap what one identity can do; the rest relies on rate limits per connection and IP, a cap on the new voters one address brings to a board (30 in 10 minutes), and Turnstile (at publication, optionally per voter).
+**Multiplied identities.** A voter is an anonymous id per browser, so a private window is a new voter. One voice per pair and server-assigned pairs cap what one identity can do; the rest relies on rate limits per connection and IP, a cap on the new voters one address brings to a board (30 in 10 minutes), and Turnstile (at publication, and before a first vote on the site's own boards).
 
 ## Alternatives considered
 
@@ -147,7 +147,7 @@ Create a widget in *Turnstile* for the custom domain (and the workers.dev host i
 - set the site key as the GitHub variable `TURNSTILE_SITE_KEY` (the CI build reads it; it is public);
 - set the secret key as the Worker secret `TURNSTILE_SECRET`.
 
-Set both, or neither. The server requires a token when `TURNSTILE_SECRET` is set, and the app shows the widget when the site key was set at build time.
+Set both, or neither. The server requires a token when `TURNSTILE_SECRET` is set, and the app shows the widget when the site key was set at build time: at publication, and before a voter's first vote on one of the site's own boards (the official templates, open to everyone and listed publicly; a voter who already voted there is never asked).
 
 ### By hand
 

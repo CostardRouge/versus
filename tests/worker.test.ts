@@ -1303,6 +1303,43 @@ describe('limits', () => {
   });
 });
 
+describe('human checks', () => {
+  it('asks for one before a first vote on the site’s own boards, once a secret is set', async () => {
+    await server.update({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN } }] });
+    const page = await (await server.fetch('/t/superheroes/')).text();
+    const alias = page.match(/\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/)?.[1] ?? '';
+    const vote = async (c: Client) => {
+      const [a, b] = (await c.next('state')).pairs[0] as [string, string];
+      c.send({ t: 'vote', a, b, s: 1 });
+    };
+    const early = await Client.open(alias, 'early-voter-1');
+    await vote(early);
+    expect((await early.next('pairs')).mine).toBe(1);
+    early.close();
+    const { alias: theirs } = await publish();
+    await server.update({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN, TURNSTILE_SECRET: 'x' } }] });
+    // A new voter is asked first; the vote isn't recorded.
+    const fresh = await Client.open(alias, 'fresh-voter-1');
+    await vote(fresh);
+    expect((await fresh.next('error')).code).toBe('captcha');
+    expect((await fresh.next('pairs')).mine).toBe(0);
+    // A token Turnstile refuses keeps them out (an empty one is refused without asking Turnstile).
+    fresh.send({ t: 'check', token: '' });
+    expect((await fresh.next('error')).code).toBe('captcha');
+    expect((await fresh.next('pairs')).mine).toBe(0);
+    fresh.close();
+    // A voter who already voted there is never asked, nor is anyone on someone's own board.
+    const back = await Client.open(alias, 'early-voter-1');
+    await vote(back);
+    expect((await back.next('pairs')).mine).toBe(2);
+    back.close();
+    const visitor = await Client.open(theirs, 'fresh-voter-1');
+    await vote(visitor);
+    expect((await visitor.next('pairs')).mine).toBe(1);
+    visitor.close();
+  });
+});
+
 describe('cleanup', () => {
   it('deletes a board after the inactivity TTL', async () => {
     await server.update({ workers: [{ configPath: CONFIG, vars: { BOARD_TTL_SECONDS: '1' } }] });

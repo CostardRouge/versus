@@ -28,6 +28,7 @@ import {
   moderate,
   NEW_VOTERS_PER_ADDRESS,
   NEW_VOTERS_WINDOW_MS,
+  needsCheck,
   openSession,
   type PublishInput,
   parseItemEdit,
@@ -705,6 +706,22 @@ describe('sessions', () => {
       openSession(b, V2, false, crowd(b), mulberry32(1), prev);
     expect(again({ lastActionAt: T0, lastAddAt: T0 }).lastAddAt).toBe(T0);
     expect(again({ lastActionAt: T0 })).not.toHaveProperty('lastAddAt');
+    // And a human check passed on this connection.
+    expect(openSession(b, V2, false, crowd(b), mulberry32(1), { lastActionAt: 0, human: true }).human).toBe(true);
+    expect(again({ lastActionAt: T0 })).not.toHaveProperty('human');
+  });
+
+  it('asks for a human check before a first vote on the site’s own boards, when the server checks', () => {
+    const own = createBoard(input(4), T0, { official: true, template: 'pizzas' });
+    const theirs = board(4);
+    const s = openSession(own, V2, false, crowd(own), mulberry32(1));
+    expect(needsCheck(own, s, true)).toBe(true);
+    expect(needsCheck(own, s, false)).toBe(false);
+    expect(needsCheck(theirs, openSession(theirs, V2, false, crowd(theirs), mulberry32(1)), true)).toBe(false);
+    expect(needsCheck(own, { ...s, human: true }, true)).toBe(false);
+    // A voter who already voted there is never asked.
+    value(castVote(own, V2, 'i0', 'i1', 1, T0));
+    expect(needsCheck(own, s, true)).toBe(false);
   });
 
   it('keeps one voter per connection', () => {

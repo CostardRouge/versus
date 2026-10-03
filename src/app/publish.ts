@@ -12,12 +12,13 @@ import {
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
 import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
 import { boardURL } from './board';
-import { $, ask, copyText, doc, toast } from './dom';
+import { $, ask, copyText, toast } from './dom';
 import { openBoard } from './rankings';
 import { ApiError, fetchConfig, publishBoard, putItemImage } from './remote';
 import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
+import { turnstileKey, turnstileWidget } from './turnstile';
 
 /** Publishing a local ranking, and the settings form shared by the publish modal and the board's settings. */
 
@@ -78,32 +79,6 @@ const BLOCKS: Record<PublishBlock, MsgKey> = {
 
 let publishing = false;
 
-// ─── Turnstile (only when a site key is configured; the server checks the token) ──
-
-interface TurnstileApi {
-  render(el: HTMLElement, opts: { sitekey: string }): string;
-  getResponse(id: string): string | undefined;
-  remove(id: string): void;
-}
-
-const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
-let turnstileScript: Promise<TurnstileApi | undefined> | null = null;
-
-function loadTurnstile(): Promise<TurnstileApi | undefined> {
-  turnstileScript ??= new Promise((resolve) => {
-    const script = doc.createElement('script');
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    script.async = true;
-    script.onload = () => resolve((window as { turnstile?: TurnstileApi }).turnstile);
-    script.onerror = () => {
-      turnstileScript = null;
-      resolve(undefined);
-    };
-    doc.head.append(script);
-  });
-  return turnstileScript;
-}
-
 const PUBLISH_ERRORS: Partial<Record<string, MsgKey>> = {
   captcha: 'captchaFailed',
   rate_limited: 'tooManyTries',
@@ -144,26 +119,20 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
   }
   const duels = lastDuelPerPair(r).length;
   const settings: BoardSettings = { ...DEFAULT_SETTINGS, method: publishMethod(r) };
+  // Turnstile, only when a site key is configured (the server checks the token).
+  const check = turnstileKey() !== undefined;
   const html = `<p>${t('publishBody')}</p>
     ${pictures ? `<p class="pub-pictures">${t('publishPictures', { pictures: plural(pictures, 'picture') })}</p>` : ''}
     ${duels ? `<label class="opt pub-votes"><input type="checkbox" id="pub-votes" checked> ${t('publishVotes', { duels: plural(duels, 'duel') })}</label>` : ''}
     ${settingsHTML('pub', settings)}
     <details class="more"><summary>${t('moreOptions')}</summary>${optionsHTML('pub', settings)}</details>
-    ${SITE_KEY ? '<div class="pub-captcha" id="pub-captcha"></div>' : ''}`;
+    ${check ? '<div class="pub-captcha" id="pub-captcha"></div>' : ''}`;
   const asked = ask({ title: t('publishTitle'), html, ok: t('publish') });
-  let widget: { api: TurnstileApi; id: string } | null = null;
-  if (SITE_KEY) {
-    void loadTurnstile().then((api) => {
-      const el = $('#pub-captcha');
-      if (api && el) widget = { api, id: api.render(el, { sitekey: SITE_KEY }) };
-    });
-  }
+  const widget = turnstileWidget('#pub-captcha');
   const confirmed = await asked;
-  const current = widget as { api: TurnstileApi; id: string } | null;
-  const turnstile = current ? current.api.getResponse(current.id) : undefined;
-  current?.api.remove(current.id);
+  const turnstile = widget.take();
   if (!confirmed) return;
-  if (SITE_KEY && !turnstile) {
+  if (check && !turnstile) {
     toast(t('captchaMissing'));
     return;
   }

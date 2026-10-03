@@ -458,6 +458,11 @@ export const fr: Messages = {
   m_sort_desc:
     'Place chaque élément par dichotomie : le moins de duels possible et une fin garantie. Pas d’égalité ni de « passer ».',
   appOutdated: 'Une nouvelle version de Versus est sortie : recharge la page pour continuer à voter.',
+  checkTitle: 'Une vérification avant ton premier vote',
+  checkBody:
+    'Ce classement est un de ceux de Versus, ouvert à tous : montre que tu es une personne, puis vote à nouveau.',
+  checkOk: 'Continuer',
+  checkMissing: 'Fais la vérification pour voter.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

@@ -1,6 +1,9 @@
 import { errorText, log } from './log';
 
-/** Cloudflare Turnstile check for publications (https://developers.cloudflare.com/turnstile/). */
+/**
+ * Cloudflare Turnstile check (https://developers.cloudflare.com/turnstile/): for publications, and before a first vote
+ * on the site's own boards.
+ */
 
 export const SITEVERIFY = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 /** How long Turnstile has to answer: past it, the check counts as refused (a hung request must hold nothing up). */

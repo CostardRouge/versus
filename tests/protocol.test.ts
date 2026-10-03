@@ -69,6 +69,10 @@ describe('parseClientMessage', () => {
       { t: 'add', item: { label: 'x' } },
       { t: 'add', item: { label: 'x' } },
     ],
+    [
+      { t: 'check', token: 'XXXX.DUMMY.TOKEN', more: 1 },
+      { t: 'check', token: 'XXXX.DUMMY.TOKEN' },
+    ],
   ])('parses %j', (msg, expected) => {
     expect(parseClientMessage(JSON.stringify(msg))).toEqual(expected);
   });
@@ -89,6 +93,9 @@ describe('parseClientMessage', () => {
     ['an empty id', JSON.stringify({ t: 'skip', a: '', b: 'y' })],
     ['a long id', JSON.stringify({ t: 'undo', a: 'x'.repeat(33), b: 'y' })],
     ['a huge message', JSON.stringify({ t: 'reset', pad: 'x'.repeat(MAX_MESSAGE) })],
+    ['a check without a token', JSON.stringify({ t: 'check' })],
+    ['a check token that is not text', JSON.stringify({ t: 'check', token: 42 })],
+    ['a check token too long for Turnstile', JSON.stringify({ t: 'check', token: 'x'.repeat(2049) })],
   ])('rejects %s', (_, raw) => {
     expect(parseClientMessage(raw)).toBeNull();
   });

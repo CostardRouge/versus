@@ -22,6 +22,7 @@ import {
   moderate,
   NEW_VOTERS_WINDOW_MS,
   type NewItem,
+  needsCheck,
   type Origin,
   openSession,
   type PublishInput,
@@ -84,6 +85,7 @@ import type { Env } from './env';
 import { errorText, log } from './log';
 import { deletePicture, deletePrefix } from './pictures';
 import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
+import { verifyTurnstile } from './turnstile';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
 const BROADCAST_MS = 1000;
@@ -677,6 +679,8 @@ export class BoardObject extends DurableObject<Env> {
     if (!session) return send(ws, { t: 'error', code: 'hello_first' });
     const now = Date.now();
 
+    if (msg.t === 'check') return this.check(ws, session, msg.token);
+
     if (msg.t === 'add') {
       const input = parseNewItem(msg.item);
       const res = input.ok ? sessionAdd(board, session, input.value, this.newItemId(board), now) : input;
@@ -695,7 +699,8 @@ export class BoardObject extends DurableObject<Env> {
       // A voter's first vote on the board counts against their address.
       const tag = voteCount(board, session.voter) ? null : (this.ctx.getTags(ws)[0] ?? NO_ADDRESS);
       const admitted = tag === null ? null : admitNewVoter(this.newVoters.get(tag) ?? [], now);
-      if (tag !== null && !admitted) r = { ok: false, error: 'rate_limited' };
+      if (needsCheck(board, session, !!this.env.TURNSTILE_SECRET)) r = { ok: false, error: 'captcha' };
+      else if (tag !== null && !admitted) r = { ok: false, error: 'rate_limited' };
       else {
         const res = sessionVote(board, session, msg.a, msg.b, msg.s, now, C, Math.random);
         if (res.ok) this.saveVote(res.value.vote);
@@ -718,6 +723,28 @@ export class BoardObject extends DurableObject<Env> {
     // Always resend the queue, so a client that got out of sync recovers.
     send(ws, { t: 'pairs', pairs: session.queue, mine: voteCount(board, session.voter) });
     if (r.ok && msg.t !== 'skip') this.changed();
+  }
+
+  /**
+   * A human check's token, sent after a `captcha` refusal: Turnstile says yes, and the connection may cast its first
+   * vote. Answered with the queue, after an error when refused; a check nobody asked for costs nothing.
+   */
+  private async check(ws: WebSocket, session: Session, token: string): Promise<void> {
+    const secret = this.env.TURNSTILE_SECRET;
+    if (secret && !session.human) {
+      const human = await verifyTurnstile(token, null, secret);
+      // Read again after the wait: the connection may have said hello meanwhile.
+      const now = ws.deserializeAttachment() as Session | null;
+      if (!human) send(ws, { t: 'error', code: 'captcha' });
+      else if (now) {
+        now.human = true;
+        ws.serializeAttachment(now);
+      }
+    }
+    const board = this.board;
+    if (!board) return ws.close(GONE, 'not_found');
+    const current = (ws.deserializeAttachment() as Session | null) ?? session;
+    send(ws, { t: 'pairs', pairs: current.queue, mine: voteCount(board, current.voter) });
   }
 
   override async webSocketClose(): Promise<void> {

@@ -968,6 +968,85 @@ describe('sharing', () => {
   });
 });
 
+describe('human check', () => {
+  const OFFICIAL = 'Ch3ckEd7bd';
+  const queue: [string, string][] = [
+    ['p0', 'p1'],
+    ['p1', 'p2'],
+  ];
+
+  it('shows the check when the server holds a first vote, sends its token, then lets the voter vote', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    const render = vi.fn(() => 'w1');
+    const remove = vi.fn();
+    (window as { turnstile?: unknown }).turnstile = { render, getResponse: () => 'human-token', remove };
+    history.pushState(null, '', `/b/${OFFICIAL}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    expect($('#m-title')?.textContent).toBe('One check before your first vote');
+    expect(render).toHaveBeenCalledWith($('#vote-captcha'), { sitekey: 'site-key' });
+    click('#m-ok');
+    await flush();
+    expect(ws.sent.at(-1)).toEqual({ t: 'check', token: 'human-token' });
+    expect(remove).toHaveBeenCalledWith('w1');
+    // Votes wait for the server's answer.
+    await vi.advanceTimersByTimeAsync(600);
+    const sent = ws.sent.length;
+    click('[data-action="b-pick"][data-side="a"]');
+    expect(ws.sent).toHaveLength(sent);
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    click('[data-action="b-pick"][data-side="a"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p0', b: 'p1', s: 1 });
+    ws.receive({ t: 'pairs', pairs: queue.slice(1), mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+  });
+
+  it('says so when the check is refused or left undone', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    click('#m-ok');
+    await flush();
+    expect(ws.sent.at(-1)).toEqual({ t: 'check', token: 'human-token' });
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    expect($('#toast')?.textContent).toBe('The check failed. Try again.');
+    // Confirmed without solving it: nothing is sent.
+    (window as { turnstile?: unknown }).turnstile = { render: () => 'w2', getResponse: () => undefined, remove() {} };
+    await vi.advanceTimersByTimeAsync(600);
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    const sent = ws.sent.length;
+    click('#m-ok');
+    await flush();
+    expect(ws.sent).toHaveLength(sent);
+    expect($('#toast')?.textContent).toBe('Complete the check to vote.');
+    // A build without a site key never shows one.
+    vi.unstubAllEnvs();
+    await vi.advanceTimersByTimeAsync(600);
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    expect($('#modal')?.hidden).toBe(true);
+    expect($('#toast')?.textContent).toBe('The check failed. Try again.');
+    delete (window as { turnstile?: unknown }).turnstile;
+    await vi.advanceTimersByTimeAsync(600);
+    click('.board [data-action="back"]');
+  });
+});
+
 describe('reporting', () => {
   const REPORTED = 'Rep7rTbxAr';
 

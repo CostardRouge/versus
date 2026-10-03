@@ -64,7 +64,9 @@ export type ClientMessage =
   /** Deletes all my votes. */
   | { t: 'reset' }
   /** Adds an item (visitors, when the author allows it). */
-  | { t: 'add'; item: unknown };
+  | { t: 'add'; item: unknown }
+  /** A human check's token (Turnstile), when the server asked for one (`captcha`) before a first vote. */
+  | { t: 'check'; token: string };
 
 export type ServerMessage =
   | { t: 'state'; board: BoardView; owner: boolean; mine: Duel[]; pairs: [string, string][] }
@@ -74,6 +76,8 @@ export type ServerMessage =
 
 /** Largest client message accepted, in characters. */
 export const MAX_MESSAGE = 4096;
+/** Longest human check token passed on to Turnstile (its tokens are about 2 KB at most). */
+const MAX_TOKEN = 2048;
 
 /** The protocol this app speaks, sent in its hello. A change that apps already out there can't follow raises it. */
 export const PROTOCOL_VERSION = 1;
@@ -321,6 +325,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: 'reset' };
     case 'add':
       return isRecord(m.item) ? { t: 'add', item: m.item } : null;
+    case 'check':
+      return typeof m.token === 'string' && m.token.length <= MAX_TOKEN ? { t: 'check', token: m.token } : null;
     default:
       return null;
   }

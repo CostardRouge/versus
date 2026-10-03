@@ -186,6 +186,8 @@ export interface Session {
   lastActionAt: number;
   /** Last item this connection added. */
   lastAddAt?: number;
+  /** This connection passed a human check (Turnstile), asked before a first vote on the site's own boards. */
+  human?: boolean;
 }
 
 export type ErrorCode =

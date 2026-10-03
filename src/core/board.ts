@@ -742,8 +742,8 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
 
 /**
  * A new session; `prev` is the connection's session when it says hello again: its last vote and last item added
- * carry over, so a new hello can't dodge the limits. `wanted` is the duel a shared link asked for: it comes first
- * when this voter can still vote on it.
+ * carry over, so a new hello can't dodge the limits, and so does a human check it passed. `wanted` is the duel a
+ * shared link asked for: it comes first when this voter can still vote on it.
  */
 export function openSession(
   board: SharedBoard,
@@ -751,11 +751,12 @@ export function openSession(
   owner: boolean,
   C: Computed,
   rng: Rng,
-  prev: Pick<Session, 'lastActionAt' | 'lastAddAt'> | null = null,
+  prev: Pick<Session, 'lastActionAt' | 'lastAddAt' | 'human'> | null = null,
   wanted: readonly [string, string] | null = null,
 ): Session {
   const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt: prev?.lastActionAt ?? 0 };
   if (prev?.lastAddAt !== undefined) session.lastAddAt = prev.lastAddAt;
+  if (prev?.human) session.human = true;
   refill(board, session, C, rng);
   if (wanted) preferPair(board, session, wanted[0], wanted[1]);
   return session;
@@ -786,6 +787,14 @@ const queueIndex = (session: Session, a: string, b: string): number => {
   const k = pairKey(a, b);
   return session.queue.findIndex(([x, y]) => pairKey(x, y) === k);
 };
+
+/**
+ * Whether a vote must wait for a human check (Turnstile): a voter's first vote on one of the site's own boards (the
+ * official templates, open to everyone and listed publicly), when the server checks at all (`checks`), on a
+ * connection that hasn't passed one. Voters who already voted there are never asked.
+ */
+export const needsCheck = (board: SharedBoard, session: Session, checks: boolean): boolean =>
+  checks && board.official && !session.human && voteCount(board, session.voter) === 0;
 
 /**
  * A voter's first vote on a board, from an address whose earlier first votes there were at `times` (oldest first):

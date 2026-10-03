@@ -38,6 +38,7 @@ import {
 import { routeURL } from './router';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
+import { turnstileKey, turnstileWidget } from './turnstile';
 import { effTab } from './workspace';
 
 /**
@@ -79,7 +80,7 @@ export interface Board {
 }
 
 interface Pending {
-  kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add';
+  kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add' | 'check';
   revert?: () => void;
 }
 
@@ -92,6 +93,8 @@ export const boardState = (): Board | null => B;
 function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
   if (code === 'upgrade') return 'appOutdated';
   if (code === 'rate_limited') return 'tooManyTries';
+  // A first vote held for a human check opens the check (humanCheck); a check refused says so.
+  if (code === 'captcha') return kind === 'vote' ? null : 'captchaFailed';
   if (code === 'closed') return 'voteClosed';
   if (code === 'final') return 'finalVotes';
   if (kind !== 'add') return null;
@@ -255,6 +258,7 @@ function onMessage(board: Board, m: ServerMessage): void {
       renderRanking();
     }
     if (head?.kind === 'add') board.sentLabel = null;
+    if (m.code === 'captcha' && head?.kind === 'vote') void humanCheck(board);
     const key = errorText(m.code, head?.kind);
     if (key) toast(t(key));
   }
@@ -443,7 +447,36 @@ export function renderRanking(): void {
 
 // ─── Voting ─────────────────────────────────────────────────────────────────
 
-const canVote = (b: Board | null): b is Board & { view: BoardView } => !!b?.view && !b.busy && b.view.status === 'open';
+const canVote = (b: Board | null): b is Board & { view: BoardView } =>
+  !!b?.view && !b.busy && b.view.status === 'open' && !b.pending.some((p) => p.kind === 'check');
+
+let checking = false;
+
+/**
+ * The server holds a first vote on one of the site's own boards for a human check: the widget in a modal, its token
+ * to the server, and votes wait for the answer; the voter then votes again.
+ */
+async function humanCheck(b: Board): Promise<void> {
+  if (checking) return;
+  if (!turnstileKey()) {
+    toast(t('captchaFailed'));
+    return;
+  }
+  checking = true;
+  const asked = ask({
+    title: t('checkTitle'),
+    html: `<p>${t('checkBody')}</p><div class="pub-captcha" id="vote-captcha"></div>`,
+    ok: t('checkOk'),
+  });
+  const widget = turnstileWidget('#vote-captcha');
+  const ok = await asked;
+  const token = widget.take();
+  checking = false;
+  if (!ok || B !== b) return;
+  if (!token) toast(t('checkMissing'));
+  else if (!b.socket?.send({ t: 'check', token })) toast(t('notSent'));
+  else b.pending.push({ kind: 'check' });
+}
 
 export function boardPick(side: string | undefined): void {
   const b = B;
