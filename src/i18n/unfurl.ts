@@ -1,3 +1,5 @@
+import { fill, type Lang, pluralIsMany } from './text.ts';
+
 /**
  * Texts of a board's link preview (title and description a social network shows when the link is pasted),
  * written by the Worker into the app page's head (worker/src/index.ts) in the board's language. Kept apart
@@ -67,17 +69,17 @@ export const unfurlFr: typeof unfurlEn = {
   voter: ['votant', 'votants'],
 };
 
-export type UnfurlLang = 'en' | 'fr';
+export type UnfurlLang = Lang;
 export const UNFURL: Record<UnfurlLang, typeof unfurlEn> = { en: unfurlEn, fr: unfurlFr };
 
 /** "3 votes", "1 vote"; French treats 0 and 1 as singular. */
 export const unfurlPlural = (lang: UnfurlLang, n: number, key: 'item' | 'vote' | 'voter'): string => {
   const [one, many] = UNFURL[lang][key];
-  return `${n} ${lang === 'fr' ? (n > 1 ? many : one) : n === 1 ? one : many}`;
+  return `${n} ${pluralIsMany(n, lang) ? many : one}`;
 };
 
 export type UnfurlKey = Exclude<keyof typeof unfurlEn, 'item' | 'vote' | 'voter'>;
 
 /** A text with its placeholders filled. */
 export const unfurlText = (lang: UnfurlLang, key: UnfurlKey, vars: Record<string, string> = {}): string =>
-  UNFURL[lang][key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '');
+  fill(UNFURL[lang][key], vars);

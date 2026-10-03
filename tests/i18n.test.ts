@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { detectLang, methodText, pct, plural, setLang, t } from '../src/i18n';
 import { en } from '../src/i18n/en';
 import { fr } from '../src/i18n/fr';
+import { fill, intlLocale, pctText, pluralIsMany } from '../src/i18n/text';
+import { unfurlPlural } from '../src/i18n/unfurl';
 
 const placeholders = (v: unknown): string[] =>
   typeof v === 'string' ? [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1] ?? '').sort() : [];
@@ -60,6 +62,22 @@ describe('plural and numbers', () => {
     expect(plural(1, 'item')).toBe('1 élément');
     expect(plural(2, 'item')).toBe('2 éléments');
     expect(pct(68)).toBe('68 %');
+  });
+});
+
+describe('shared mechanics', () => {
+  it('fills, counts and writes percentages the same way in every dictionary', () => {
+    expect(fill('{n} of {total}{missing}', { n: 2, total: '5' })).toBe('2 of 5');
+    expect([0, 1, 2].map((n) => pluralIsMany(n, 'fr'))).toEqual([false, false, true]);
+    expect([0, 1, 2].map((n) => pluralIsMany(n, 'en'))).toEqual([true, false, true]);
+    expect(pctText(42, 'fr')).toBe('42\u202F%');
+    expect(pctText(42, 'en')).toBe('42%');
+    expect(intlLocale('fr')).toBe('fr-FR');
+    // The app's dictionary and the Worker's agree.
+    setLang('fr');
+    expect(pct(42)).toBe(pctText(42, 'fr'));
+    expect(unfurlPlural('fr', 0, 'vote')).toBe('0 vote');
+    expect(plural(0, 'vote')).toBe('0 vote');
   });
 });
 

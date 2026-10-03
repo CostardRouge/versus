@@ -10,6 +10,7 @@ import {
 } from '../../src/core/templates';
 import type { BoardLang } from '../../src/core/types';
 import { esc } from '../../src/core/util';
+import { pctText } from '../../src/i18n/text';
 import { type UnfurlKey, unfurlPlural, unfurlText } from '../../src/i18n/unfurl';
 import { attrValue, preview } from './cards';
 import type { Env } from './env';
@@ -132,7 +133,7 @@ function pageBody(t: Template, lang: BoardLang, view: BoardView, alias: string):
     const s = view.ranking?.stats[id];
     const games = s ? s.w + s.l + s.d : 0;
     const share = s && games ? Math.round((100 * (s.w + s.d / 2)) / games) : null;
-    const pct = share === null ? '' : lang === 'fr' ? `${share} %` : `${share}%`;
+    const pct = share === null ? '' : pctText(share, lang);
     return `<li><span class="pos mono">${i + 1}</span><span class="tp-name">${esc(labels.get(id) ?? id)}</span>${
       share === null ? '' : `<span class="tp-share mono">${pct} <small>${tx('tplWinRate')}</small></span>`
     }</li>`;

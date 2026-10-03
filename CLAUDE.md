@@ -75,7 +75,9 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
                       JSON array); duplicates of what the ranking has
   backup.ts           export and import (D97–D101): the file format, strict validation of a file, merge that never replaces
   model.ts, util.ts   constructors, ids, escaping, small helpers
+  site.ts             the site's links and paths (home pages, legal notice, app), shared by the app, the pages and the build
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
+                      text.ts: what every dictionary does (fill, plural rule, percentages, locale), no texts, importable anywhere;
                       landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules);
                       unfurl.ts: a board's link preview texts, the only dictionary the Worker bundles; admin.ts: the moderation page's
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)

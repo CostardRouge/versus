@@ -4,6 +4,7 @@ import { esc } from '../core/util.ts';
 import type { Lang } from '../i18n/index.ts';
 import { type LegalKey, type LegalMessages, legalEn } from '../i18n/legal-en.ts';
 import { legalFr } from '../i18n/legal-fr.ts';
+import { fill } from '../i18n/text.ts';
 import { footerHTML, navHTML, type PageLinks } from '../landing/markup.ts';
 import { strings } from '../landing/strings.ts';
 
@@ -54,7 +55,7 @@ export function legalBody(lang: Lang, opts: LegalOpts): string {
     license: esc(`${opts.source}/blob/main/LICENSE`),
   };
   // Trusted strings (src/i18n/legal-*.ts) with their placeholders filled.
-  const tx = (key: LegalKey): string => T[key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '');
+  const tx = (key: LegalKey): string => fill(T[key], vars);
   const p = (...keys: LegalKey[]) => keys.map((k) => `<p>${tx(k)}</p>`).join('\n        ');
   const section = (id: string, title: LegalKey, body: string) =>
     `<section class="lg-sec" id="${id}" aria-labelledby="${id}-h">
