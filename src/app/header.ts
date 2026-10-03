@@ -37,9 +37,6 @@ export function viewTitle(name?: string): void {
   doc.title = name ? `${name} · Versus` : t('pageTitle');
 }
 
-/** Browser chrome colors matching the two palettes (see --bg in styles.css). */
-const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ECEEF2', dark: '#0E1015' };
-
 /** "system" leaves the choice to prefers-color-scheme; light and dark pin the palette via data-theme. */
 function applyTheme(): void {
   const theme: Theme = S.prefs.theme ?? 'system';
@@ -47,10 +44,13 @@ function applyTheme(): void {
   if (theme === 'system') delete root.dataset.theme;
   else root.dataset.theme = theme;
   for (const b of $$('.theme button')) b.setAttribute('aria-pressed', String(b.dataset.t === theme));
-  for (const meta of $$<HTMLMetaElement>('meta[name="theme-color"]')) {
-    const own = meta.media.includes('dark') ? THEME_COLORS.dark : THEME_COLORS.light;
-    meta.content = theme === 'system' ? own : THEME_COLORS[theme];
-  }
+  // The browser's bar: each theme-color tag's own color as the build wrote it (build/site.ts), kept the first time;
+  // a chosen theme puts its color on both.
+  const metas = $$<HTMLMetaElement>('meta[name="theme-color"]');
+  for (const meta of metas) meta.dataset.own ??= meta.content;
+  const own = (dark: boolean) =>
+    metas.find((m) => (m.getAttribute('media') ?? '').includes('dark') === dark)?.dataset.own ?? '';
+  for (const meta of metas) meta.content = theme === 'system' ? (meta.dataset.own ?? '') : own(theme === 'dark');
 }
 export function changeTheme(v: string | undefined): void {
   if (!isTheme(v)) return;

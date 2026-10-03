@@ -3,6 +3,7 @@ import { compute, expected, stability } from '../core/scoring.ts';
 import type { Computed, ItemStats, MethodKey, Ranking } from '../core/types.ts';
 import { esc, hueOf, sizeClass } from '../core/util.ts';
 import type { Lang } from '../i18n/index.ts';
+import { fill, pctText, pluralIsMany } from '../i18n/text.ts';
 import { item, type ShowItem } from './data.ts';
 import type { Strings } from './strings.ts';
 
@@ -11,15 +12,9 @@ import type { Strings } from './strings.ts';
  * state into the static page and the page's script renders every later state with the same functions.
  */
 
-export const fmt = (tpl: string, vars: Record<string, string | number>): string =>
-  tpl.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ''));
-
-export const pctOf = (v: number, lang: Lang): string => (lang === 'fr' ? `${v} %` : `${v}%`);
-
 /** "1 duel", "3 duels"; French treats 0 and 1 as singular, like the app. */
 export function nDuels(n: number, S: Strings): string {
-  const many = S.lang === 'fr' ? n > 1 : n !== 1;
-  return fmt(many ? S.duelMany : S.duelOne, { n });
+  return fill(pluralIsMany(n, S.lang) ? S.duelMany : S.duelOne, { n });
 }
 
 /** A ranking of show items, in the page's language. Hues come from the English label: same in both. */
@@ -44,7 +39,7 @@ export function rankOf(items: readonly ShowItem[], title: string, lang: Lang, me
 
 export function scoreHTML(st: ItemStats | undefined, m: MethodKey, S: Strings): string {
   if (!st?.games) return '<span class="muted">—</span>';
-  if (m === 'win') return pctOf(Math.round(st.score * 100), S.lang);
+  if (m === 'win') return pctText(Math.round(st.score * 100), S.lang);
   const se = m === 'bt' && st.se !== null ? `<small> ±${Math.round(st.se)}</small>` : '';
   return `${Math.round(st.score)}${se}`;
 }
@@ -78,7 +73,7 @@ function cardInner(it: ShowItem, side: 'a' | 'b', lang: Lang): string {
 
 export function cardHTML(id: string, side: 'a' | 'b', S: Strings): string {
   const it = item(id);
-  const aria = esc(fmt(S.pickAria, { side: side.toUpperCase(), label: it.label[S.lang] }));
+  const aria = esc(fill(S.pickAria, { side: side.toUpperCase(), label: it.label[S.lang] }));
   return `<button type="button" class="card card-${side}${isText(it) ? ' is-txt' : ''}" data-side="${side}" style="--h:${hueOf(it.label.en)}" aria-label="${aria}">${cardInner(it, side, S.lang)}</button>`;
 }
 
@@ -101,7 +96,7 @@ export function forecast(C: Computed, pair: readonly [string, string]): number {
 
 export const stabilityPct = (r: Ranking, C: Computed): number => Math.round(stability(r, C) * 100);
 
-export const eyebrow = (r: Ranking, S: Strings): string => `${fmt(S.duelN, { n: r.history.length + 1 })} · ${S.m_bt}`;
+export const eyebrow = (r: Ranking, S: Strings): string => `${fill(S.duelN, { n: r.history.length + 1 })} · ${S.m_bt}`;
 
 export interface FrameOpts {
   /** The roster rail beside the stage (hidden on narrow frames by a container query). */
@@ -119,7 +114,7 @@ export function frameHTML(r: Ranking, pair: readonly [string, string], S: String
     opts.aside
       ? `<div class="f-aside"><p class="f-aside-h"><span>${esc(S.rosterTitle)}</span><span class="f-count">${nDuels(n, S)}</span></p><ol class="rl">${rowsHTML(C, S)}</ol></div>`
       : ''
-  }<div class="f-main"><div class="pane duel"><div class="duel-top"><div><p class="eyebrow f-eyebrow">${esc(eyebrow(r, S))}</p><p class="q">${esc(S.question)}</p></div><div class="stab"><span>${esc(S.stability)}</span><span class="bar"><i style="width:${st}%"></i></span><span class="f-stab">${pctOf(st, S.lang)}</span></div></div>
+  }<div class="f-main"><div class="pane duel"><div class="duel-top"><div><p class="eyebrow f-eyebrow">${esc(eyebrow(r, S))}</p><p class="q">${esc(S.question)}</p></div><div class="stab"><span>${esc(S.stability)}</span><span class="bar"><i style="width:${st}%"></i></span><span class="f-stab">${pctText(st, S.lang)}</span></div></div>
 <div class="stage">${cardHTML(pair[0], 'a', S)}<div class="vs" aria-hidden="true"><span class="p pa">${pa}</span><span class="vs-dot">vs</span><span class="p pb">${100 - pa}</span><span class="vs-lbl">${S.forecast}</span></div>${cardHTML(pair[1], 'b', S)}<span class="float fa" aria-hidden="true"></span><span class="float fb" aria-hidden="true"></span><span class="kcap" aria-hidden="true"></span></div>
 <div class="controls"><button type="button" class="ctl ctl-a" data-act="a"><kbd>←</kbd> ${esc(S.aWins)}</button><button type="button" class="ctl" data-act="draw">${esc(S.draw)} <kbd>↓</kbd></button><button type="button" class="ctl" data-act="skip">${esc(S.skip)} <kbd>S</kbd></button><button type="button" class="ctl ctl-b" data-act="b">${esc(S.bWins)} <kbd>→</kbd></button></div>
 <div class="duel-foot"><button type="button" class="link" data-act="undo">${esc(S.undo)}</button><span class="muted">${esc(S.swipeHint)}</span></div></div><div class="pane res off" inert></div></div></div>
@@ -144,5 +139,5 @@ export function podiumHTML(r: Ranking, C: Computed, S: Strings, reveal: boolean)
     .slice(3)
     .map((it, k) => `<span><b class="mono">${k + 4}</b>${esc(it.label)}</span>`)
     .join('');
-  return `<div class="res"><div class="duel-top"><div><p class="eyebrow">${nDuels(r.history.length, S)} · ${esc(S.m_bt)}</p><p class="q">${esc(S.finMyPodium)}</p></div><div class="stab"><span>${esc(S.stability)}</span><span class="bar"><i style="width:${st}%"></i></span><span>${pctOf(st, S.lang)}</span></div></div><ol class="podium${reveal ? ' reveal' : ''}">${pods}</ol><p class="res-rest">${rest}</p></div>`;
+  return `<div class="res"><div class="duel-top"><div><p class="eyebrow">${nDuels(r.history.length, S)} · ${esc(S.m_bt)}</p><p class="q">${esc(S.finMyPodium)}</p></div><div class="stab"><span>${esc(S.stability)}</span><span class="bar"><i style="width:${st}%"></i></span><span>${pctText(st, S.lang)}</span></div></div><ol class="podium${reveal ? ' reveal' : ''}">${pods}</ol><p class="res-rest">${rest}</p></div>`;
 }

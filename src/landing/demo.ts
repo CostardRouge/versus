@@ -1,10 +1,11 @@
 import { compute, nextPair, pushDuel } from '../core/scoring';
 import type { Ranking, Rng } from '../core/types';
 import { esc, mulberry32 } from '../core/util';
+import { fill } from '../i18n/text';
 import { BoardView, type Side } from './board';
 import { VCursor } from './cursor';
 import { HERO, item, PASTRY_TITLE } from './data';
-import { fmt, rankOf } from './frame';
+import { rankOf } from './frame';
 import { calm, isSeen, onErr, Run, watch } from './motion';
 import type { Strings } from './strings';
 
@@ -146,7 +147,7 @@ async function play(D: Demo, run: Run): Promise<void> {
     V.show('results');
     await run.wait(2800);
     const top = compute(V.rank).order[0];
-    D.say(fmt(S.say9, { name: top?.label ?? '' }));
+    D.say(fill(S.say9, { name: top?.label ?? '' }));
     await run.wait(4200);
     V.root.classList.add('dim');
     await run.wait(500);

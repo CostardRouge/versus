@@ -54,14 +54,24 @@ describe('app', () => {
     const root = document.documentElement;
     expect(root.dataset.theme).toBeUndefined();
     expect($('[data-action="theme"][data-t="system"]')?.getAttribute('aria-pressed')).toBe('true');
+    // The build's theme-color tags (build/seo.ts): the browser's bar follows a chosen theme.
+    document.head.insertAdjacentHTML(
+      'beforeend',
+      '<meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)">',
+    );
+    const bars = () =>
+      [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
     click('[data-action="theme"][data-t="dark"]');
     expect(root.dataset.theme).toBe('dark');
+    expect(bars()).toEqual(['#0E1015', '#0E1015']);
     expect($('[data-action="theme"][data-t="dark"]')?.getAttribute('aria-pressed')).toBe('true');
     expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').theme).toBe('dark');
     click('[data-action="theme"][data-t="light"]');
     expect(root.dataset.theme).toBe('light');
+    expect(bars()).toEqual(['#ECEEF2', '#ECEEF2']);
     click('[data-action="theme"][data-t="system"]');
     expect(root.dataset.theme).toBeUndefined();
+    expect(bars()).toEqual(['#ECEEF2', '#0E1015']);
   });
 
   it('records a duel from the buttons', () => {
