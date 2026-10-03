@@ -56,11 +56,11 @@ export const legalFr: LegalMessages = {
 
   cookiesTitle: 'Cookies',
   cookies1:
-    'Versus ne dépose aucun cookie, donc pas de bandeau de consentement : il n’y a rien à accepter. Quand la publication demande une vérification anti-robots, Cloudflare Turnstile s’exécute dans ton navigateur, selon la politique de confidentialité de Cloudflare.',
+    'Versus ne dépose aucun cookie, donc pas de bandeau de consentement : il n’y a rien à accepter. Quand la publication, ou un premier vote sur un des classements du site, demande une vérification anti-robots, Cloudflare Turnstile s’exécute dans ton navigateur, selon la politique de confidentialité de Cloudflare.',
 
   logsTitle: 'Hébergement et abus',
   logs1:
-    'Comme tout hébergeur, Cloudflare (et GitHub pour la copie) traite ton adresse IP pour délivrer les pages et protéger le site : voir la <a href="https://www.cloudflare.com/privacypolicy/">politique de confidentialité de Cloudflare</a>. Versus s’en sert, sans la garder, pour limiter la fréquence à laquelle une même adresse peut publier ou appeler le serveur, et garde quelques jours des journaux techniques des appels au serveur pour corriger les erreurs.',
+    'Comme tout hébergeur, Cloudflare (et GitHub pour la copie) traite ton adresse IP pour délivrer les pages et protéger le site : voir la <a href="https://www.cloudflare.com/privacypolicy/">politique de confidentialité de Cloudflare</a>. Versus s’en sert, sans la garder, pour limiter la fréquence à laquelle une même adresse peut publier ou appeler le serveur et le nombre de nouveaux votants qu’elle peut amener à un classement, et garde quelques jours des journaux techniques des appels au serveur pour corriger les erreurs.',
 
   rightsTitle: 'Tes droits',
   rights1:

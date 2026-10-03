@@ -58,11 +58,11 @@ export const legalEn = {
 
   cookiesTitle: 'Cookies',
   cookies1:
-    'Versus sets no cookie, so there is no consent banner: there is nothing to consent to. When publishing asks for a check against bots, Cloudflare Turnstile runs in your browser, under Cloudflare’s privacy policy.',
+    'Versus sets no cookie, so there is no consent banner: there is nothing to consent to. When publishing, or a first vote on one of the site’s own rankings, asks for a check against bots, Cloudflare Turnstile runs in your browser, under Cloudflare’s privacy policy.',
 
   logsTitle: 'Hosting and abuse',
   logs1:
-    'Like any host, Cloudflare (and GitHub for the copy) processes your IP address to deliver the pages and protect the site: see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>. Versus uses it, without keeping it, to limit how often one address can publish or call the server, and keeps technical logs of calls to the server for a few days to fix errors.',
+    'Like any host, Cloudflare (and GitHub for the copy) processes your IP address to deliver the pages and protect the site: see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>. Versus uses it, without keeping it, to limit how often one address can publish or call the server and how many new voters it can bring to a ranking, and keeps technical logs of calls to the server for a few days to fix errors.',
 
   rightsTitle: 'Your rights',
   rights1:
