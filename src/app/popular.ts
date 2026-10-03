@@ -1,8 +1,9 @@
 import type { PopularBoard } from '../core/protocol';
 import { getLang, type Lang, t } from '../i18n';
 import { toast } from './dom';
+import { errorKey, READ_ERRORS } from './errors';
 import { makeOwn, render } from './rankings';
-import { ApiError, fetchBoard, fetchPopular, online } from './remote';
+import { fetchBoard, fetchPopular, online } from './remote';
 import { S } from './state';
 
 /**
@@ -46,6 +47,6 @@ export async function makeMineFromPopular(alias: string | undefined): Promise<vo
     const view = await fetchBoard(alias);
     makeOwn(view.title, view.items, 'template');
   } catch (e) {
-    toast(t(e instanceof ApiError && e.code === 'not_found' ? 'boardGone' : 'actionFailed'));
+    toast(t(errorKey(e, READ_ERRORS)));
   }
 }

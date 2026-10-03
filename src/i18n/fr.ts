@@ -477,6 +477,11 @@ export const fr: Messages = {
   newAdminLinkShow: 'Voici le nouveau lien admin. Garde-le pour toi : l’ancien ne marche plus.',
   // Published boards: errors, waiting and busy states, screen reader texts
   reportReason: 'Motif',
+  offline: 'Tu es hors ligne ou le serveur est injoignable. Réessaie dans un instant.',
+  ownerKeyLost:
+    'Cet appareil n’a plus la clé admin de ce classement. Ouvre ici ton dernier lien admin pour le gérer à nouveau.',
+  publishInvalid: 'Le serveur a refusé ce classement tel quel. Vérifie ses éléments, puis réessaie.',
+  publishTooLarge: 'Ce classement est trop gros pour être publié. Retire des éléments, ou publie-le sans tes votes.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

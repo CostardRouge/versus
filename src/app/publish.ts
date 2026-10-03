@@ -13,8 +13,9 @@ import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/type
 import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
 import { boardURL } from './board';
 import { $, ask, copyText, toast } from './dom';
+import { errorKey, PUBLISH_ERRORS } from './errors';
 import { openBoard } from './rankings';
-import { ApiError, fetchConfig, publishBoard, putItemImage } from './remote';
+import { fetchConfig, publishBoard, putItemImage } from './remote';
 import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
@@ -78,12 +79,6 @@ const BLOCKS: Record<PublishBlock, MsgKey> = {
 };
 
 let publishing = false;
-
-const PUBLISH_ERRORS: Partial<Record<string, MsgKey>> = {
-  captcha: 'captchaFailed',
-  rate_limited: 'tooManyTries',
-  images_not_allowed: 'blockImages',
-};
 
 /**
  * Sends the pictures the published items announced, one by one, for the moderator's review. A picture that
@@ -166,7 +161,7 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
     openBoard(alias);
     toast(t(copied ? 'published' : 'publishedShare'));
   } catch (e) {
-    toast(t((e instanceof ApiError && PUBLISH_ERRORS[e.code]) || 'publishFailed'));
+    toast(t(errorKey(e, PUBLISH_ERRORS, 'publishFailed')));
   } finally {
     publishing = false;
   }

@@ -13,6 +13,7 @@ import { closeColor, cp } from './color';
 import { $, announce, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML } from './duel';
 import { addFormHTML, typed } from './editor';
+import { errorKey, OWNER_ERRORS, REPORT_ERRORS } from './errors';
 import {
   type FinaleData,
   type FinaleMode,
@@ -26,15 +27,7 @@ import {
 import { fmtCrowd } from './format';
 import { flushJoined, markGone, noteBoard } from './joined';
 import { makeOwn, open } from './rankings';
-import {
-  ApiError,
-  BoardSocket,
-  type Connection,
-  fetchConfig,
-  reportBoard,
-  setBoardStatus,
-  withdrawBoard,
-} from './remote';
+import { BoardSocket, type Connection, fetchConfig, reportBoard, setBoardStatus, withdrawBoard } from './remote';
 import { routeURL } from './router';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
@@ -114,14 +107,6 @@ function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey |
   if (kind === 'vote') return code === 'too_fast' ? 'voteTooFast' : 'voteNotCounted';
   return kind === 'undo' || kind === 'reset' ? 'actionFailed' : null;
 }
-
-const ownerErrors: Partial<Record<string, MsgKey>> = {
-  full: 'boardFull',
-  exists: 'itemExists',
-  too_few: 'needTwoItems',
-  closed: 'voteClosed',
-  rate_limited: 'tooManyTries',
-};
 
 /** A board's own address (b/<alias> under the app's folder), the link to share. */
 export const boardURL = (alias: string): string => routeURL({ view: 'board', alias });
@@ -940,8 +925,7 @@ export async function boardReport(): Promise<void> {
     toast(t('reported'));
   } catch (e) {
     // Reports come from the board's voters: someone who voted at least once.
-    const code = e instanceof ApiError ? e.code : null;
-    toast(t(code === 'forbidden' ? 'reportNeedsVote' : code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
+    toast(t(errorKey(e, REPORT_ERRORS)));
   }
 }
 
@@ -954,7 +938,7 @@ export async function ownerCall<T>(fn: (alias: string, token: string) => Promise
   try {
     return await fn(b.alias, b.owner);
   } catch (e) {
-    toast(t((e instanceof ApiError && ownerErrors[e.code]) || 'actionFailed'));
+    toast(t(errorKey(e, OWNER_ERRORS)));
     return null;
   }
 }

@@ -467,6 +467,11 @@ export const en = {
   newAdminLinkShow: 'Here is the new admin link. Keep it private: the old one no longer works.',
   // Published boards: errors, waiting and busy states, screen reader texts
   reportReason: 'Reason',
+  offline: 'You’re offline or the server can’t be reached. Try again in a moment.',
+  ownerKeyLost:
+    'This device no longer holds this ranking’s admin key. Open your latest admin link here to manage it again.',
+  publishInvalid: 'The server refused this ranking as it is. Check its items, then try again.',
+  publishTooLarge: 'This ranking is too big to publish. Remove some items, or publish it without your votes.',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

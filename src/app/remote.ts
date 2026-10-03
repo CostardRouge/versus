@@ -2,13 +2,14 @@ import type {
   BoardSummary,
   BoardView,
   ClientMessage,
+  HttpErrorCode,
   PopularBoard,
   ServerConfig,
   ServerMessage,
 } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
 import { duelQuery } from '../core/share';
-import type { BoardSettings, BoardStatus, ErrorCode, Fill, Item, Ranking, ReportReason } from '../core/types';
+import type { BoardSettings, BoardStatus, Fill, Item, Ranking, ReportReason } from '../core/types';
 
 /**
  * Network client for published boards. The API lives under /api: on the same origin in dev (the Vite
@@ -24,8 +25,11 @@ export const online = (): boolean => API !== null;
 /** How long a request may take before it counts as a network failure (a hung connection must not hang the app). */
 export const TIMEOUT_MS = 15_000;
 
+/** Why a call failed: the server's code, or `network` when it couldn't be reached (or didn't say why). */
+export type ApiCode = HttpErrorCode | 'network';
+
 export class ApiError extends Error {
-  constructor(readonly code: ErrorCode | 'network') {
+  constructor(readonly code: ApiCode) {
     super(code);
   }
 }
@@ -44,7 +48,7 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
   } catch {
     throw new ApiError('network');
   }
-  const data = (await res.json().catch(() => null)) as (T & { error?: ErrorCode }) | null;
+  const data = (await res.json().catch(() => null)) as (T & { error?: HttpErrorCode }) | null;
   if (!res.ok) throw new ApiError(data?.error ?? 'network');
   return data as T;
 }
@@ -127,7 +131,7 @@ async function upload<T>(path: string, body: Blob, token?: string): Promise<T> {
   } catch {
     throw new ApiError('network');
   }
-  const data = (await res.json().catch(() => null)) as (T & { error?: ErrorCode }) | null;
+  const data = (await res.json().catch(() => null)) as (T & { error?: HttpErrorCode }) | null;
   if (!res.ok) throw new ApiError(data?.error ?? 'network');
   return data as T;
 }

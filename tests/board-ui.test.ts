@@ -540,6 +540,23 @@ describe('author', () => {
     expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
   });
 
+  it('tells the author when the server can’t be reached, and when this device lost the admin key', async () => {
+    FakeSocket.last().receive(state({}, true));
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    submit('Hawaii');
+    await flush();
+    expect($('#toast')?.textContent).toBe('You’re offline or the server can’t be reached. Try again in a moment.');
+    respond = () => ({ status: 403, body: { error: 'forbidden' } });
+    submit('Hawaii');
+    await flush();
+    expect($('#toast')?.textContent).toBe(
+      'This device no longer holds this ranking’s admin key. Open your latest admin link here to manage it again.',
+    );
+    ($('#add-input') as HTMLInputElement).value = '';
+  });
+
   it('renames an item: at once without votes, asking what its votes become otherwise', async () => {
     const ws = FakeSocket.last();
     ws.receive(state({ ranking: voted({ p0: 3 }) }, true));
@@ -1199,6 +1216,13 @@ describe('reporting', () => {
     click('#m-ok');
     await flush();
     expect($('#toast')?.textContent).toBe('Vote at least once to report this ranking.');
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    click('[data-action="b-report"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('You’re offline or the server can’t be reached. Try again in a moment.');
   });
 
   it('shows no report link to the author', () => {
