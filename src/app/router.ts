@@ -65,6 +65,29 @@ const fromGallery = (): boolean => parseRoute(currentPath())?.view === 'gallery'
 export const backIsGallery = (): boolean => (history.state as { fromGallery?: boolean } | null)?.fromGallery === true;
 
 /**
+ * A page shown over a view at the same address (a board's end-of-vote page): it gets a history entry of its own,
+ * so that Back (a phone's above all) closes it instead of leaving the view. The address doesn't change.
+ */
+export type Layer = 'finale';
+
+/** The layer the entry on screen shows, if any. */
+export const currentLayer = (): Layer | null => (history.state as { layer?: Layer } | null)?.layer ?? null;
+
+export function pushLayer(layer: Layer): void {
+  if (currentLayer() !== layer) history.pushState({ layer }, '', location.pathname);
+}
+
+/** A layer closed from the page (its own button): its entry goes as Back would take it. */
+export function popLayer(layer: Layer): void {
+  if (currentLayer() === layer) history.back();
+}
+
+/** The entry on screen shows the view under its layer after all (the layer can't be shown again). */
+export function dropLayer(): void {
+  if (currentLayer()) history.replaceState(null, '', location.pathname);
+}
+
+/**
  * Where a path kept by the 404 page leads: under the app's folder on this origin, or nowhere (null). A scheme, a
  * backslash or a protocol-relative path would name another origin, which the address bar can't take.
  */

@@ -28,7 +28,7 @@ import { fmtCrowd } from './format';
 import { flushJoined, joinedOf, markGone, noteBoard } from './joined';
 import { makeOwn, open } from './rankings';
 import { BoardSocket, type Connection, fetchConfig, reportBoard, setBoardStatus, withdrawBoard } from './remote';
-import { routeURL } from './router';
+import { currentLayer, dropLayer, popLayer, pushLayer, routeURL } from './router';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
 import { turnstileKey, turnstileWidget } from './turnstile';
@@ -74,6 +74,8 @@ export interface Board {
   pictures: boolean | null;
   /** A connection failed: while the first state waits, the page offers to try again. */
   failed: boolean;
+  /** Opened on the end-of-vote page's history entry: the first state shows that page again, if it can. */
+  reopen: boolean;
 }
 
 interface Pending {
@@ -215,10 +217,20 @@ export function enterBoard(
     finaleDirty: false,
     pictures: null,
     failed: false,
+    reopen: currentLayer() === 'finale',
   };
   B = board;
   resetFinale();
   if (available) connect(board, wanted);
+}
+
+/** The first state of a board opened on its end-of-vote page's entry (a reload, Back from elsewhere) shows it again. */
+function reopenFinale(b: Board, v: BoardView): void {
+  if (!b.reopen) return;
+  b.reopen = false;
+  if (currentLayer() !== 'finale' || b.finale) return;
+  if (votedAll(b, v)) b.finale = true;
+  else dropLayer();
 }
 
 /** Opens the board's connection, with the author's token in the hello when there is one. */
@@ -331,6 +343,7 @@ function onMessage(board: Board, m: ServerMessage): void {
       });
     }
     note(board);
+    reopenFinale(board, m.board);
     renderBoard();
   } else if (m.t === 'pairs') {
     const head = board.pending.shift();
@@ -495,9 +508,7 @@ const emptyHTML = (title: string, body: string, action = ''): string =>
 
 /** Once every pair is voted, the way (back) to the end-of-vote page. */
 const resultHTML = (b: Board, v: BoardView): string =>
-  b.count && b.count >= totalPairs(v.items.length)
-    ? `<button class="btn primary" type="button" data-action="b-finale">${t('seeResult')}</button>`
-    : '';
+  votedAll(b, v) ? `<button class="btn primary" type="button" data-action="b-finale">${t('seeResult')}</button>` : '';
 
 function duelHTML(b: Board, v: BoardView): string {
   if (v.status === 'closed') return emptyHTML(t('voteClosed'), t('voteClosedBody'), resultHTML(b, v));
@@ -812,22 +823,55 @@ function renderFinale(b: Board, v: BoardView, mode: FinaleMode): void {
   });
 }
 
-/** Shows the end-of-vote page, with its reveal. */
+/** Shows the end-of-vote page, with its reveal, in a history entry of its own: Back closes it. */
 export function openFinale(): void {
   const b = B;
   if (!b?.view) return;
   b.finale = true;
+  pushLayer('finale');
   renderBoard('play');
   window.scrollTo?.(0, 0);
 }
 
+/** Set while the end-of-vote page's entry goes away after its own button closed it: that Back is ours. */
+let closing = false;
+
+/** Back to the board from the end-of-vote page's own button: its history entry goes too. */
 export function closeFinale(): void {
+  if (!B?.finale) return;
+  hideFinale();
+  if (closing || currentLayer() !== 'finale') return;
+  closing = true;
+  popLayer('finale');
+}
+
+function hideFinale(): void {
   const b = B;
   if (!b?.finale) return;
   b.finale = false;
   resetFinale();
   renderBoard();
   window.scrollTo?.(0, 0);
+}
+
+/** Every pair voted: the end-of-vote page can show. */
+const votedAll = (b: Board, v: BoardView): boolean => b.count > 0 && b.count >= totalPairs(v.items.length);
+
+/** Back or Forward between the board and its end-of-vote page, at the same address. */
+export function followLayer(): void {
+  const b = B;
+  if (closing) {
+    closing = false;
+    return;
+  }
+  if (!b?.view) return;
+  const finale = currentLayer() === 'finale';
+  if (finale === b.finale) return;
+  if (!finale) hideFinale();
+  else if (votedAll(b, b.view)) {
+    b.finale = true;
+    renderBoard();
+  } else dropLayer();
 }
 
 /** Podium or face-à-face; remembered in this browser. */

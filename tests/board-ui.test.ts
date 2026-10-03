@@ -350,6 +350,39 @@ describe('voting', () => {
     ws.receive(state());
   });
 
+  it('gives the end-of-vote page a history entry of its own: Back closes it, at the same address', async () => {
+    // jsdom moves through the history a few tasks later.
+    const settle = () => vi.advanceTimersByTimeAsync(5);
+    await settle();
+    const ws = FakeSocket.last();
+    const mine = [
+      { a: 'p0', b: 'p1', s: 1 as const },
+      { a: 'p1', b: 'p2', s: 1 as const },
+      { a: 'p0', b: 'p2', s: 1 as const },
+    ];
+    ws.receive({ ...state(), mine, pairs: [] } as ServerMessage);
+    const path = location.pathname;
+    click('[data-action="b-finale"]');
+    expect($('#fin')).not.toBeNull();
+    expect((history.state as { layer?: string } | null)?.layer).toBe('finale');
+    history.back();
+    await settle();
+    expect($('#fin')).toBeNull();
+    expect(location.pathname).toBe(path);
+    expect($('#b-main')?.textContent).toContain('You voted on every pair');
+    // Forward shows it again; its own button closes it, and its entry with it.
+    history.forward();
+    await settle();
+    expect($('#fin')).not.toBeNull();
+    click('[data-action="b-finale-close"]');
+    expect($('#fin')).toBeNull();
+    await settle();
+    expect(location.pathname).toBe(path);
+    expect((history.state as { layer?: string } | null)?.layer).toBeUndefined();
+    expect($('#b-main')?.textContent).toContain('You voted on every pair');
+    ws.receive(state());
+  });
+
   it('holds the ranking while live updates are off', () => {
     const ws = FakeSocket.last();
     const liveBox = $('#b-live') as HTMLInputElement;

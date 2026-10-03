@@ -8,7 +8,7 @@ import { parseDuelQuery } from '../core/share';
 import type { Item, Ranking } from '../core/types';
 import { uid } from '../core/util';
 import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
-import { enterBoard, leaveBoard, renderBoard } from './board';
+import { enterBoard, followLayer, leaveBoard, renderBoard } from './board';
 import { cp } from './color';
 import { $, ask, focusOn, keepFocus, narrow, toast } from './dom';
 import { clearEnding } from './ending';
@@ -279,7 +279,11 @@ function route(): void {
       history.replaceState(null, '', location.pathname);
       // Reconnect with the token: the board keeps it only once the server says it is this board's (board.ts).
       leaveBoard();
-    } else if (S.route.view === 'board' && S.route.alias === route.alias && !duel) return;
+    } else if (S.route.view === 'board' && S.route.alias === route.alias && !duel) {
+      // The same board: Back or Forward between it and its end-of-vote page.
+      followLayer();
+      return;
+    }
     if (duel) leaveBoard();
     openBoard(route.alias, { replace: true, duel, owner });
     return;
