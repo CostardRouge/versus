@@ -1,5 +1,15 @@
 import { fillInk, fillNeedsHalo, haloOf, hslToHex, normHex, rgbOf } from '../core/colors';
-import { CARD_ROWS, CARD_SIZES, type CardFormat, type CardRow, type CardSpec } from '../core/share';
+import {
+  CARD_ROWS,
+  CARD_SIZES,
+  type CardFormat,
+  type CardRow,
+  type CardSpec,
+  type CompareCard,
+  type DuelCard,
+  type DuoCard,
+  type StandingsCard,
+} from '../core/share';
 import type { Fill, Item } from '../core/types';
 import { initials } from '../core/util';
 import { pct } from '../i18n';
@@ -405,8 +415,7 @@ function frame(ctx: Ctx, P: Palette, spec: CardSpec, format: CardFormat, W: numb
   ctx.fillText(spec.texts.brand, pad + 68 * u, top0 + 27 * u + 2 * u);
   // Footer: "Vote at" or "Made with Versus", and the link without its scheme.
   const link = spec.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const local = (spec.kind === 'ranking' || spec.kind === 'compare') && !spec.url.includes('/b/');
-  const lead = local ? spec.texts.made : spec.texts.vote;
+  const lead = spec.local ? spec.texts.made : spec.texts.vote;
   ctx.font = font(500, 22 * u, P.mono);
   const linkW = ctx.measureText(link).width;
   ctx.font = font(600, 24 * u, P.body);
@@ -454,7 +463,7 @@ function heading(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, maxL
 function drawStandings(
   ctx: Ctx,
   P: Palette,
-  spec: CardSpec,
+  spec: StandingsCard,
   box: Box,
   u: number,
   maxRows: number,
@@ -507,7 +516,7 @@ function drawStandings(
 }
 
 /** The landscape standings: the podium on the right of the title, two more rows under it. */
-function drawStandingsWide(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, images: Images): void {
+function drawStandingsWide(ctx: Ctx, P: Palette, spec: StandingsCard, box: Box, u: number, images: Images): void {
   const left: Box = { ...box, w: box.w * 0.44 };
   heading(ctx, P, spec, left, u, 3, 54);
   const right: Box = { x: box.x + box.w * 0.5, y: box.y - 16 * u, w: box.w * 0.5, h: box.h + 16 * u };
@@ -518,10 +527,18 @@ function drawStandingsWide(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: nu
  * Two orders of the same items facing each other, joined by lines: the sharer's and the crowd's (the agreement in
  * big figures), or a ranking's by two methods.
  */
-function drawDuo(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, wide: boolean, images: Images): void {
+function drawDuo(
+  ctx: Ctx,
+  P: Palette,
+  spec: DuoCard | CompareCard,
+  box: Box,
+  u: number,
+  wide: boolean,
+  images: Images,
+): void {
   const top = wide ? heading(ctx, P, spec, { ...box, w: box.w * 0.6 }, u, 2, 42) : heading(ctx, P, spec, box, u, 2);
   let y = top + 28 * u;
-  if (spec.agree !== null) {
+  if (spec.kind === 'duo' && spec.agree !== null) {
     const big = font(800, (wide ? 84 : 110) * u, P.display);
     ctx.font = big;
     const figure = pct(spec.agree);
@@ -565,7 +582,7 @@ function drawDuo(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, wide
     ctx.arc(left ? x + 7 * u : x - 7 * u, cy, 7 * u, 0, Math.PI * 2);
     ctx.fill();
   };
-  const [leftName, rightName] = spec.columns ?? [spec.texts.me, spec.texts.crowd];
+  const [leftName, rightName] = spec.kind === 'compare' ? spec.columns : [spec.texts.me, spec.texts.crowd];
   label(leftName, box.x, P.a, 'left');
   label(rightName, box.x + box.w, P.b, 'right');
   y += headH;
@@ -658,8 +675,8 @@ function drawDuo(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, wide
 }
 
 /** Two cards facing each other, the "vs" disc between them. */
-function drawDuel(ctx: Ctx, P: Palette, spec: CardSpec, box: Box, u: number, wide: boolean, images: Images): void {
-  const [A, B] = spec.pair as [Item, Item];
+function drawDuel(ctx: Ctx, P: Palette, spec: DuelCard, box: Box, u: number, wide: boolean, images: Images): void {
+  const [A, B] = spec.pair;
   let stage: Box;
   if (wide) {
     const left: Box = { ...box, w: box.w * 0.42 };
@@ -715,7 +732,7 @@ export function drawCard(
   const wide = format === 'landscape';
   const u = wide ? W / 1200 : W / 1080;
   const box = frame(ctx, P, spec, format, W, H, u);
-  if (spec.kind === 'duel' && spec.pair) drawDuel(ctx, P, spec, box, u, wide, images);
+  if (spec.kind === 'duel') drawDuel(ctx, P, spec, box, u, wide, images);
   else if (spec.kind === 'duo' || spec.kind === 'compare') drawDuo(ctx, P, spec, box, u, wide, images);
   else if (wide) drawStandingsWide(ctx, P, spec, box, u, images);
   else {

@@ -9,15 +9,21 @@ import {
   type CardRow,
   type CardSpec,
   type CardTexts,
+  type CompareCard,
+  cardItems,
   compareSpec,
   crowdSpec,
+  type DuelCard,
+  type DuoCard,
   duelQuery,
   duelSpec,
   duoSpec,
   localSpec,
   OG_FORMAT,
   previewSpec,
+  publishedSpec,
   rankingSpec,
+  type StandingsCard,
 } from '../core/share';
 import type { BoardSettings, ItemStats, MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
@@ -135,8 +141,13 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
 }
 
 async function imagesOf(spec: CardSpec): Promise<Images> {
-  const items = [...spec.rows, ...spec.mine].map((r) => r.it).concat(spec.pair ?? []);
-  const srcs = [...new Set(items.map(imageSrc).filter((s): s is string => !!s))];
+  const srcs = [
+    ...new Set(
+      cardItems(spec)
+        .map(imageSrc)
+        .filter((s): s is string => !!s),
+    ),
+  ];
   const loaded = await Promise.all(srcs.map(loadImage));
   const out: Images = new Map();
   srcs.forEach((s, i) => {
@@ -188,9 +199,7 @@ const top = (rows: readonly CardRow[], n = 5): string =>
 /** The message that goes with the image: the standings, or the duel's question, and the link. */
 export function shareMessage(spec: CardSpec): string {
   const vote = `${t('shareVoteToo')} ${spec.url}`;
-  if (spec.kind === 'duel' && spec.pair) {
-    return `${t('shareMsgOr', { a: spec.pair[0].label, b: spec.pair[1].label })} ${vote}`;
-  }
+  if (spec.kind === 'duel') return `${t('shareMsgOr', { a: spec.pair[0].label, b: spec.pair[1].label })} ${vote}`;
   const three = (rows: readonly CardRow[]) =>
     rows
       .slice(0, 3)
@@ -201,7 +210,7 @@ export function shareMessage(spec: CardSpec): string {
     return `${spec.title}\n${agree}${t('shareMyTop')} ${three(spec.mine)}\n${t('shareCrowdTop')} ${three(spec.rows)}\n\n${vote}`;
   }
   if (spec.kind === 'compare') {
-    const [a, b] = spec.columns ?? ['', ''];
+    const [a, b] = spec.columns;
     return `${spec.title} · ${spec.subtitle}\n${a}: ${three(spec.mine)}\n${b}: ${three(spec.rows)}\n\n${t('cardMade')} · ${spec.url}`;
   }
   const head = spec.subtitle ? `${spec.title} · ${spec.subtitle}` : spec.title;
@@ -214,15 +223,14 @@ export function shareMessage(spec: CardSpec): string {
 const countsLine = (votes: number, voters: number): string => `${plural(votes, 'vote')} · ${plural(voters, 'voter')}`;
 
 /** A local ranking, from the Ranking tab: its podium and rows. */
-export function localCardSpec(r: Ranking): CardSpec {
-  const spec = localSpec(r, '', siteURL(), texts(), scoreMeta);
+export function localCardSpec(r: Ranking): StandingsCard {
   const duels = validHistory(r).length;
-  spec.subtitle = `${plural(r.items.length, 'item')} · ${plural(duels, 'duel')} · ${M(methodOf(r)).name}`;
-  return spec;
+  const sub = `${plural(r.items.length, 'item')} · ${plural(duels, 'duel')} · ${M(methodOf(r)).name}`;
+  return localSpec(r, sub, siteURL(), texts(), scoreMeta);
 }
 
 /** A local ranking by its method facing the one the Ranking tab's lines compare it with; null when there is none. */
-export function compareCardSpec(r: Ranking): CardSpec | null {
+export function compareCardSpec(r: Ranking): CompareCard | null {
   const m = methodOf(r);
   const other = compareWith(r);
   const duels = validHistory(r).length;
@@ -232,7 +240,7 @@ export function compareCardSpec(r: Ranking): CardSpec | null {
 }
 
 /** The board on screen: the crowd's standings as this viewer may see them. */
-export function boardCardSpec(): CardSpec | null {
+export function boardCardSpec(): StandingsCard | null {
   const b = boardShareData();
   if (!b) return null;
   const sub = b.ranking
@@ -242,7 +250,7 @@ export function boardCardSpec(): CardSpec | null {
 }
 
 /** The duel on screen. */
-export function duelCardSpec(): CardSpec | null {
+export function duelCardSpec(): DuelCard | null {
   const b = boardShareData();
   if (!b?.pair) return null;
   const [A, B] = b.pair;
@@ -251,9 +259,9 @@ export function duelCardSpec(): CardSpec | null {
 
 /** The pictures the end-of-vote page can be shared as: the crowd's podium, the voter's, and the voter facing the crowd. */
 export interface FinaleCards {
-  crowd: CardSpec | null;
-  mine: CardSpec;
-  duo: CardSpec | null;
+  crowd: StandingsCard | null;
+  mine: StandingsCard;
+  duo: DuoCard | null;
 }
 
 /** The end-of-vote page's cards; the crowd's two are null while it stays hidden from this voter. */
@@ -271,6 +279,7 @@ export function finaleCards(): FinaleCards | null {
     url,
     texts(),
     scoreMeta,
+    false,
   );
   if (!b.ranking) return { crowd: null, mine, duo: null };
   const share = agreement(b.mine, b.ranking);
@@ -317,14 +326,9 @@ export function uploadPublishedCard(
   withVotes: boolean,
   settings: Pick<BoardSettings, 'visibility'>,
 ): void {
-  const spec = localSpec(r, '', boardURL(alias), texts(), scoreMeta);
-  spec.kind = 'crowd';
   const votes = withVotes ? lastDuelPerPair(r).length : 0;
-  if (!votes) {
-    spec.ranked = false;
-    spec.rows = r.items.map((it) => ({ it, meta: '' }));
-  }
-  spec.subtitle = `${plural(r.items.length, 'item')} · ${plural(votes, 'vote')}`;
+  const sub = `${plural(r.items.length, 'item')} · ${plural(votes, 'vote')}`;
+  const spec = publishedSpec(r, votes > 0, sub, boardURL(alias), texts(), scoreMeta);
   uploadCard(previewSpec(spec, r.items, settings, 'open'), alias, null);
 }
 
@@ -491,7 +495,7 @@ export function shareBoard(): void {
 export function shareDuel(): void {
   const spec = duelCardSpec();
   const b = boardShareData();
-  if (!spec?.pair || !b) return;
+  if (!spec || !b) return;
   uploadCard(spec, b.alias, [spec.pair[0].id, spec.pair[1].id]);
   openShare(spec, 'duel');
 }

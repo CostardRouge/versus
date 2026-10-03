@@ -5,7 +5,9 @@ import { compute, pushDuel } from '../src/core/scoring';
 import {
   CARD_MAX_BYTES,
   CARD_SIZES,
+  type CardSpec,
   type CardTexts,
+  cardItems,
   cardKey,
   cardPath,
   cardUpload,
@@ -21,6 +23,8 @@ import {
   pngSize,
   previewRanked,
   previewSpec,
+  publishedSpec,
+  rankingSpec,
 } from '../src/core/share';
 import type { Item } from '../src/core/types';
 import { UNFURL, unfurlEn, unfurlFr, unfurlPlural, unfurlText } from '../src/i18n/unfurl';
@@ -124,7 +128,7 @@ describe('card specs', () => {
     r.items = view.items;
     const meta = (m: string, s: { score: number }) => `${m}:${Math.round(s.score)}`;
     const empty = localSpec(r, 'sub', 'https://x.example/', TEXTS, meta);
-    expect(empty).toMatchObject({ kind: 'ranking', title: 'Pizzas', subtitle: 'sub', ranked: false, pair: null });
+    expect(empty).toMatchObject({ kind: 'ranking', title: 'Pizzas', subtitle: 'sub', ranked: false, local: true });
     expect(empty.rows.map((x) => x.it.id)).toEqual(['i0', 'i1', 'i2']);
     pushDuel(r, 'i2', 'i0', 1);
     pushDuel(r, 'i2', 'i1', 1);
@@ -132,6 +136,28 @@ describe('card specs', () => {
     expect(played.ranked).toBe(true);
     expect(played.rows[0]?.it.id).toBe('i2');
     expect(played.rows[0]?.meta).toMatch(/^bt:\d+$/);
+    // A voter's own result on a board sends people to vote there.
+    expect(rankingSpec('Pizzas', compute(r), '', 'https://x.example/app/b/1', TEXTS, meta, false).local).toBe(false);
+  });
+
+  it('describes a board just published from a local ranking, its standings only when its votes went with it', () => {
+    const r = mkRank('Pizzas');
+    r.items = view.items;
+    pushDuel(r, 'i2', 'i0', 1);
+    pushDuel(r, 'i2', 'i1', 1);
+    const meta = () => '1600';
+    const voted = publishedSpec(r, true, '2 votes', 'https://x.example/app/b/1', TEXTS, meta);
+    expect(voted).toMatchObject({ kind: 'crowd', title: 'Pizzas', subtitle: '2 votes', ranked: true, local: false });
+    expect(voted.rows.map((x) => [x.it.id, x.meta])[0]).toEqual(['i2', '1600']);
+    const items = publishedSpec(r, false, '0 votes', '', TEXTS, meta);
+    expect(items.ranked).toBe(false);
+    expect(items.rows.map((x) => [x.it.id, x.meta])).toEqual([
+      ['i0', ''],
+      ['i1', ''],
+      ['i2', ''],
+    ]);
+    // Votes that went with it, but no duel to rank them: the items, unranked.
+    expect(publishedSpec(mkRank('Empty'), true, '', '', TEXTS, meta).ranked).toBe(false);
   });
 
   it('describes the crowd as the sharer sees it: standings, or the items when hidden', () => {
@@ -139,6 +165,7 @@ describe('card specs', () => {
     const shown = crowdSpec(view, crowd, '3 votes', 'https://x.example/b/1', TEXTS, meta);
     expect(shown.kind).toBe('crowd');
     expect(shown.ranked).toBe(true);
+    expect(shown.local).toBe(false);
     expect(shown.rows.map((x) => [x.it.label, x.meta])).toEqual([
       ['Calzone', '1650'],
       ['Margherita', '1500'],
@@ -163,6 +190,8 @@ describe('card specs', () => {
     expect(duo.rows.map((x) => x.it.id)).toEqual(['i2', 'i0', 'i1']);
     expect(duo.mine.map((x) => x.it.id)).toEqual(['i0', 'i2', 'i1']);
     expect(duo.agree).toBe(67);
+    expect(duo.local).toBe(false);
+    expect(cardItems(duo).map((it) => it.id)).toEqual(['i2', 'i0', 'i1', 'i0', 'i2', 'i1']);
     expect(duoSpec(view, crowd, mine.slice(0, 1), 'bt', '', '', TEXTS).agree).toBeNull();
   });
 
@@ -175,7 +204,7 @@ describe('card specs', () => {
     pushDuel(r, 'i2', 'i1', 1);
     pushDuel(r, 'i1', 'i0', 1);
     const spec = compareSpec(r, 'win', ['Balanced', 'Simple'], '3 duels', 'https://x.example/', TEXTS);
-    expect(spec).toMatchObject({ kind: 'compare', title: 'Pizzas', ranked: true, agree: null, pair: null });
+    expect(spec).toMatchObject({ kind: 'compare', title: 'Pizzas', ranked: true, local: true });
     expect(spec.columns).toEqual(['Balanced', 'Simple']);
     expect(spec.mine.map((x) => x.it.id)).toEqual(compute(r).order.map((i) => i.id));
     expect(spec.rows.map((x) => x.it.id)).toEqual(compute({ ...r, method: 'win' }).order.map((i) => i.id));
@@ -184,8 +213,12 @@ describe('card specs', () => {
   it('describes a duel', () => {
     const [a, b] = view.items as [Item, Item, Item];
     const spec = duelSpec('Pizzas', a, b, 'https://x.example/b/1?duel=i0.i1', TEXTS);
-    expect(spec).toMatchObject({ kind: 'duel', title: 'Pizzas', rows: [], ranked: false });
-    expect(spec.pair?.map((i) => i.label)).toEqual(['Margherita', 'Regina']);
+    expect(spec).toMatchObject({ kind: 'duel', title: 'Pizzas', subtitle: '', local: false });
+    expect(spec.pair.map((i) => i.label)).toEqual(['Margherita', 'Regina']);
+    expect(cardItems(spec)).toEqual([a, b]);
+    // @ts-expect-error A duel's card can't go without its two items.
+    const noPair: CardSpec = { kind: 'duel', title: '', subtitle: '', url: '', local: false, texts: TEXTS };
+    expect(noPair.kind).toBe('duel');
   });
 });
 
@@ -215,7 +248,7 @@ describe('link preview cards', () => {
       ['Regina', ''],
       ['Calzone', ''],
     ]);
-    expect(blind).toMatchObject({ kind: 'crowd', title: 'Pizzas', mine: [], agree: null });
+    expect(blind).toMatchObject({ kind: 'crowd', title: 'Pizzas', subtitle: '3 votes', local: false });
     expect(previewSpec(spec, list, { visibility: 'after' }, 'closed')).toBe(spec);
   });
 
