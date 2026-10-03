@@ -150,7 +150,7 @@ function actionsHTML(c: Ctx, delay: number): string {
   // A voter can start their own version from these items; the author already has the ranking.
   const cta = c.d.owner
     ? ''
-    : `<p class="fin-cta">${t('finCta')} <button class="link" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button></p>`;
+    : `<p class="fin-cta">${t('finCta')} <button class="link" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}" aria-describedby="fin-mine-hint">${t('makeMine')}</button><span id="fin-mine-hint" hidden>${esc(t('makeMineHint'))}</span></p>`;
   return `<div class="fin-acts rv" style="--d:${delay}s">
     <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${c.left ? t('finVoteNew') : t('finSeeBoard')}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button></div>
     ${cta}

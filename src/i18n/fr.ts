@@ -149,7 +149,8 @@ export const fr: Messages = {
   rankLines: 'Comparer deux méthodes',
   compareWith: 'Comparer avec',
   slopeAria: 'Le classement selon deux méthodes',
-  slopeFoot: 'Mêmes duels, deux calculs. Une ligne qui croise : la place dépend de la méthode.',
+  slopeFoot:
+    'Mêmes duels, deux calculs. Une ligne qui croise : la place dépend de la méthode. Pointe, touche ou sélectionne un élément pour le suivre.',
   duelN: 'Duel n° {n}',
   question: 'Lequel préfères-tu ?',
   stableSee: 'Classement stable, voir le résultat →',
@@ -365,7 +366,7 @@ export const fr: Messages = {
   finOver: 'plutôt que',
   finMore: '+{n} autres',
   finNoAgainst: 'Aucun : la foule suit chacun de tes choix.',
-  finHover: 'Pointe un élément pour suivre sa place.',
+  finHover: 'Pointe, touche ou sélectionne un élément pour suivre sa place.',
   finOwnFrom: 'Ton classement vient de tes {votes}.',
   finVoteNew: 'Voter les nouvelles paires',
   finSeeBoard: 'Voir le tableau en direct',

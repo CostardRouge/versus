@@ -396,3 +396,42 @@ describe('gallery cards', () => {
     window.removeEventListener('click', after);
   });
 });
+
+describe('beyond the pointer', () => {
+  it('describes what tooltips say on the gallery’s buttons', () => {
+    click('[data-action="back"]');
+    for (const [sel, text] of [
+      ['[data-action="duplicate"]', 'Create your own ranking with these items'],
+      ['[data-action="import"]', 'Add the rankings of a Versus file'],
+    ] as const) {
+      const id = $(sel).getAttribute('aria-describedby');
+      expect(document.getElementById(id ?? '')?.textContent, sel).toBe(text);
+    }
+  });
+
+  it('lets a row of the lines between two methods keep its item highlighted, by tap or keyboard', () => {
+    click('.rcard [data-action="open"][data-id="demo-destinations"][data-tab="duel"]');
+    click('.tab[data-tab="results"]');
+    click('[data-action="rank-view"][data-view="lines"]');
+    const rows = () => [...document.querySelectorAll<HTMLElement>('.slope-l li[data-id]')];
+    const [row] = rows();
+    if (!row) throw new Error('no rows');
+    const id = row.dataset.id;
+    const both = () => [...document.querySelectorAll<HTMLElement>(`.slope li[data-id="${id}"]`)];
+    expect(row.tabIndex).toBe(0);
+    expect(row.getAttribute('role')).toBe('button');
+    expect(row.getAttribute('aria-pressed')).toBe('false');
+    row.focus();
+    expect(key('Enter').defaultPrevented).toBe(true);
+    expect(both().map((li) => li.getAttribute('aria-pressed'))).toEqual(['true', 'true']);
+    expect(both().every((li) => li.classList.contains('hl'))).toBe(true);
+    expect($('.slope').classList.contains('hovering')).toBe(true);
+    key(' ');
+    expect(row.getAttribute('aria-pressed')).toBe('false');
+    expect($('.slope').classList.contains('hovering')).toBe(false);
+    both()[1]?.click();
+    expect(row.getAttribute('aria-pressed')).toBe('true');
+    expect($('.slope-foot').textContent).toContain('Point at, tap or select an item to follow it.');
+    click('[data-action="rank-view"][data-view="podium"]');
+  });
+});

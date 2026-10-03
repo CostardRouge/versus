@@ -3634,6 +3634,10 @@ svg[data-slope-svg] path {
     opacity 0.2s,
     background 0.2s;
 }
+/* A row is a toggle (slope.ts): tapped, or Enter and Space, it keeps its item highlighted. */
+:is(.slope, .fin-duo) li[role="button"] {
+  cursor: pointer;
+}
 .slope-l li {
   grid-template-columns: minmax(0, 1fr) 30px 18px;
 }

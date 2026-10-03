@@ -149,7 +149,8 @@ export const en = {
   rankLines: 'Compare two methods',
   compareWith: 'Compare with',
   slopeAria: 'The ranking by two methods',
-  slopeFoot: 'Same duels, two calculations. A crossing line: the place depends on the method.',
+  slopeFoot:
+    'Same duels, two calculations. A crossing line: the place depends on the method. Point at, tap or select an item to follow it.',
   duelN: 'Duel #{n}',
   question: 'Which one do you prefer?',
   stableSee: 'Ranking is stable, see results →',
@@ -361,7 +362,7 @@ export const en = {
   finOver: 'over',
   finMore: '+{n} more',
   finNoAgainst: 'None: the crowd agrees with every one of your picks.',
-  finHover: 'Point at an item to follow its place.',
+  finHover: 'Point at, tap or select an item to follow its place.',
   finOwnFrom: 'Your ranking comes from your {votes}.',
   finVoteNew: 'Vote on the new pairs',
   finSeeBoard: 'See the live board',

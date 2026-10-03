@@ -41,7 +41,7 @@ function rcardHTML(r: Ranking): string {
       ? `<button class="btn sm" type="button" data-action="open" data-id="${id}" data-tab="duel">${ranked ? t('resume') : t('tryIt')}</button>
       <button class="btn sm ghost" type="button" data-action="open" data-id="${id}" data-tab="results">${t('result')}</button>
       <button class="btn sm ghost" type="button" data-action="reset-demo" data-id="${id}">${t('reset')}</button>
-      <button class="btn sm ghost" type="button" data-action="duplicate" data-id="${id}" title="${t('duplicateTitle')}">${t('duplicate')}</button>`
+      <button class="btn sm ghost" type="button" data-action="duplicate" data-id="${id}" title="${t('duplicateTitle')}" aria-describedby="hint-duplicate">${t('duplicate')}</button>`
       : `<button class="btn sm" type="button" data-action="open" data-id="${id}" data-tab="duel">${ranked ? t('resume') : t('start')}</button>
       <button class="btn sm ghost" type="button" data-action="open" data-id="${id}" data-tab="results">${t('result')}</button>
       <button class="btn sm ghost" type="button" data-action="reset" data-id="${id}" ${r.history.length ? '' : 'disabled'}>${t('restart')}</button>
@@ -115,10 +115,10 @@ function jcardHTML(j: Joined): string {
     </div>`;
   const forget = `<button class="link forget" type="button" data-action="forget" data-alias="${alias}" aria-label="${esc(t('forgetAria', { title: j.title }))}">${t('forget')}</button>`;
   const actions = j.gone
-    ? `<button class="btn sm" type="button" data-action="joined-copy" data-alias="${alias}" title="${t('keepCopyTitle')}">${t('keepCopy')}</button>`
+    ? `<button class="btn sm" type="button" data-action="joined-copy" data-alias="${alias}" title="${t('keepCopyTitle')}" aria-describedby="hint-keep-copy">${t('keepCopy')}</button>`
     : `<button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${done < total && j.status === 'open' ? t('continueVote') : t('openBoard')}</button>
       <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>
-      <button class="btn sm ghost" type="button" data-action="make-mine" data-alias="${alias}" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>`;
+      <button class="btn sm ghost" type="button" data-action="make-mine" data-alias="${alias}" title="${esc(t('makeMineHint'))}" aria-describedby="hint-make-mine">${t('makeMine')}</button>`;
   return `<article class="rcard${news ? ' fresh' : ''}${j.gone ? ' gone' : ''}">
     ${main}
     ${note}
@@ -147,7 +147,7 @@ function pcardHTML(b: PopularBoard): string {
     </div>
     <div class="rcard-actions">
       <button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${t(b.status === 'closed' ? 'openBoard' : 'vote')}</button>
-      <button class="btn sm ghost" type="button" data-action="make-mine-popular" data-alias="${alias}" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>
+      <button class="btn sm ghost" type="button" data-action="make-mine-popular" data-alias="${alias}" title="${esc(t('makeMineHint'))}" aria-describedby="hint-make-mine">${t('makeMine')}</button>
       <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>
     </div>
   </article>`;
@@ -156,9 +156,9 @@ function pcardHTML(b: PopularBoard): string {
 /** Where the rankings live, and the way to move them: export, import (docs/pwa.md). */
 function dataHTML(): string {
   const exp = hasBackup(localData())
-    ? `<button class="link" type="button" data-action="export-all" title="${t('exportAllTitle')}">${t('exportAll')}</button>`
+    ? `<button class="link" type="button" data-action="export-all" title="${t('exportAllTitle')}" aria-describedby="hint-export">${t('exportAll')}</button>`
     : '';
-  return `<p class="g-data"><span class="muted">${t('dataNote')}</span>${exp}<button class="link" type="button" data-action="import" title="${t('importTitle')}">${t('importBtn')}</button></p>`;
+  return `<p class="g-data"><span class="muted">${t('dataNote')}</span>${exp}<button class="link" type="button" data-action="import" title="${t('importTitle')}" aria-describedby="hint-import">${t('importBtn')}</button></p>`;
 }
 
 /** The iOS home-screen app starts empty: its storage is apart from Safari's. Shown until it holds something. */
@@ -214,5 +214,23 @@ export function galleryHTML(): string {
     </div>
     ${hide ? '' : `<div class="g-grid">${demos.map(rcardHTML).join('')}</div>`}
     ${aboutHTML(t, { h1: false, publish: online(), lang: getLang() })}
+    ${hintsHTML()}
   </section>`;
 }
+
+/**
+ * What the buttons' tooltips say, for those who never see a tooltip (a keyboard, a screen reader, a touch screen):
+ * their description (aria-describedby), shared by every card.
+ */
+const hintsHTML = (): string =>
+  `<div hidden>${(
+    [
+      ['duplicate', t('duplicateTitle')],
+      ['make-mine', t('makeMineHint')],
+      ['keep-copy', t('keepCopyTitle')],
+      ['export', t('exportAllTitle')],
+      ['import', t('importTitle')],
+    ] as const
+  )
+    .map(([id, text]) => `<span id="hint-${id}">${esc(text)}</span>`)
+    .join('')}</div>`;
