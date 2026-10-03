@@ -1547,9 +1547,12 @@ kbd {
 .cmp-table .on {
   background: color-mix(in oklab, var(--surface) 90%, var(--a));
 }
+/* A difference shows without color too: underlined (and said: results.ts). */
 .cmp-table td.diff {
   color: var(--b-ink);
   font-weight: 600;
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 4px;
 }
 .cmp-table td:first-child,
 .cmp-table th:first-child {

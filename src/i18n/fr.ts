@@ -185,7 +185,7 @@ export const fr: Messages = {
   recD: 'N',
   cmpTitle: 'Selon chaque méthode',
   cmpIntro:
-    'Mêmes duels, quatre calculs. En couleur, ce qui diffère de la méthode active : c’est là que ton classement est encore fragile. Clique sur une méthode pour l’adopter.',
+    'Mêmes duels, quatre calculs. Souligné en couleur, ce qui diffère de la méthode active : c’est là que ton classement est encore fragile. Clique sur une méthode pour l’adopter.',
   copied: 'Classement copié',
   copyRefused: 'Le navigateur a refusé la copie',
   copyNA: 'Copie indisponible dans ce navigateur',
@@ -464,6 +464,13 @@ export const fr: Messages = {
   endSortLive: 'Tri terminé : chaque élément a trouvé sa place, en {duels}.',
   endStableLive: 'Classement stable après {duels} : regarde-le, ou continue les duels.',
   cpTypeAria: 'Unie ou dégradé',
+  differs: 'diffère de la méthode active',
+  recordText: (v: Vars) =>
+    [
+      `${v.w} ${Number(v.w) > 1 ? 'victoires' : 'victoire'}`,
+      `${v.l} ${Number(v.l) > 1 ? 'défaites' : 'défaite'}`,
+      ...(v.d === undefined ? [] : [`${v.d} ${Number(v.d) > 1 ? 'égalités' : 'égalité'}`]),
+    ].join(', '),
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

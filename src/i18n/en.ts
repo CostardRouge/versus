@@ -184,7 +184,7 @@ export const en = {
   recD: 'T',
   cmpTitle: 'By each method',
   cmpIntro:
-    'Same duels, four calculations. Highlighted cells differ from the active method: that’s where your ranking is still fragile. Click a method to adopt it.',
+    'Same duels, four calculations. Cells underlined in color differ from the active method: that’s where your ranking is still fragile. Click a method to adopt it.',
   copied: 'Ranking copied',
   copyRefused: 'The browser refused the copy',
   copyNA: 'Copy isn’t available in this browser',
@@ -455,6 +455,13 @@ export const en = {
   endSortLive: 'Sort complete: every item found its place, in {duels}.',
   endStableLive: 'Ranking stable after {duels}: see it, or keep dueling.',
   cpTypeAria: 'Solid or gradient',
+  differs: 'differs from the active method',
+  recordText: (v: Vars) =>
+    [
+      `${v.w} ${Number(v.w) === 1 ? 'win' : 'wins'}`,
+      `${v.l} ${Number(v.l) === 1 ? 'loss' : 'losses'}`,
+      ...(v.d === undefined ? [] : [`${v.d} ${Number(v.d) === 1 ? 'tie' : 'ties'}`]),
+    ].join(', '),
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

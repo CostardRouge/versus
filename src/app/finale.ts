@@ -101,6 +101,9 @@ const highlight = (it: Item): string => `<span class="fin-win" style="${tileStyl
 /** A translated sentence around a highlighted item name (the name as it is: `$&` in a label is no pattern). */
 export const sentence = (text: string, it: Item): string => esc(text).replace(SLOT, () => highlight(it));
 const percent = (x: number): number => (x < 0 ? 0 : Math.min(100, Math.round(x)));
+/** "≈", neck and neck with the one above: a picture with a name, for a screen reader. */
+const neckHTML = (): string =>
+  `<span class="fin-neck" role="img" aria-label="${t('neck')}" title="${t('neck')}">≈</span>`;
 const shortScore = (m: MethodKey, x: ItemScore): string =>
   m === 'win' ? pct(Math.round(x.score * 100)) : String(Math.round(x.score));
 
@@ -118,7 +121,7 @@ function crowdRows(c: Ctx, crowd: RankingView): Row[] {
     const it = c.byId.get(id);
     const x = crowd.stats[id];
     if (!it || !x) return [];
-    const neck = close.has(id) ? ` <span class="fin-neck" title="${t('neck')}">≈</span>` : '';
+    const neck = close.has(id) ? ` ${neckHTML()}` : '';
     return [{ it, meta: `${fmtCrowd(crowd.method, x)}${neck}` }];
   });
 }
@@ -276,7 +279,7 @@ function duoHTML(c: Ctx): string {
           const it = c.byId.get(id);
           const x = crowd.stats[id];
           if (!it || !x) return '';
-          return `<li data-id="${esc(id)}" style="${at(crowdStart, i)}"><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="fin-nm">${esc(it.label)}</span><span class="fin-sc mono">${shortScore(crowd.method, x)}${close.has(id) ? ' ≈' : ''}</span></li>`;
+          return `<li data-id="${esc(id)}" style="${at(crowdStart, i)}"><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="fin-nm">${esc(it.label)}</span><span class="fin-sc mono">${shortScore(crowd.method, x)}${close.has(id) ? ` ${neckHTML()}` : ''}</span></li>`;
         })
         .join('')
     : own

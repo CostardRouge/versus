@@ -481,3 +481,50 @@ describe('motion', () => {
     host.remove();
   });
 });
+
+describe('figures a screen reader can tell apart', () => {
+  it('labels each number of the ranking’s rows and podium', () => {
+    click('[data-action="back"]');
+    click('.rcard [data-action="open"][data-id="demo-destinations"][data-tab="results"]');
+    const row = $('.rows li:not(.hdr)');
+    expect(row.querySelector('.num .sr-only')?.textContent).toBe('Score: ');
+    expect(row.querySelector('.rec .sr-only')?.textContent).toMatch(/^\d+ wins?, \d+ loss(es)?, \d+ ties?$/);
+    expect(row.querySelector('.rec [aria-hidden="true"]')?.textContent).toMatch(/^\d+ · \d+ · \d+$/);
+    expect(row.querySelector('.rbar-cell')?.getAttribute('aria-hidden')).toBe('true');
+    expect($('.pod-info .sr-only').textContent).toMatch(/^Score: \d+ ±\d+, \d+ wins?, /);
+  });
+
+  it('says which cells of the comparison differ, beyond their color', () => {
+    const diffs = [...document.querySelectorAll('.cmp-table td.diff')];
+    expect(diffs.length).toBeGreaterThan(0);
+    for (const td of diffs) expect(td.querySelector('.sr-only')?.textContent).toBe(' (differs from the active method)');
+    expect(document.querySelector('.cmp-table td:not(.diff) .sr-only')).toBeNull();
+  });
+
+  it('names the neck-and-neck mark of the end-of-vote page', () => {
+    const [a, b] = [mkItem('Apple'), mkItem('Banana')];
+    const host = document.createElement('div');
+    host.innerHTML = finaleHTML({
+      title: 'Fruit',
+      status: 'open',
+      countsLine: '',
+      items: [a, b],
+      method: 'bt',
+      mine: [{ a: a.id, b: b.id, s: 1 }],
+      count: 1,
+      crowd: {
+        method: 'bt',
+        order: [a.id, b.id],
+        stats: {
+          [a.id]: { score: 1510, se: 40, w: 3, l: 2, d: 0 },
+          [b.id]: { score: 1500, se: 40, w: 2, l: 3, d: 0 },
+        },
+      },
+      owner: false,
+      view: 'duo',
+    });
+    const neck = host.querySelector('.fin-neck');
+    expect(neck?.getAttribute('role')).toBe('img');
+    expect(neck?.getAttribute('aria-label')).toBe('Neck and neck with the one above');
+  });
+});

@@ -4,7 +4,7 @@ import type { Computed, Item, ItemStats, MethodKey, Ranking } from '../core/type
 import { esc } from '../core/util';
 import { methodText as M, pct, plural, t } from '../i18n';
 import { $, thumbHTML, toast } from './dom';
-import { fmtRecord, fmtScore } from './format';
+import { fmtRecord, fmtScore, recordText } from './format';
 import { cur, S, stat } from './state';
 import { savePrefs } from './storage';
 import { renderMain } from './workspace';
@@ -114,7 +114,9 @@ function compareHTML(r: Ranking, C: Computed): string {
         const it = c.C.order[i];
         const ok = !!it && (c.k !== 'sort' || stat(c.C, it.id).placed);
         const same = ok && C.order[i]?.id === it?.id;
-        return `<td class="${c.k === C.m ? 'on' : ''} ${ok && !same ? 'diff' : ''}">${ok && it ? esc(it.label) : '…'}</td>`;
+        // A difference is underlined as well as colored, and said to a screen reader.
+        const diff = ok && !same ? `<span class="sr-only"> (${t('differs')})</span>` : '';
+        return `<td class="${c.k === C.m ? 'on' : ''} ${ok && !same ? 'diff' : ''}">${ok && it ? esc(it.label) : '…'}${diff}</td>`;
       })
       .join('');
     body += `<tr><td class="mono">${i + 1}</td>${cells}</tr>`;
@@ -154,10 +156,14 @@ export function resultsHTML(r: Ranking): string {
     : st < 1
       ? `<p class="note">${t(m === 'sort' ? 'provisionalSort' : 'provisionalStab', { duels: plural(rest, 'duel') })}</p>`
       : '';
+  const margin = (x: ItemStats) => (m === 'bt' ? ` ±${Math.round(x.se ?? 0)}` : '');
   const line = (x: ItemStats) =>
-    m === 'sort'
-      ? fmtRecord(x, false)
-      : `${fmtScore(m, x)}${m === 'bt' ? ` ±${Math.round(x.se ?? 0)}` : ''} · ${fmtRecord(x, true)}`;
+    m === 'sort' ? fmtRecord(x, false) : `${fmtScore(m, x)}${margin(x)} · ${fmtRecord(x, true)}`;
+  // The figures as a screen reader says them: what each number is.
+  const said = (x: ItemStats) =>
+    m === 'sort' ? recordText(x, false) : `${M(m).col}: ${fmtScore(m, x)}${margin(x)}, ${recordText(x, true)}`;
+  const figures = (x: ItemStats) =>
+    `<span class="mono"><span aria-hidden="true">${line(x)}</span><span class="sr-only">${said(x)}</span></span>`;
   const showPodium = ranked && n >= 3 && (m !== 'sort' || (C.ex?.sorted.length ?? 0) >= 3);
   const pod = showPodium
     ? `<ol class="podium">${s
@@ -165,7 +171,7 @@ export function resultsHTML(r: Ranking): string {
         .map(
           (it, i) => `<li class="pod pod-${i + 1}">
       <div class="pod-media" style="${it.fill ? `background:${fillCSS(it.fill)}` : `--h:${it.h}`}">${it.img ? `<img src="${it.img}" alt="">` : it.fill ? '' : `<span class="pod-txt">${esc(it.label)}</span>`}</div>
-      <div class="pod-info"><span class="pod-place">${i + 1}</span><div><b>${esc(it.label)}</b><span class="mono">${line(stat(C, it.id))}</span></div></div>
+      <div class="pod-info"><span class="pod-place">${i + 1}</span><div><b>${esc(it.label)}</b>${figures(stat(C, it.id))}</div></div>
     </li>`,
         )
         .join('')}</ol>`
@@ -173,7 +179,8 @@ export function resultsHTML(r: Ranking): string {
   const rows = s
     .map((it, i) => {
       const x = stat(C, it.id);
-      return `<li><span class="pos mono">${m === 'sort' && !x.placed ? '·' : i + 1}</span>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span><span class="rbar-cell"><span class="rbar"><i style="width:${width(it)}%"></i></span></span><span class="num mono">${fmtScore(m, x)}${m === 'bt' ? `<small>±${Math.round(x.se ?? 0)}</small>` : ''}</span><span class="rec mono">${x.w} · ${x.l} · ${x.d}</span></li>`;
+      // The column heads are hidden from screen readers: each figure carries its own label instead.
+      return `<li><span class="pos mono">${m === 'sort' && !x.placed ? '·' : i + 1}</span>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span><span class="rbar-cell" aria-hidden="true"><span class="rbar"><i style="width:${width(it)}%"></i></span></span><span class="num mono"><span class="sr-only">${M(m).col}: </span>${fmtScore(m, x)}${m === 'bt' ? `<small>±${Math.round(x.se ?? 0)}</small>` : ''}</span><span class="rec mono"><span aria-hidden="true">${x.w} · ${x.l} · ${x.d}</span><span class="sr-only">${recordText(x, true)}</span></span></li>`;
     })
     .join('');
   const slope = ranked && n >= 2 && rankView() === 'lines' ? slopeHTML(r, C) : '';
