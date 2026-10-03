@@ -6,13 +6,13 @@ import { PROTOCOL_VERSION } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
-import type { BoardStatus, Duel, ErrorCode, Item, Outcome, Ranking, ReportReason } from '../core/types';
+import type { BoardStatus, Duel, ErrorCode, Item, Ranking, ReportReason } from '../core/types';
 import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { authorAdd, authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
 import { closeColor, cp } from './color';
-import { $, announce, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
-import { bindStage, cardHTML } from './duel';
+import { $, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
+import { bindStage, cardHTML, controlsHTML, duelKeys, outcomeOf, playPick } from './duel';
 import { addFormHTML, typed } from './editor';
 import { errorKey, OWNER_ERRORS, REPORT_ERRORS } from './errors';
 import {
@@ -552,12 +552,7 @@ function duelHTML(b: Board, v: BoardView): string {
       <div class="vs" aria-hidden="true"><span class="vs-dot">vs</span></div>
       ${cardHTML(C, 'b')}
     </div>
-    <div class="controls">
-      <button class="ctl ctl-a" type="button" data-action="b-pick" data-side="a"><kbd>←</kbd> ${t('aWins')}</button>
-      <button class="ctl" type="button" data-action="b-pick" data-side="draw">${t('draw')} <kbd>↓</kbd></button>
-      <button class="ctl" type="button" data-action="b-skip">${t('skip')} <kbd>S</kbd></button>
-      <button class="ctl ctl-b" type="button" data-action="b-pick" data-side="b">${t('bWins')} <kbd>→</kbd></button>
-    </div>
+    ${controlsHTML('b-pick', 'b-skip')}
     <div class="duel-foot">
       <span class="duel-foot-acts"><button class="link" type="button" data-action="b-undo" ${b.mine.length ? '' : 'disabled'}>${t('undoVote')}</button><button class="link" type="button" data-action="share-duel">${t('shareDuel')}</button></span>
       <span class="muted">${t('swipeHint')}</span>
@@ -676,7 +671,7 @@ export function boardPick(side: string | undefined): void {
   const A = pair ? itemOf(pair[0]) : undefined;
   const C = pair ? itemOf(pair[1]) : undefined;
   if (!pair || !A || !C) return;
-  const s: Outcome = side === 'a' ? 1 : side === 'b' ? 0 : 0.5;
+  const s = outcomeOf(side);
   if (!b.socket?.send({ t: 'vote', a: A.id, b: C.id, s })) {
     toast(t('notSent'));
     renderDuel();
@@ -693,15 +688,7 @@ export function boardPick(side: string | undefined): void {
   b.pairs.shift();
   b.count++;
   b.busy = true;
-  const st = $('#stage');
-  if (st) {
-    for (const p of ['--dx', '--pa', '--pb']) st.style.removeProperty(p);
-    st.classList.remove('enter', 'dragging');
-    st.classList.add('picked', `pick-${side}`);
-  }
-  announce(
-    side === 'draw' ? t('tieBetween', { a: A.label, b: C.label }) : t('wins', { x: (side === 'a' ? A : C).label }),
-  );
+  playPick(side, A, C);
   // At least the server's minimum delay between two votes, even with reduced motion.
   setTimeout(
     () => {
@@ -784,34 +771,11 @@ export async function boardReset(): Promise<void> {
   toast(t('votesCleared'));
 }
 
+/** The duel's keys on a board, as on a local ranking (duel.ts). */
 export function boardKeydown(e: KeyboardEvent, tg: HTMLElement): void {
   // The author votes from the Duel tab only.
   if (!B?.view || B.finale || (B.isOwner && effTab() !== 'duel')) return;
-  if (tg.classList.contains('card') && (e.key === 'Enter' || e.key === ' ')) {
-    e.preventDefault();
-    boardPick(tg.dataset.side);
-    return;
-  }
-  if (tg.matches('input, textarea, select, summary, [contenteditable]')) return;
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-    e.preventDefault();
-    boardUndo();
-    return;
-  }
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'ArrowLeft') {
-    e.preventDefault();
-    boardPick('a');
-  } else if (e.key === 'ArrowRight') {
-    e.preventDefault();
-    boardPick('b');
-  } else if (e.key === 'ArrowDown' || e.key === '=') {
-    e.preventDefault();
-    boardPick('draw');
-  } else if (e.key.toLowerCase() === 's') {
-    e.preventDefault();
-    boardSkip();
-  }
+  duelKeys(e, tg, { pick: boardPick, skip: boardSkip, undo: boardUndo });
 }
 
 // ─── End of the vote ────────────────────────────────────────────────────────
