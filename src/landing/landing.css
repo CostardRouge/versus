@@ -1751,8 +1751,8 @@ kbd {
   border-color: var(--a);
 }
 .v2-keys kbd[data-k="b"].on {
-  background: var(--b);
-  border-color: var(--b);
+  background: var(--b-ink);
+  border-color: var(--b-ink);
 }
 .v2-keys kbd[data-k="draw"].on {
   background: var(--ink);
@@ -2558,8 +2558,8 @@ html.paused .caret {
     filter 0.35s;
 }
 .kcap.down.b {
-  background: var(--b);
-  border-color: var(--b);
+  background: var(--b-ink);
+  border-color: var(--b-ink);
 }
 .kcap.down.draw {
   background: var(--ink);

@@ -1690,7 +1690,8 @@ kbd {
   font-weight: 700;
   font-size: 14px;
   white-space: nowrap;
-  background: linear-gradient(100deg, var(--a), color-mix(in oklab, var(--a) 50%, var(--b)) 50%, var(--b));
+  /* Its words stay on the coral's text variant: white on it reads at 4.5:1 (tokens.css). */
+  background: linear-gradient(100deg, var(--a), color-mix(in oklab, var(--a) 50%, var(--b-ink)) 50%, var(--b-ink));
   background-size: 160% 100%;
   background-position: 0% 50%;
   box-shadow:
