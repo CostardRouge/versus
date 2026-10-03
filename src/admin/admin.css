@@ -31,6 +31,18 @@ input {
   outline: 2px solid var(--a);
   outline-offset: 2px;
 }
+/* Read by screen readers, not shown (the actions column's heading). */
+.ad-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.ad-h:focus {
+  outline: none;
+}
 .mono {
   font-family: var(--f-mono);
   font-variant-numeric: tabular-nums;
@@ -209,7 +221,7 @@ input {
   font-size: 13px;
   color: var(--muted);
 }
-.ad-filter[aria-selected="true"] {
+.ad-filter[aria-pressed="true"] {
   background: var(--ink);
   color: var(--bg);
 }

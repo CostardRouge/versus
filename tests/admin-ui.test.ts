@@ -216,10 +216,17 @@ describe('the page', () => {
   it('filters, searches and pages the list', async () => {
     mount('', 'good');
     await flush();
+    // A group of toggle buttons, one pressed; the focus stays on the one clicked once the list is drawn again.
+    expect($('.ad-filters')?.getAttribute('role')).toBe('group');
+    expect($('.ad-filters')?.getAttribute('aria-label')).toBe(adminEn.filters);
+    expect($('[role="tab"], [role="tablist"]')).toBeNull();
+    $('[data-act="filter"][data-filter="reported"]')?.focus();
     click('[data-act="filter"][data-filter="reported"]');
     await flush();
     expect(requests('GET').at(-1)?.url).toContain('filter=reported&q=');
-    expect($('[data-filter="reported"]')?.getAttribute('aria-selected')).toBe('true');
+    expect($('[data-filter="reported"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect($('[data-filter="all"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(document.activeElement).toBe($('[data-act="filter"][data-filter="reported"]'));
     ($('.ad-search input') as HTMLInputElement).value = 'none';
     ($('form[data-form="search"]') as HTMLFormElement).requestSubmit();
     await flush();
@@ -239,17 +246,33 @@ describe('the page', () => {
   it('inspects a board and acts on it', async () => {
     const { confirm } = mount('', 'good');
     await flush();
-    click(`[data-act="inspect"][data-alias="${ALIAS}"]`);
+    // The actions column has a heading screen readers read.
+    expect($('.ad-table thead th:last-child .ad-vh')?.textContent).toBe(adminEn.cActions);
+    const details = () => $(`[data-act="details"][data-alias="${ALIAS}"]`);
+    expect(details()?.getAttribute('aria-expanded')).toBe('false');
+    click(`[data-act="details"][data-alias="${ALIAS}"]`);
     await flush();
     expect(requests('GET').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}`);
+    expect(details()?.getAttribute('aria-expanded')).toBe('true');
+    expect(details()?.getAttribute('aria-controls')).toBe(`ad-detail-${ALIAS}`);
+    expect($(`#ad-detail-${ALIAS} .ad-panel`)).not.toBeNull();
+    expect(document.activeElement).toBe(details());
     const panel = $('.ad-panel');
     expect(panel?.textContent).toContain('Spam or advertising');
     expect(panel?.textContent).toContain('Ads for a pizzeria');
     expect($$('.ad-items li')).toHaveLength(3);
     expect($$('.ad-ranking li')[0]?.textContent).toContain('Regina');
+    // A double click sends one request; the focus comes back to the same control once the page is drawn again.
+    calls.length = 0;
     click('[data-act="hide"]');
+    expect(($('[data-act="hide"]') as HTMLButtonElement).disabled).toBe(true);
+    expect($('[data-act="hide"]')?.getAttribute('aria-busy')).toBe('true');
+    ($('[data-act="hide"]') as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush();
+    expect(requests('PATCH')).toHaveLength(1);
     expect(requests('PATCH').at(-1)).toMatchObject({ url: `/api/admin/boards/${ALIAS}`, body: { hidden: true } });
+    expect(document.activeElement).toBe($('[data-act="hide"]'));
+    expect($('[data-act="hide"]')?.hasAttribute('aria-busy')).toBe(false);
     click('[data-act="feature"]');
     await flush();
     expect(requests('PATCH').at(-1)?.body).toEqual({ featured: true });
@@ -258,6 +281,7 @@ describe('the page', () => {
     expect(requests('POST').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}/close`);
     click('[data-act="clear-reports"]');
     await flush();
+    expect(confirm).toHaveBeenLastCalledWith(adminText('en', 'confirmClearReports', { title: 'Pizzas' }));
     expect(requests('DELETE').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}/reports`);
     click('[data-act="delete-cards"]');
     await flush();
@@ -276,6 +300,9 @@ describe('the page', () => {
     expect(confirm).toHaveBeenLastCalledWith(adminText('en', 'confirmTakeDown', { title: 'Pizzas' }));
     expect(requests('DELETE').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}`);
     expect($('.ad-panel')).toBeNull();
+    // Its button is gone with the panel: the focus goes to the board's details toggle, closed.
+    expect(document.activeElement).toBe(details());
+    expect(details()?.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('lists the pictures to review and sends each decision, an approval with the picture it saw', async () => {
@@ -299,11 +326,11 @@ describe('the page', () => {
     const { createObjectURL, revokeObjectURL } = URL;
     URL.createObjectURL = () => 'blob:picture';
     URL.revokeObjectURL = () => {};
-    mount('', 'good');
+    const { confirm } = mount('', 'good');
     await flush();
     expect($('.ad-flags')?.textContent).toContain('Pictures to review: 1');
     expect($('[data-filter="pictures"]')?.textContent).toBe('Pictures');
-    click(`[data-act="inspect"][data-alias="${ALIAS}"]`);
+    click(`[data-act="details"][data-alias="${ALIAS}"]`);
     await flush();
     expect($('.ad-pics li')?.textContent).toContain('Margherita');
     expect($('img[data-pic="p0"]')?.getAttribute('src')).toBe('blob:picture');
@@ -322,6 +349,13 @@ describe('the page', () => {
     click('[data-act="approve-pic"][data-id="p0"]');
     await flush();
     expect(requests('POST').at(-1)?.body).toEqual({ decision: 'ok', etag: '"e2"' });
+    // Refusing deletes the picture: asked first, nothing sent when the admin says no.
+    const posts = requests('POST').length;
+    confirm.mockReturnValueOnce(false);
+    click('[data-act="refuse-pic"][data-id="p0"]');
+    await flush();
+    expect(confirm).toHaveBeenLastCalledWith(adminText('en', 'confirmRefuse', { label: 'Margherita' }));
+    expect(requests('POST')).toHaveLength(posts);
     click('[data-act="refuse-pic"][data-id="p0"]');
     await flush();
     expect(requests('POST').at(-1)?.body).toEqual({ decision: 'refused' });
@@ -333,7 +367,7 @@ describe('the page', () => {
     const { confirm } = mount('', 'good');
     confirm.mockReturnValue(false);
     await flush();
-    click(`[data-act="inspect"][data-alias="${ALIAS}"]`);
+    click(`[data-act="details"][data-alias="${ALIAS}"]`);
     await flush();
     click('[data-act="delete"]');
     await flush();
