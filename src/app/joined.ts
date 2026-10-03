@@ -3,7 +3,7 @@ import { LIMITS } from '../core/board';
 import { applySummary, type BoardSnapshot, joinedCopy, seeBoard, sortJoined, upsertJoined } from '../core/joined';
 import type { Joined } from '../core/types';
 import { t } from '../i18n';
-import { toast } from './dom';
+import { $$, toast } from './dom';
 import { makeOwn, open, render } from './rankings';
 import { fetchSummaries, online } from './remote';
 import { S, save } from './state';
@@ -63,9 +63,13 @@ export function markGone(alias: string): void {
   persist();
 }
 
+/** True while the cards under "Your votes" are being refreshed: their grid is aria-busy. */
+export const joinedRefreshing = (): boolean => refreshing;
+
 /**
  * Asks the server how the boards under "Your votes" are doing (at most once a minute, the most recent
- * first), then shows the gallery again if a card changed. Offline, the cards keep their snapshot.
+ * first), then shows the gallery again if a card changed (keeping the focus: render()). Offline, the cards
+ * keep their snapshot.
  */
 export async function refreshJoined(): Promise<void> {
   if (!online() || refreshing || Date.now() - refreshedAt < REFRESH_MS) return;
@@ -75,6 +79,7 @@ export async function refreshJoined(): Promise<void> {
     .map((j) => j.alias);
   if (!aliases.length) return;
   refreshing = true;
+  for (const grid of $$('.votes-grid')) grid.setAttribute('aria-busy', 'true');
   try {
     const found = await fetchSummaries(S.voter, aliases);
     refreshedAt = Date.now();
@@ -87,6 +92,7 @@ export async function refreshJoined(): Promise<void> {
     // Offline or refused: try again next time the gallery shows.
   } finally {
     refreshing = false;
+    for (const grid of $$('.votes-grid')) grid.setAttribute('aria-busy', 'false');
   }
 }
 

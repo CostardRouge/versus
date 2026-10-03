@@ -3,10 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { appViews, BASE_MARK, BODY_MARK, BOOT_MARK, fillPage, HEAD_MARK, pageOf } from '../build/seo-plugin';
 import { PAGES, type PageKey } from '../build/site';
+import { APP_PATH, HOME_PATH } from '../src/core/site';
 import { landingEn } from '../src/i18n/landing-en';
 import { landingFr } from '../src/i18n/landing-fr';
 import { HERO, ITEMS, PASTRIES, TOPICS } from '../src/landing/data';
-import { APP_PATH, HOME_PATH, h1Text, landingBody, landingBoot, type PageData } from '../src/landing/markup';
+import { h1Text, landingBody, landingBoot, type PageData } from '../src/landing/markup';
 import { SPRITE } from '../src/landing/sprite';
 import { strings } from '../src/landing/strings';
 
@@ -88,10 +89,24 @@ describe('home page content', () => {
       expect([...html.matchAll(/aria-current="page"/g)]).toHaveLength(2);
     });
 
-    it(`${lang}: marks the other language's suggestion with its own lang`, () => {
+    it(`${lang}: marks the other language's suggestion with its own lang, in a landmark of its own`, () => {
       const other = lang === 'en' ? 'fr' : 'en';
-      expect(html).toContain(`<div class="lang-hint" id="lang-hint" lang="${other}" hidden>`);
-      expect(html).toContain(strings(other).suggestGo);
+      const O = strings(other);
+      expect(html).toContain(
+        `<aside class="lang-hint" id="lang-hint" lang="${other}" aria-label="${O.suggestAria}" hidden>`,
+      );
+      expect(html).toContain(O.suggestGo);
+    });
+
+    it(`${lang}: names its landmarks apart: the header's languages and the footer's`, () => {
+      const navs = [...html.matchAll(/<nav [^>]*aria-label="([^"]+)"/g)].map((m) => m[1]);
+      expect(navs).toContain(S.langAria);
+      expect(navs).toContain(S.footLangAria);
+      expect(new Set(navs).size).toBe(navs.length);
+    });
+
+    it(`${lang}: keeps the pause button's name, only its pressed state changing`, () => {
+      expect(html).toContain(`id="pause" type="button" aria-pressed="false" aria-label="${S.pauseAnim}"`);
     });
 
     it(`${lang}: draws only pastries the sprite defines`, () => {

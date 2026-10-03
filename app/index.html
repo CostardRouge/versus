@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- app:base -->
     <!-- seo:head -->
-    <meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)" />
     <script>
       // Mark JavaScript as running: the static page text inside <main> (for crawlers without it) stays hidden
       // until the app replaces it. Then apply a saved light/dark choice before the first paint.
@@ -39,13 +37,13 @@
       <main id="view"><!-- seo:noscript --><!-- seo:about --></main>
     </div>
     <div class="drop-overlay" aria-hidden="true"><div id="drop-text"></div></div>
-    <div id="cpop" class="cpop" role="dialog" hidden></div>
+    <div id="cpop" class="cpop" role="dialog" aria-labelledby="cp-title" hidden></div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <input type="file" id="import-input" accept=".json,application/json" hidden>
     <div id="live" class="sr-only" aria-live="polite"></div>
     <div id="modal" class="modal" hidden>
       <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="m-title">
-        <h3 id="m-title">Confirm</h3>
+        <h2 id="m-title">Confirm</h2>
         <div id="m-body" class="m-body"></div>
         <div class="modal-actions">
           <button class="btn ghost" id="m-cancel" type="button"></button>

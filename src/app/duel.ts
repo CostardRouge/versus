@@ -15,8 +15,8 @@ import {
 import type { Computed, Item, Outcome, Ranking } from '../core/types';
 import { esc, sizeClass } from '../core/util';
 import { methodText as M, pct, plural, t } from '../i18n';
-import { $, announce, doc, reduced, toast } from './dom';
-import { clearEnding, endingHTML, endingOf, startEnding, stopEnding } from './ending';
+import { $, announce, doc, focusOn, keepFocus, reduced, toast } from './dom';
+import { clearEnding, endingHTML, endingOf, startEnding } from './ending';
 import { deltaInfo } from './format';
 import { renderList } from './items';
 import { cur, save, stat } from './state';
@@ -184,10 +184,11 @@ export function choose(side: string | undefined): void {
   announce(
     side === 'draw' ? t('tieBetween', { a: A.label, b: B.label }) : t('wins', { x: (side === 'a' ? A : B).label }),
   );
+  // The next duel takes the place of this one: a focused card or button is focused again on the new pair.
   setTimeout(
     () => {
       busy = false;
-      if (cur() === r && effTab() === 'duel') renderMain(r);
+      if (cur() === r && effTab() === 'duel') keepFocus(() => renderMain(r));
     },
     reduced ? 80 : 540,
   );
@@ -197,7 +198,7 @@ export function skip(): void {
   if (busy || !r?.pair || methodOf(r) === 'sort') return;
   r.pair = nextPair(r, r.pair);
   save();
-  renderMain(r);
+  keepFocus(() => renderMain(r));
 }
 export function undoLast(): void {
   const r = cur();
@@ -206,27 +207,27 @@ export function undoLast(): void {
     clearEnding();
     save();
     renderList(r, true);
-    renderMain(r);
+    // Nothing left to undo: the link is disabled, the focus goes to the duel's first card.
+    keepFocus(
+      () => renderMain(r),
+      () => $('#stage .card-a'),
+    );
     toast(t('undone'));
   }
 }
 
-/** The announcement's buttons: go to the ranking now, stay on the announcement, or keep dueling. */
+/** The announcement's buttons: go to the ranking, or keep dueling. The focus follows to the new view. */
 export function endSee(): void {
   clearEnding();
   setTab('results');
   $('.results')?.classList.add('res-enter');
-}
-export function endStay(): void {
-  const r = cur();
-  stopEnding();
-  if (r) renderMain(r);
-  $<HTMLElement>('[data-action="end-see"]')?.focus();
+  $('#tab-results')?.focus();
 }
 export function endContinue(): void {
   const r = cur();
   clearEnding();
   if (r) renderMain(r);
+  focusOn($('.duel .q'));
 }
 
 /** Duel shortcuts: ← and → pick, ↓ or = ties, S skips, ⌘/Ctrl+Z undoes. */

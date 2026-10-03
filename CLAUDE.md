@@ -75,7 +75,9 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
                       JSON array); duplicates of what the ranking has
   backup.ts           export and import (D97–D101): the file format, strict validation of a file, merge that never replaces
   model.ts, util.ts   constructors, ids, escaping, small helpers
+  site.ts             the site's links and paths (home pages, legal notice, app), shared by the app, the pages and the build
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
+                      text.ts: what every dictionary does (fill, plural rule, percentages, locale), no texts, importable anywhere;
                       landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules);
                       unfurl.ts: a board's link preview texts, the only dictionary the Worker bundles; admin.ts: the moderation page's
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
@@ -94,7 +96,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   items.ts            a local ranking's items in the editor: live-sorted list and edits (add text/colors/images, rename, remove)
   duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
   results.ts          podium or lines comparing two methods (switch), table, method comparison, copy
-  ending.ts           end of a local ranking: announcement with confetti and a countdown to the Ranking tab
+  ending.ts           end of a local ranking: announcement with confetti and a button to the Ranking tab (focused, announced)
   slope.ts            lines between two rankings (end-of-vote page, method comparison): drawing and hover
   color.ts            color editor popover
   publish.ts          publish modal and the settings forms shared with the board's settings
@@ -112,7 +114,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
   backup.ts           export (share sheet on phones, download elsewhere) and import (file picked or dropped)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
-  storage.ts          guarded localStorage access, prefs, migration from prototype keys
+  storage.ts          guarded localStorage access, prefs, migration from prototype keys, unreadable rankings set aside
 src/landing/          the home page: markup.ts renders it at build time (pure strings, like frame.ts: the demo frames'
                       HTML, shared with the script), data.ts (its items, EN/FR), sprite.ts (pastry drawings), strings.ts
                       (texts at build time), crowd.ts (simulated votes); main.ts + mount.ts bring it to life: board.ts (a
@@ -142,6 +144,8 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       + backup-ui.test.ts (export, import, drop, the iOS home-screen note) + popular-ui.test.ts, finale.test.ts,
                       storage.test.ts, remote.test.ts (time limits), sw.test.ts (the service worker's install against fake caches),
                       pictures.test.ts, log.test.ts, cache.test.ts, turnstile.test.ts (Worker modules that run in Node)
+                      + a11y-ui.test.ts (keyboard patterns, focus kept and moved, names, toasts), gallery-wait-ui.test.ts, styles.test.ts
+                      and tokens.test.ts (contrast of the tokens, target sizes, focus and forced-colors rules)
 tests/e2e/            Playwright (`npm run e2e`): real Chromium, desktop and phone, the API and the board's WebSocket faked per test
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
@@ -153,11 +157,11 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Addresses:** every view has a path under `app/` (D92, `core/route.ts`): open views through `open()` / `openBoard()` / `goBack()` / `setTab()`, which keep the address bar in step, never with `history` directly. Links the app builds come from `routeURL()`; an author's token only ever goes in the fragment. A duel link adds `?duel=<a>.<b>` (`core/share.ts`), read once and dropped from the address.
 - **Sharing (D102 to D106, D117):** images are drawn in the browser (`app/share.ts`), never on the Worker; a board's link preview card is the landscape one, sent with `putCard()` and served by `worker/src/cards.ts`. New share entry points build a `CardSpec` in `core/share.ts` and call `openShare()`; a page with several views of its result passes one `ShareView` per view and the key of the one on screen.
 - **Official templates and public lists (D110 to D112):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
-- **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author's items list does (text until approved).
+- **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review`; a picture never arrives as an address) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author's items list does (text until approved).
 - **Items (D116):** one items pane for every ranking (`app/editor.ts`): a local ranking (`items.ts`) and a board's author (`author.ts`) fill it, a visitor's suggestion uses its add field. On a published board, an edit of an item with votes asks whether they stay (`askVotes`); the rule is `editItem` in `core/board.ts`. Don't build a second form for items.
 - **Moderation (D107 to D109, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
-- **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
+- **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. Coral and green as text or thin borders use `--b-ink` and `--good-ink` (4.5:1 in both themes, also the fill under white text), field borders `--field` (3:1); `tests/tokens.test.ts` checks the contrasts. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
 - **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-v1-unreadable` (stored rankings the app could not read, set aside untouched), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home and legal pages read theme and lang and write lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"), `umami.disabled` (Umami's own opt-out key, set by the legal page's switch); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Changing the stored shape requires a migration in `storage.ts`.
@@ -181,7 +185,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
-- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (built, not deployed).
+- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates, moderation, pictures, templates.
 - `docs/online-architecture.md`: backend for published boards on Cloudflare (`worker/`), how to deploy it.
 - `docs/seo.md`: head tags, JSON-LD, icons, social card, manifest, robots, sitemap, llms.txt; decisions and what the owner has to do (Search Console, `SITE_URL`).
 - `docs/analytics.md`: audience measurement (Umami, what is sent and never sent, how it loads, settings) and the legal notice; what is left to check live.

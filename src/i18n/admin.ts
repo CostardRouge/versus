@@ -1,3 +1,5 @@
+import { fill, type Lang } from './text.ts';
+
 /**
  * Texts of the admin page (src/admin/), the publisher's moderation page. Its own dictionary: the page ships
  * without the app's messages, and the app without these. Placeholders: {title}, {label}.
@@ -167,9 +169,9 @@ export const adminFr: AdminMessages = {
     'Supprimer les images d’aperçu des liens de « {title} » ? Ils montreront la carte du site jusqu’au prochain partage.',
 };
 
-export type AdminLang = 'en' | 'fr';
+export type AdminLang = Lang;
 const TEXTS: Record<AdminLang, AdminMessages> = { en: adminEn, fr: adminFr };
 
 /** A text of the admin page in `lang`, its placeholders filled. */
 export const adminText = (lang: AdminLang, key: AdminKey, vars: Record<string, string> = {}): string =>
-  TEXTS[lang][key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '');
+  fill(TEXTS[lang][key], vars);

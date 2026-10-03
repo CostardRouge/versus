@@ -417,7 +417,10 @@ function returning(S: Strings): void {
   if (mine && cta) cta.textContent = S.myRankings;
 }
 
-/** One button pauses every animation of the page (WCAG 2.2.2); the header gets a line once scrolled. */
+/**
+ * One button pauses every animation of the page (WCAG 2.2.2): a toggle whose name stays "Pause animations", only
+ * its pressed state changing. The header gets a line once scrolled.
+ */
 export function chrome(S: Strings): void {
   returning(S);
   oldLinks();
@@ -425,9 +428,6 @@ export function chrome(S: Strings): void {
   pause?.addEventListener('click', () => {
     setPaused(!isPaused());
     pause.setAttribute('aria-pressed', String(isPaused()));
-    const label = isPaused() ? S.playAnim : S.pauseAnim;
-    pause.setAttribute('aria-label', label);
-    pause.title = label;
   });
   if (calm() && pause) pause.hidden = true;
   const nav = $('#nav');

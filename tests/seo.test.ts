@@ -27,6 +27,7 @@ import {
 import { preloadFonts } from '../build/seo-plugin';
 import {
   ADMIN_TITLE,
+  COLORS,
   DEFAULT_SITE_URL,
   DESCRIPTION,
   DESCRIPTIONS,
@@ -45,8 +46,9 @@ import {
   TITLE,
   TITLES,
 } from '../build/site';
-import { aboutHTML, HOME_PAGE_PATH } from '../src/app/about';
+import { aboutHTML } from '../src/app/about';
 import { STASH_KEY } from '../src/app/router';
+import { HOME_PATH } from '../src/core/site';
 import { en } from '../src/i18n/en';
 import { fr } from '../src/i18n/fr';
 
@@ -289,7 +291,7 @@ describe('page text', () => {
   });
 
   it('links back to the home page of the app’s language, from the app’s folder', () => {
-    for (const lang of LANGUAGES) expect(PAGES[HOMES[lang]].path).toBe(HOME_PAGE_PATH[lang]);
+    for (const lang of LANGUAGES) expect(PAGES[HOMES[lang]].path).toBe(HOME_PATH[lang]);
     const foot = (lang: 'en' | 'fr') =>
       aboutHTML((k) => String((lang === 'fr' ? fr : en)[k]), { h1: false, publish: false, lang }).match(
         /<p class="about-foot">[\s\S]*?<\/p>/,
@@ -487,5 +489,48 @@ describe('content security policy', () => {
     expect(withPolicy).toMatch(/^\/\*\n(?: {2}.+\n)*? {2}Content-Security-Policy-Report-Only: default-src 'self'\n/);
     expect(withPolicy).not.toContain('Content-Security-Policy:');
     expect(withPolicy).toContain('  Referrer-Policy: strict-origin-when-cross-origin');
+  });
+});
+
+describe('palette', () => {
+  const tokens = readFileSync(resolve(process.cwd(), 'src/tokens.css'), 'utf8');
+  /** A token's value in the first block that `selector` opens. */
+  const token = (selector: string, name: string) => {
+    const block = tokens.slice(tokens.indexOf(selector));
+    return block
+      .slice(0, block.indexOf('}'))
+      .match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, 'i'))?.[1]
+      ?.toLowerCase();
+  };
+  const light = (name: string) => token(':root {', name);
+  const dark = (name: string) => token(':root:not([data-theme="light"]) {', name);
+
+  it('keeps the build’s colors equal to the design tokens, in both themes', () => {
+    const pairs: [string | undefined, string][] = [
+      [light('bg'), COLORS.bg],
+      [light('surface'), COLORS.surface],
+      [light('ink'), COLORS.ink],
+      [light('muted'), COLORS.muted],
+      [light('line'), COLORS.line],
+      [light('a'), COLORS.a],
+      [light('b'), COLORS.b],
+      [light('on-accent'), COLORS.onAccent],
+      [dark('bg'), COLORS.bgDark],
+      [dark('ink'), COLORS.inkDark],
+      [dark('muted'), COLORS.mutedDark],
+    ];
+    for (const [css, built] of pairs) expect(css).toBe(built.toLowerCase());
+  });
+
+  it('gives every page the browser bar of its theme', () => {
+    for (const page of Object.keys(PAGES) as PageKey[]) {
+      const tags = headTags(URL_, page).join('\n');
+      expect(tags).toContain(
+        `<meta name="theme-color" content="${COLORS.bg}" media="(prefers-color-scheme: light)" />`,
+      );
+      expect(tags).toContain(
+        `<meta name="theme-color" content="${COLORS.bgDark}" media="(prefers-color-scheme: dark)" />`,
+      );
+    }
   });
 });

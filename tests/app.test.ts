@@ -135,7 +135,7 @@ describe('app', () => {
     expect($('.thumb-btn')?.getAttribute('aria-label')).toContain('#2743F5');
   });
 
-  it('announces the end of an exact sort, then shows the ranking by itself', () => {
+  it('announces the end of an exact sort in one sentence, focusing the way to the ranking', () => {
     click('[data-action="set-method"][data-m="sort"]');
     const input = $('#add-input') as HTMLInputElement;
     input.value = 'Coffee';
@@ -147,13 +147,13 @@ describe('app', () => {
     }
     expect($('.end-h')?.textContent).toBe('Sort complete!');
     expect($('.end-facts')?.textContent).toContain('3 items placed');
-    // "Stay here" stops the countdown.
-    click('[data-action="end-stay"]');
-    vi.advanceTimersByTime(5000);
-    expect($('.end')).not.toBeNull();
-    expect($('[data-action="end-stay"]')).toBeNull();
+    // Not a live region holding buttons: one sentence goes to #live, the focus to "See the ranking".
+    expect($('.end')?.getAttribute('role')).toBeNull();
+    expect($('#live')?.textContent).toMatch(/^Sort complete: every item found its place, in \d duels?\.$/);
+    expect(document.activeElement).toBe($('[data-action="end-see"]'));
     click('[data-action="end-see"]');
     expect($('.results')).not.toBeNull();
+    expect(document.activeElement?.id).toBe('tab-results');
   });
 
   it('shows the ranking as lines comparing two methods, and remembers it', () => {
@@ -169,13 +169,16 @@ describe('app', () => {
     expect($('.slope')).toBeNull();
   });
 
-  it('moves to the ranking when the countdown ends', () => {
+  it('stays on the announcement until asked, then shows the ranking', () => {
     click('.tab[data-tab="duel"]');
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
     click('[data-action="pick"][data-side="a"]');
     vi.advanceTimersByTime(600);
-    expect($('.end-run')).not.toBeNull();
-    vi.advanceTimersByTime(4100);
+    expect($('.end')).not.toBeNull();
+    vi.advanceTimersByTime(30000);
+    expect($('.tab[data-tab="duel"]')?.getAttribute('aria-selected')).toBe('true');
+    expect($('.end')).not.toBeNull();
+    click('[data-action="end-see"]');
     expect($('.tab[data-tab="results"]')?.getAttribute('aria-selected')).toBe('true');
     expect($('.res-enter')).not.toBeNull();
   });
@@ -303,7 +306,8 @@ describe('addresses', () => {
     expect(title()).toBe(mine.title);
     expect(location.pathname).toBe(`/r/${mine.id}/items`);
     back('/r/elsewhere1');
-    expect($('#toast')?.textContent).toContain('This ranking isn’t in this browser');
+    // A notice that stays in the gallery, not a toast gone in seconds.
+    expect($('.g-notice')?.textContent).toContain('This ranking isn’t in this browser');
     expect(location.pathname).toBe('/');
     expect($('h1')?.textContent).toBe('Your rankings');
   });

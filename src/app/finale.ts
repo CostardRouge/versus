@@ -59,6 +59,7 @@ export function setPodiumWho(w: string | undefined): void {
 export function resetFinale(): void {
   who = 'crowd';
   clearTimeout(timer);
+  clearShows();
   playing = false;
 }
 
@@ -100,6 +101,9 @@ const highlight = (it: Item): string => `<span class="fin-win" style="${tileStyl
 /** A translated sentence around a highlighted item name (the name as it is: `$&` in a label is no pattern). */
 export const sentence = (text: string, it: Item): string => esc(text).replace(SLOT, () => highlight(it));
 const percent = (x: number): number => (x < 0 ? 0 : Math.min(100, Math.round(x)));
+/** "≈", neck and neck with the one above: a picture with a name, for a screen reader. */
+const neckHTML = (): string =>
+  `<span class="fin-neck" role="img" aria-label="${t('neck')}" title="${t('neck')}">≈</span>`;
 const shortScore = (m: MethodKey, x: ItemScore): string =>
   m === 'win' ? pct(Math.round(x.score * 100)) : String(Math.round(x.score));
 
@@ -117,7 +121,7 @@ function crowdRows(c: Ctx, crowd: RankingView): Row[] {
     const it = c.byId.get(id);
     const x = crowd.stats[id];
     if (!it || !x) return [];
-    const neck = close.has(id) ? ` <span class="fin-neck" title="${t('neck')}">≈</span>` : '';
+    const neck = close.has(id) ? ` ${neckHTML()}` : '';
     return [{ it, meta: `${fmtCrowd(crowd.method, x)}${neck}` }];
   });
 }
@@ -150,7 +154,7 @@ function actionsHTML(c: Ctx, delay: number): string {
   // A voter can start their own version from these items; the author already has the ranking.
   const cta = c.d.owner
     ? ''
-    : `<p class="fin-cta">${t('finCta')} <button class="link" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button></p>`;
+    : `<p class="fin-cta">${t('finCta')} <button class="link" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}" aria-describedby="fin-mine-hint">${t('makeMine')}</button><span id="fin-mine-hint" hidden>${esc(t('makeMineHint'))}</span></p>`;
   return `<div class="fin-acts rv" style="--d:${delay}s">
     <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${c.left ? t('finVoteNew') : t('finSeeBoard')}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button></div>
     ${cta}
@@ -275,7 +279,7 @@ function duoHTML(c: Ctx): string {
           const it = c.byId.get(id);
           const x = crowd.stats[id];
           if (!it || !x) return '';
-          return `<li data-id="${esc(id)}" style="${at(crowdStart, i)}"><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="fin-nm">${esc(it.label)}</span><span class="fin-sc mono">${shortScore(crowd.method, x)}${close.has(id) ? ' ≈' : ''}</span></li>`;
+          return `<li data-id="${esc(id)}" style="${at(crowdStart, i)}"><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="fin-nm">${esc(it.label)}</span><span class="fin-sc mono">${shortScore(crowd.method, x)}${close.has(id) ? ` ${neckHTML()}` : ''}</span></li>`;
         })
         .join('')
     : own
@@ -360,16 +364,34 @@ function countUp(el: HTMLElement): void {
   requestAnimationFrame(tick);
 }
 
+/** The timers that let the reveal's blocks be reached as they appear. */
+let shows: ReturnType<typeof setTimeout>[] = [];
+function clearShows(): void {
+  for (const s of shows) clearTimeout(s);
+  shows = [];
+}
+/** Blocks still to appear are out of reach (Tab, a screen reader) until their turn: nothing focused unseen. */
+function holdUnrevealed(fin: HTMLElement): void {
+  for (const el of $$('.rv', fin)) {
+    const at = Number.parseFloat(el.style.getPropertyValue('--d')) || 0;
+    if (at <= 0) continue;
+    el.setAttribute('inert', '');
+    shows.push(setTimeout(() => el.removeAttribute('inert'), at * 1000));
+  }
+}
+
 /** After finaleHTML is in the page: runs the reveal (or a fade), draws the lines, binds the hover. */
 export function mountFinale(mode: FinaleMode, onSettled: () => void): void {
   const fin = $('#fin');
   if (!fin) return;
   clearTimeout(timer);
+  clearShows();
   playing = false;
   if (mode === 'swap') fin.classList.add('swap');
   if (mode === 'play' && !reduced) {
     fin.classList.add('play');
     playing = true;
+    holdUnrevealed(fin);
     if (typeof requestAnimationFrame === 'function') for (const el of $$('[data-count]', fin)) countUp(el);
     timer = setTimeout(() => {
       playing = false;

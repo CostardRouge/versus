@@ -77,17 +77,17 @@ src/
   styles.css
 build/         build-time SEO: site facts, head tags, JSON-LD, manifest, robots, sitemap, llms.txt (docs/seo.md)
 scripts/       icons.ts: icons and social card
-worker/        Cloudflare Worker + one Durable Object per published board (prototype)
-tests/         Vitest suites, a jsdom smoke test of the app, and end-to-end Worker tests in workerd
+worker/        Cloudflare Worker: the site, the API, one Durable Object per published board
+tests/         Vitest suites (core, jsdom views, the Worker in workerd) and Playwright end-to-end tests (tests/e2e)
 ```
 
 ## Published boards
 
-`worker/` serves the app and the API for shared boards: each published board is a Durable Object with its own SQLite storage and WebSockets, a D1 registry backs the admin API, and per-IP limits and Turnstile guard publishing. The rules live in `src/core/board.ts`, shared with the app. It runs locally (`npm run worker:dev`) and in the tests; deploying needs a Cloudflare account, see [`docs/online-architecture.md`](docs/online-architecture.md#deploying).
+`worker/` serves the app and the API for shared boards: each published board is a Durable Object with its own SQLite storage and WebSockets, a D1 registry backs the admin API, and per-IP limits and Turnstile guard publishing. The rules live in `src/core/board.ts`, shared with the app. It runs locally (`npm run worker:dev`), in the tests, and live at versus.steevepommier.com; CI deploys it, see [`docs/online-architecture.md`](docs/online-architecture.md#deploying).
 
 ## CI and deployment
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, and a production build. On `main`, the build is then deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: Biome, TypeScript, Vitest with coverage, a production build, and the Playwright end-to-end tests. On `main`, the build is then deployed to GitHub Pages, and the Worker (app + API) to Cloudflare once the repository has the `CLOUDFLARE_ACCOUNT_ID` variable and the `CLOUDFLARE_API_TOKEN` secret ([setup](docs/online-architecture.md#deploying)). Dependabot keeps npm packages and actions up to date.
 
 The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 
@@ -97,13 +97,19 @@ The Pages source must be set once to **GitHub Actions** in *Settings → Pages*.
 - [`docs/decisions.md`](docs/decisions.md): decision log.
 - [`docs/roadmap.md`](docs/roadmap.md): done, next, later, open questions.
 - [`docs/published-boards.md`](docs/published-boards.md): agreed behavior of published (shared) boards.
-- [`docs/online-architecture.md`](docs/online-architecture.md): backend for published boards on Cloudflare (prototype in `worker/`).
+- [`docs/online-architecture.md`](docs/online-architecture.md): backend for published boards on Cloudflare (`worker/`), and how to deploy it.
 
 ## Adding a language
 
-1. Copy `src/i18n/fr.ts` to a new file and translate the values; TypeScript flags any missing key.
-2. Register it in `src/i18n/index.ts` (`LANGS`, `MESSAGES`, `PLURALS`) and add a button in `index.html`.
-3. Add the language to the labels in `src/core/demos.ts`.
+The texts are typed against English, so TypeScript flags a missing key; the language lists are not, so each needs it:
+
+1. **App**: copy `src/i18n/fr.ts` and translate it; register it in `src/i18n/index.ts` (`LANGS`, `MESSAGES`, `PLURALS`); add its button to the language switcher in `app/index.html`; add its labels to the demos (`src/core/demos.ts`).
+2. **Home page and legal notice**: `src/i18n/landing-*.ts` and `legal-*.ts`, the page shells (copy `fr/index.html` and `fr/mentions-legales/index.html`), the language lists in `src/landing/` (`markup.ts`, `frame.ts`, `sections.ts`) and `src/legal/mount.ts`.
+3. **SEO**: `build/site.ts` (`LANGUAGES`, the pages, titles, descriptions, social cards, `LOCALES`), then `npm run icons` for its social card.
+4. **Published boards**: `BoardLang` in `src/core/types.ts`, its use in `src/core/board.ts`, the templates (`src/core/templates.ts`, `TEMPLATE_LANGS`), the Worker's texts (`src/i18n/unfurl.ts`) and routes (`worker/src/index.ts`, `worker/src/templates.ts`).
+5. **Moderation page**: `src/i18n/admin.ts` and `src/admin/admin.ts`.
+
+`grep -rn "'fr'" src build worker/src` lists the places that name a language.
 
 ## License
 

@@ -33,7 +33,6 @@ export const landingEn = {
   demoPlay: 'Play it myself',
   demoReplay: 'Replay the demo',
   pauseAnim: 'Pause animations',
-  playAnim: 'Play animations',
   say1: 'Two pastries, one choice: tap the one you prefer.',
   say2: 'On a keyboard it’s even faster: ← for A, → for B.',
   say3: 'On a phone, just swipe the card.',
@@ -134,10 +133,12 @@ export const landingEn = {
   footApp: 'Open the app',
   footSource: 'Source code (MIT)',
   footLegal: 'Legal notice and privacy',
+  footLangAria: 'This page in English or French',
 
   suggestText: 'This page is available in English.',
   suggestGo: 'View in English',
   suggestClose: 'Close',
+  suggestAria: 'Language suggestion',
 };
 
 export type LandingKey = keyof typeof landingEn;

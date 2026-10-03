@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated 2026-10-02.
+Last updated 2026-10-03.
 
 ## Done
 
@@ -11,11 +11,11 @@ Last updated 2026-10-02.
 - Fixed demos with reset, duplicate and hide.
 - EN/FR with switcher; light/dark/system theme switcher.
 - localStorage persistence with migration from prototype keys.
-- Repo tooling: Biome, strict TS, Vitest (233 tests), CI, GitHub Pages deploy, Cloudflare deploy job (off until configured), Dependabot, MIT license, README.
+- Repo tooling: Biome, strict TS, Vitest (unit, jsdom and workerd suites), Playwright end-to-end tests in Chromium, CI, GitHub Pages and Cloudflare deploys, Dependabot, MIT license, README.
 - Published board model agreed (lifecycle, one voice per pair, visibility modes, live updates): `docs/published-boards.md`.
 - `src/app/ui.ts` split into view modules (gallery, workspace, items, duel, results, color popover), navigation, events and shared state; no behavior change.
 - Published boards in the app: publish modal (warning, author votes, visibility, method with Exact sort greyed out, more options), board page (server-assigned duels, live crowd ranking with its toggle, hidden states, neck and neck, agreement, undo and clear), author panel (settings, close/reopen, admin link, withdraw into a local copy), share links in the URL fragment, gallery badge. Works against `npm run worker:dev`; hidden in production builds until the API is deployed.
-- Backend prototype in `worker/`: Worker router + one Durable Object per published board (SQLite, hibernatable WebSockets, TTL alarm). Publish, public view, server-assigned pairs, votes, undo and reset, visibility enforced by the server, author settings, close/reopen, withdraw with a local copy. Rules in `src/core/board.ts`; end-to-end tests in workerd. Not deployed.
+- Backend in `worker/`: Worker router + one Durable Object per published board (SQLite, hibernatable WebSockets, TTL alarm). Publish, public view, server-assigned pairs, votes, undo and reset, visibility enforced by the server, author settings, close/reopen, withdraw with a local copy. Rules in `src/core/board.ts`; end-to-end tests in workerd. Deployed by CI from `main`.
 - Header: Publish restyled as the one colored control (A → B gradient), placed last; header controls aligned at 44 px.
 - Published boards: the author changes a color item's color from the author panel; its votes are dropped and it starts again from zero. Same colors flagged.
 - End of a local ranking: an announcement (confetti, a bar that empties) after the duel that completes the exact sort or first reaches full stability, then the Ranking tab by itself; the Ranking tab switches between the podium and lines comparing two methods.
@@ -29,20 +29,21 @@ Last updated 2026-10-02.
 - Home page (D84 to D90): a showcase at `/` in English and `/fr/` in French, pre-rendered for search engines (hreflang, bilingual sitemap, a social card per language), with a hero demo played by a virtual pointer, the use cases, how it works, a playable demo on six topics, the four methods on the same duels, the crowd (Worker build) and the chocolatine question. The app moved to `/app/` (`noindex`); installed apps and old links follow.
 - Real addresses in the app (D92): `/app/demo/destinations`, `/app/demo/destinations/ranking`, `/app/r/<id>`, `/app/b/<alias>`; Back and Forward follow the views, old `#/b/` links still open, GitHub Pages included (`404.html`).
 - Audience measurement and legal notice (D93 to D96, `docs/analytics.md`): self-hosted Umami, loaded only for visitors who don't decline (switch, Do Not Track, Global Privacy Control), views with ids stripped and a few anonymous events; `/legal/` and `/fr/mentions-legales/` with publisher, hosting, privacy and the measurement switch.
-- Sharing (D110 to D114): a result drawn as an image in the browser (post, story, landscape) from the Ranking tab, a board, a duel and the end-of-vote page (me facing the crowd), handed to the system share sheet with the message and the link, or copied or downloaded; link previews of boards and duels with their own title, description and card (drawn by the app, stored in R2, head rewritten by the Worker); duel links that open on their duel; "Make my own" from a board or a card under Your votes.
-- Moderation (D111 to D113, `docs/published-boards.md#moderation`): a Report link on every board (reason, note, anonymous, one per voter), hidden and featured flags per board, and the moderation page at `/admin/` (registry list with filters and search, totals, per-board view with reports, close, feature, hide, remove an item, clear reports, take down), behind the admin token, out of the index and the offline cache.
+- Sharing (D102 to D106): a result drawn as an image in the browser (post, story, landscape) from the Ranking tab, a board, a duel and the end-of-vote page (me facing the crowd), handed to the system share sheet with the message and the link, or copied or downloaded; link previews of boards and duels with their own title, description and card (drawn by the app, stored in R2, head rewritten by the Worker); duel links that open on their duel; "Make my own" from a board or a card under Your votes.
+- Moderation (D107 to D109, `docs/published-boards.md#moderation`): a Report link on every board (reason, note, anonymous, one per voter), hidden and featured flags per board, and the moderation page at `/admin/` (registry list with filters and search, totals, per-board view with reports, close, feature, hide, remove an item, clear reports, take down), behind the admin token, out of the index and the offline cache.
 - Pictures on published boards through review (D113, D114, `docs/published-boards.md#images`): off by default (`IMAGES_UPLOAD`), announced at publication and sent to R2 afterwards, shown as text until the admin approves them from the moderation page (a filter, the pictures with Approve and Refuse), public under `/img/b/…` once approved, deleted when refused or with their item or board.
-- Official templates and public lists (D114 to D112, `docs/published-boards.md#official-templates-and-the-popular-section`): thirteen fixed lists on divisive topics published by the Worker as real boards (EN and FR, never expiring), each with an indexable page at `/t/<slug>/` and `/fr/t/<slug>/` (crowd ranking as text, hreflang, JSON-LD, `noindex` until 30 voters), the Popular section of the gallery (featured boards and templates, the liveliest first, with Vote and Make my own), and a sitemap the Worker completes with the template pages that have a crowd.
+- Official templates and public lists (D110 to D112, `docs/published-boards.md#official-templates-and-the-popular-section`): thirteen fixed lists on divisive topics published by the Worker as real boards (EN and FR, never expiring), each with an indexable page at `/t/<slug>/` and `/fr/t/<slug>/` (crowd ranking as text, hreflang, JSON-LD, `noindex` until 30 voters), the Popular section of the gallery (featured boards and templates, the liveliest first, with Vote and Make my own), and a sitemap the Worker completes with the template pages that have a crowd.
 - A way back to the home page from the app (D115): a discreet link in the footer closing the gallery; the installed app follows it too.
 - Sharing follows the screen (D117): the share panel opens on the picture of the view on screen (podium, lines, the voter's or the crowd's podium) and offers the others; a local ranking's lines comparing two methods can be shared too.
 - One items editor for every ranking (D116): the author of a published board works in the workspace a local ranking has, with the same items pane; any item can be renamed or recolored, the author saying whether its votes stay or go; lists, colors and images (through review) added as in a local ranking; the title editable and the settings behind the Published button. Visitors suggest items with the same field.
+- Code audit (October 2026): one voter per connection, owner links confirmed by the server, link previews from authors only and never a hidden ranking, a cap on new voters per address and Turnstile on the official boards, reports from voters only, bodies counted as they arrive, escaping in heads and JSON-LD, invisible characters stripped; Undo on item removal, refused votes said and rolled back, readable captions on any color, shortcuts limited to the duel, focus kept in dialogs; a faster duel (scores cached, Bradley-Terry in typed arrays, the items list patched by key), fewer writes, a lighter first load, updates that copy unchanged files; edge cache keyed by deploy, logs, time limits, a protocol version, a new admin link for authors; Playwright in CI; a content security policy, reported only for now.
 
 ## Next (suggested order)
 
 1. **PWA, next steps** (web first, D75): images in IndexedDB, share target, manifest shortcuts; list and order in `docs/pwa.md`.
-2. **Deploy**: the CI job is ready; it needs an API token and the account ID in the repository, then the Worker secrets and a custom domain (steps in `docs/online-architecture.md#deploying`).
+2. **Content security policy enforced**: it is reported only (`/api/csp-report`, log lines `csp`); once a week of reports is clean on real devices (Turnstile, Umami, the theme script), the same policy becomes `Content-Security-Policy` (`docs/seo.md`).
 3. **Trademark and domain check** for "Versus" before a dedicated domain; a subdomain of an existing zone works meanwhile.
-4. **End-to-end tests** (Playwright) for swipe, drag and drop, color popover and the published boards flows (author, voters, admin link); the scenario run by hand for this work is a starting point, and so is the offline and update scenario in `docs/pwa.md`.
+4. **More end-to-end tests** (Playwright, `tests/e2e`): drag and drop, the author's flows, the admin link, the moderation page, and the offline and update scenario in `docs/pwa.md`.
 
 ## Later / ideas
 
@@ -65,7 +66,7 @@ Last updated 2026-10-02.
 
 None of these blocks the backend spike; all must be settled before a public launch.
 
-- **Anti-abuse**: rate limits per connection and IP, Turnstile at publication; an author option to require Turnstile per voter?
+- **Anti-abuse**: rate limits per connection and IP, at most 30 new voters per address and board in 10 minutes, Turnstile at publication and before a first vote on the official boards; an author option to require Turnstile per voter? A WAF rate rule on `/api/*` (Cloudflare dashboard) is the owner's step.
 - **Moderation**: reporting, takedown, hiding, the admin page and the pictures' review queue exist; what remains is the owner's time to run them.
-- **Cleanup**: TTL of inactive published boards (proposal: 60 days without a vote), warning the author before deletion.
+- **Cleanup**: inactive published boards are deleted after 60 days without activity (`TTL_DAYS`); warning the author before deletion is still open.
 - **Accounts**: none at first; magic link or OAuth (GitHub/Google) later?

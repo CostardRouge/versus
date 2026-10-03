@@ -3,9 +3,7 @@ import { LIMITS, VOTER_RE } from '../src/core/board';
 import { mkItem, mkRank } from '../src/core/model';
 import type { RankingView } from '../src/core/protocol';
 import {
-  adminHash,
   agreement,
-  boardHash,
   crowdCheck,
   lastDuelPerPair,
   neckAndNeck,
@@ -18,6 +16,10 @@ import {
   voterId,
 } from '../src/core/published';
 import type { MethodKey, Ranking } from '../src/core/types';
+
+/** Links as the app wrote them before it had paths (D92): the board in the fragment, `?owner=` for its author. */
+const boardHash = (alias: string): string => `#/b/${alias}`;
+const adminHash = (alias: string, owner: string): string => `${boardHash(alias)}?owner=${owner}`;
 
 const ALIAS = 'Ab3dEf7hJk';
 const TOKEN = 'a'.repeat(64);

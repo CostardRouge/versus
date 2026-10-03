@@ -35,9 +35,9 @@ import {
   setFinaleWho,
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
-import { $, closeModal, doc, narrow, toastAct, trapTab } from './dom';
-import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
-import { changeTheme } from './header';
+import { $, closeModal, doc, narrow, toastAct, toastHasAct, trapTab } from './dom';
+import { choose, duelKeydown, endContinue, endSee, skip, undoLast } from './duel';
+import { changeTheme, viewTitle } from './header';
 import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
 import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
 import { makeMineFromPopular } from './popular';
@@ -45,6 +45,7 @@ import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
   changeLang,
+  closeNotice,
   deleteRank,
   duplicateRank,
   goBack,
@@ -71,7 +72,7 @@ import {
 } from './share';
 import { drawSlopes } from './slope';
 import { cur, S, saveSoon } from './state';
-import { setMethod, setTab, toggleMethodMenu } from './workspace';
+import { menuKeydown, setMethod, setTab, tabKeydown, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */
 
@@ -84,6 +85,12 @@ function onClick(e: MouseEvent): void {
   if (cpop && !cpop.hidden && !target.closest('#cpop') && !target.closest('.thumb-btn')) closeColor();
   const el = target.closest<HTMLElement>('[data-action]');
   if (!el || (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return;
+  // A link of the app (a gallery card's title) opens its view here; with a modifier key, or the middle button
+  // (no click event), the browser opens it in a new tab or window.
+  if (el instanceof HTMLAnchorElement) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+  }
   const id = el.dataset.id;
   const action = el.dataset.action ?? '';
   // A published board's settings close before one of their actions runs (it may open a dialog of its own).
@@ -101,6 +108,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'back':
       goBack();
+      break;
+    case 'notice-close':
+      closeNotice();
       break;
     case 'tab': {
       const tab = el.dataset.tab;
@@ -206,9 +216,6 @@ function onClick(e: MouseEvent): void {
       break;
     case 'end-see':
       endSee();
-      break;
-    case 'end-stay':
-      endStay();
       break;
     case 'end-continue':
       endContinue();
@@ -322,6 +329,7 @@ function onInput(e: Event): void {
     if (r) {
       r.title = tg.value.trim() || t('untitled');
       r.updated = Date.now();
+      viewTitle(r.title);
       saveSoon();
     }
     return;
@@ -358,6 +366,11 @@ function onChange(e: Event): void {
   if (tg.classList.contains('row-label')) renameItem(r, tg);
 }
 
+const NOT_TEXT = new Set(['checkbox', 'radio', 'color', 'file', 'range', 'button', 'submit', 'reset']);
+/** Where typing goes, with its own undo. */
+const textField = (el: HTMLElement): boolean =>
+  el.matches('textarea, [contenteditable]') || (el instanceof HTMLInputElement && !NOT_TEXT.has(el.type));
+
 function onKeydown(e: KeyboardEvent): void {
   const modal = $('#modal');
   if (modal && !modal.hidden) {
@@ -367,6 +380,13 @@ function onKeydown(e: KeyboardEvent): void {
     return;
   }
   const tg = e.target as HTMLElement;
+  // ⌘/Ctrl+Z undoes what the toast on screen offers to undo (an item removed, a list added), before a duel; a
+  // text field keeps its own undo.
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && toastHasAct() && !textField(tg)) {
+    e.preventDefault();
+    toastAct();
+    return;
+  }
   const cpop = $('#cpop');
   if (cpop && !cpop.hidden) {
     if (e.key === 'Enter' && tg.classList.contains('cp-hex')) {
@@ -381,12 +401,10 @@ function onKeydown(e: KeyboardEvent): void {
   }
   const mpop = $('#method-pop');
   if (mpop && !mpop.hidden) {
-    if (e.key === 'Escape') {
-      toggleMethodMenu(false);
-      $('#method-btn')?.focus();
-    }
+    menuKeydown(e);
     return;
   }
+  if (tg.closest('.tabs [role="tab"]') && tabKeydown(e, tg)) return;
   if (tg.id === 'rank-title' && e.key === 'Enter') {
     e.preventDefault();
     // Leaving the field commits a published board's title.
@@ -399,9 +417,10 @@ function onKeydown(e: KeyboardEvent): void {
     tg.blur();
     return;
   }
-  // Duel shortcuts only where they can't be another control's keys: on the page itself, or in the duel. Arrows on a
-  // tab or a header button must never cast a vote.
-  if (tg !== doc.body && tg !== doc.documentElement && !tg.closest('.duel')) return;
+  // Duel shortcuts only where they can't be another control's keys: on the page itself, on a view's heading (where
+  // the focus lands on a new view), or in the duel. Arrows on a tab or a header button must never cast a vote.
+  const page = tg === doc.body || tg === doc.documentElement || tg.matches('#view h1[tabindex="-1"]');
+  if (!page && !tg.closest('.duel')) return;
   if (S.route.view === 'board') boardKeydown(e, tg);
   else duelKeydown(e, tg);
 }
@@ -472,6 +491,10 @@ export function bindEvents(): void {
   doc.addEventListener('focusout', (e) => {
     const tg = e.target as HTMLInputElement;
     if (tg.id === 'rank-title' && !tg.value.trim()) tg.value = t('untitled');
+    // Focus gone elsewhere closes the method menu. Without a new owner (a click on nothing focusable, Safari's
+    // buttons), the click itself decides.
+    const to = (e as FocusEvent).relatedTarget as Element | null;
+    if (tg.closest?.('#method-pop') && to && !to.closest('.method-wrap')) toggleMethodMenu(false);
   });
   let dragDepth = 0;
   doc.addEventListener('dragenter', (e) => {

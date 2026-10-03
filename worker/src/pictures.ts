@@ -10,7 +10,7 @@ import { isJpeg } from '../../src/core/share';
 
 const ITEM_ID_RE = /^[\w-]{1,32}$/;
 
-export const pictureKey = (alias: string, id: string): string => `img/${alias}/${id}.jpg`;
+const pictureKey = (alias: string, id: string): string => `img/${alias}/${id}.jpg`;
 
 /** Reads a public picture address back: `img/b/<alias>/<item>.jpg`, split on `/`. */
 export function parsePicturePath(parts: readonly string[]): { alias: string; id: string } | null {

@@ -1,7 +1,7 @@
-import { fillCode, sameFill } from './colors';
-import { labelKey } from './list';
-import { mkRank } from './model';
-import { compute, pairKey } from './scoring';
+import { fillCode, sameFill } from './colors.ts';
+import { labelKey } from './list.ts';
+import { mkRank } from './model.ts';
+import { compute, pairKey } from './scoring.ts';
 import type {
   BoardLang,
   BoardMeta,
@@ -24,8 +24,8 @@ import type {
   SharedBoard,
   Visibility,
   Vote,
-} from './types';
-import { hueOf } from './util';
+} from './types.ts';
+import { hueOf } from './util.ts';
 
 /**
  * Published boards: one voice per voter and pair, server-assigned pairs, results visibility.
@@ -54,13 +54,10 @@ export const LIMITS = {
 };
 
 /**
- * Whether published items may carry pictures: not at all (the default), sent to the moderator for review and
- * shown once approved, or as given (the site's own boards, whose pictures are the site's).
+ * Whether published items may carry pictures: not at all (the default), or sent to the moderator for review and
+ * shown once approved.
  */
-export type ImagePolicy = 'off' | 'review' | 'direct';
-
-/** Where an approved picture may live: on this site under /img/, or an https address (official templates). */
-export const IMAGE_URL_RE = /^(?:\/img\/[\w./-]+|https:\/\/[^\s"'<>]+)$/;
+export type ImagePolicy = 'off' | 'review';
 /** Undoing the very last vote stays possible this long when votes are final (mis-taps). */
 export const UNDO_GRACE_MS = 10_000;
 /** Minimum delay between two votes or skips of one connection (each one triggers pair assignment). */
@@ -152,27 +149,22 @@ export interface NewItem {
 }
 
 /**
- * An item's content: a label, a fill for colors, and, by policy, a picture: none (`off`), announced and sent
- * for review (`pic: 'pending'`, `review`), or its address as given (`direct`, the site's own boards).
+ * An item's content: a label, a fill for colors, and, by policy, a picture: none (`off`), or announced and sent
+ * for review (`pic: 'pending'`, `review`). A picture never comes as an address: the server gives it one once approved.
  */
 export function parseNewItem(x: unknown, images: ImagePolicy = 'off'): Result<NewItem> {
   if (!isRecord(x) || typeof x.label !== 'string') return fail('bad_request');
-  let img: string | null = null;
-  if (x.img !== null && x.img !== undefined) {
-    if (images !== 'direct' || typeof x.img !== 'string' || !IMAGE_URL_RE.test(x.img))
-      return fail('images_not_allowed');
-    img = x.img;
-  }
+  if (x.img !== null && x.img !== undefined) return fail('images_not_allowed');
   let pic: 'pending' | undefined;
   if (x.pic !== undefined) {
-    if (x.pic !== 'pending' || images === 'off' || img) return fail('images_not_allowed');
+    if (x.pic !== 'pending' || images === 'off') return fail('images_not_allowed');
     pic = 'pending';
   }
   const fill = parseFill(x.fill);
   if (fill === undefined) return fail('bad_request');
   const label = cleanText(x.label);
   if (label.length > LIMITS.label || (!label && !fill)) return fail('bad_request');
-  return ok({ label, fill, img, ...(pic ? { pic } : {}) });
+  return ok({ label, fill, img: null, ...(pic ? { pic } : {}) });
 }
 
 function parseItem(x: unknown, images: ImagePolicy): Result<Item> {
@@ -743,20 +735,23 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
   }
 }
 
-/**
- * A new session; `prev` is the connection's session when it says hello again: its last vote and last item added
- * carry over, so a new hello can't dodge the limits, and so does a human check it passed. `wanted` is the duel a
- * shared link asked for: it comes first when this voter can still vote on it.
- */
-export function openSession(
-  board: SharedBoard,
-  voter: string,
-  owner: boolean,
-  C: Computed,
-  rng: Rng,
-  prev: Pick<Session, 'lastActionAt' | 'lastAddAt' | 'human'> | null = null,
-  wanted: readonly [string, string] | null = null,
-): Session {
+/** Who opens a session, and what carries over (`openSession`). */
+export interface SessionStart {
+  voter: string;
+  /** The connection said hello with the owner token. */
+  owner?: boolean;
+  /**
+   * The connection's session when it says hello again: its last vote and last item added carry over, so a new hello
+   * can't dodge the limits, and so does a human check it passed.
+   */
+  prev?: Pick<Session, 'lastActionAt' | 'lastAddAt' | 'human'> | null;
+  /** The duel a shared link asked for: it comes first when this voter can still vote on it. */
+  wanted?: readonly [string, string] | null;
+}
+
+/** A new session for a connection, its queue filled. */
+export function openSession(board: SharedBoard, C: Computed, rng: Rng, start: SessionStart): Session {
+  const { voter, owner = false, prev, wanted } = start;
   const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt: prev?.lastActionAt ?? 0 };
   if (prev?.lastAddAt !== undefined) session.lastAddAt = prev.lastAddAt;
   if (prev?.human) session.human = true;

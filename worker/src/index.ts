@@ -1,13 +1,13 @@
-import { ALIAS_RE, type ImagePolicy, isRecord, LIMITS, parsePublish } from '../../src/core/board';
+import { ALIAS_RE, isRecord, LIMITS, parsePublish } from '../../src/core/board';
 import { type HttpErrorCode, parseSummaryRequest, type ServerConfig } from '../../src/core/protocol';
 import { CARD_MAX_BYTES, cardKey, cardUpload, parseDuelQuery } from '../../src/core/share';
 import type { BoardLang, Result } from '../../src/core/types';
 import { cached } from './cache';
 import { cardURL, deleteCards, preview, readCard, rewriteHead, storeCard } from './cards';
-import type { Env } from './env';
+import { type Env, imagePolicy } from './env';
 import { cspFields, log } from './log';
 import { approvePicture, deletePicture, parsePicturePath, readPicture, storePicture } from './pictures';
-import { newAlias, newOwnerToken } from './random';
+import { newAlias, newOwnerToken, sameSecret } from './random';
 import { isFilter, listBoards, popularBoards, totals } from './registry';
 import { ensureTemplates, sitemap, templatePage } from './templates';
 import { verifyTurnstile } from './turnstile';
@@ -56,7 +56,7 @@ export { BoardObject } from './board-object';
  *
  *   GET    /api/admin/stats                     totals from the registry         (admin)
  *   GET    /api/admin/boards?limit&offset&filter&q   boards, most recently active first; `filter` is one of
- *                                               all, reported, featured, hidden, open, closed; `q` words of the title
+ *                                               all, reported, pictures, featured, hidden, open, closed; `q` words of the title
  *   GET    /api/admin/boards/:alias             full view, ranking, flags and reports included
  *   PATCH  /api/admin/boards/:alias             { hidden?, featured? }: moderation flags
  *   POST   /api/admin/boards/:alias/close | reopen
@@ -156,10 +156,6 @@ async function cspReport(req: Request, env: Env): Promise<Response> {
   }
   return new Response(null, { status: 204 });
 }
-
-/** Whether authors may publish pictures (sent for review): the IMAGES_UPLOAD variable, off unless `review`. */
-const imagePolicy = (env: Env): ImagePolicy & ServerConfig['images'] =>
-  env.IMAGES_UPLOAD === 'review' ? 'review' : 'off';
 
 const config = (env: Env): Response =>
   Response.json({ images: imagePolicy(env) } satisfies ServerConfig, {
@@ -304,15 +300,9 @@ async function board(req: Request, env: Env, alias: string, rest: string[]): Pro
   return error('not_found');
 }
 
-async function sha256(s: string): Promise<ArrayBuffer> {
-  return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-}
-
-/** Constant-time check of the admin token (both sides hashed to the same length first). */
+/** Constant-time check of the admin token. */
 async function isAdmin(req: Request, env: Env): Promise<boolean> {
-  if (!env.ADMIN_TOKEN) return false;
-  const [given, expected] = await Promise.all([sha256(bearer(req)), sha256(env.ADMIN_TOKEN)]);
-  return crypto.subtle.timingSafeEqual(given, expected);
+  return !!env.ADMIN_TOKEN && sameSecret(bearer(req), env.ADMIN_TOKEN);
 }
 
 /** Routes under /api/admin. Off (404) until ADMIN_TOKEN is set. */

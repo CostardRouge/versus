@@ -16,7 +16,7 @@ import { getItem } from '../core/model';
 import type { Fill, Item } from '../core/types';
 import { esc } from '../core/util';
 import { t } from '../i18n';
-import { $, $$, doc, narrow } from './dom';
+import { $, $$, doc, keepFocus, narrow } from './dom';
 import { cardHTML } from './duel';
 import { cur, save } from './state';
 import { effTab, renderMain, toggleMethodMenu } from './workspace';
@@ -71,14 +71,14 @@ function cpHTML(it: Item, f: Fill): string {
       </div>`,
     )
     .join('');
-  return `<p class="cp-label">${t('cpTitle')}</p>
+  return `<p class="cp-label" id="cp-title">${t('cpTitle')}</p>
     <div class="cp-preview" id="cp-preview" style="background:${fillCSS(f)};${fillText(f)}"><span>${fillCode(f)}</span></div>
-    <div class="cp-seg" role="radiogroup">
-      <button type="button" role="radio" aria-checked="${!isG}" data-action="cp-type" data-type="solid">${t('solid')}</button>
-      <button type="button" role="radio" aria-checked="${isG}" data-action="cp-type" data-type="gradient">${t('gradientT')}</button>
+    <div class="cp-seg" role="group" aria-label="${t('cpTypeAria')}">
+      <button type="button" aria-pressed="${!isG}" data-action="cp-type" data-type="solid">${t('solid')}</button>
+      <button type="button" aria-pressed="${isG}" data-action="cp-type" data-type="gradient">${t('gradientT')}</button>
     </div>
     <div class="cp-stops">${stops}${isG && f.colors.length < 3 ? `<button class="link" type="button" data-action="cp-add">${t('addStop')}</button>` : ''}</div>
-    <p class="cp-err" id="cp-err" hidden>${t('invalidHex')}</p>
+    <p class="cp-err" id="cp-err" role="alert" hidden></p>
     <p class="cp-err" id="cp-twin" ${twinText(it) ? '' : 'hidden'}>${esc(twinText(it))}</p>
     <p class="cp-label">${t('suggestions')}</p>
     <div class="cp-swatches" id="cp-swatches">${swatchesHTML(act)}</div>
@@ -99,7 +99,8 @@ function show(it: Item, anchor: HTMLElement): void {
   pop.innerHTML = cpHTML(it, it.fill);
   pop.hidden = false;
   placeColor();
-  if (!narrow.matches) $('.cp-hex', pop)?.focus();
+  // The focus goes in, on phones too: there to the Solid/Gradient switch, so no keyboard covers the editor.
+  (narrow.matches ? $('.cp-seg [aria-pressed="true"]', pop) : $('.cp-hex', pop))?.focus();
 }
 export function openColor(id: string, anchor: HTMLElement): void {
   const r = cur();
@@ -151,12 +152,34 @@ export function closeColor(): void {
   }
   if (anchorId) $(`.thumb-btn[data-id="${anchorId}"]`)?.focus();
 }
+/** Draws the editor again (a stop added or removed, solid or gradient), the focus kept on its control. */
 function redrawColor(): void {
   const it = cpItem();
   const pop = $('#cpop');
-  if (it?.fill && pop) {
-    pop.innerHTML = cpHTML(it, it.fill);
-    placeColor();
+  if (!it?.fill || !pop) return;
+  const fill = it.fill;
+  keepFocus(
+    () => {
+      pop.innerHTML = cpHTML(it, fill);
+      placeColor();
+    },
+    () => $(`.cp-hex[data-i="${cp.active}"]`, pop),
+  );
+}
+/** The hex field's error: shown and announced, tied to the field (aria-invalid, aria-describedby), or cleared. */
+function hexError(field: HTMLInputElement | null, on: boolean): void {
+  const err = $('#cp-err');
+  if (err) {
+    err.hidden = !on;
+    err.textContent = on ? t('invalidHex') : '';
+  }
+  if (!field) return;
+  if (on) {
+    field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', 'cp-err');
+  } else {
+    field.removeAttribute('aria-invalid');
+    field.removeAttribute('aria-describedby');
   }
 }
 function applyFill(commit: boolean): void {
@@ -266,8 +289,7 @@ export function colorInput(tg: HTMLInputElement): boolean {
   if (tg.classList.contains('cp-hex')) {
     const v = tg.value.trim().startsWith('#') ? tg.value.trim() : `#${tg.value.trim()}`;
     if (/^#[0-9a-f]{6}$/i.test(v)) {
-      const err = $('#cp-err');
-      if (err) err.hidden = true;
+      hexError(tg, false);
       setStop(Number(tg.dataset.i), v, false);
     }
     return true;
@@ -284,13 +306,13 @@ export function colorChange(tg: HTMLInputElement): boolean {
   if (tg.classList.contains('cp-hex')) {
     const i = Number(tg.dataset.i);
     const v = tg.value.trim().startsWith('#') ? tg.value.trim() : `#${tg.value.trim()}`;
-    const err = $('#cp-err');
     if (isHex(v)) {
-      if (err) err.hidden = true;
+      hexError(tg, false);
       setStop(i, v, true);
       tg.value = normHex(v).toUpperCase();
     } else {
-      if (err) err.hidden = false;
+      // Put back to the color it had, with the reason, until a valid code is typed.
+      hexError(tg, true);
       const c = cpItem()?.fill?.colors[i];
       if (c) tg.value = normHex(c).toUpperCase();
     }

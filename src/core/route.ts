@@ -1,4 +1,4 @@
-import { ALIAS_RE } from './board';
+import { ALIAS_RE } from './board.ts';
 
 /**
  * The app's addresses (D92): real paths under the app's folder, so every view has a link that can be

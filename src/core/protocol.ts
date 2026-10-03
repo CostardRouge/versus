@@ -1,4 +1,4 @@
-import { ALIAS_RE, canSeeRanking, isOutcome, isRecord, LIMITS, VOTER_RE, voteCount, votesOf } from './board';
+import { ALIAS_RE, canSeeRanking, isOutcome, isRecord, LIMITS, VOTER_RE, voteCount, votesOf } from './board.ts';
 import type {
   BoardLang,
   BoardSettings,
@@ -13,7 +13,7 @@ import type {
   ReportReason,
   Result,
   SharedBoard,
-} from './types';
+} from './types.ts';
 
 /** Messages and views exchanged between the app and a published board (HTTP + WebSocket). */
 
@@ -79,6 +79,8 @@ export type HttpErrorCode = ErrorCode | 'too_large' | 'unsupported';
 
 /** Largest client message accepted, in characters. */
 export const MAX_MESSAGE = 4096;
+/** The close code of a board's socket when the board is gone (withdrawn, taken down, expired): don't reconnect. */
+export const CLOSE_GONE = 4004;
 /** Longest human check token passed on to Turnstile (its tokens are about 2 KB at most). */
 const MAX_TOKEN = 2048;
 

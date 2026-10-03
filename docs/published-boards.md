@@ -1,6 +1,6 @@
 # Published boards (agreed model)
 
-Status: **implemented, not deployed**: server in `worker/` (rules in `src/core/board.ts`), app in `src/app/publish.ts` and `src/app/board.ts`. Runs locally with `npm run worker:dev`. Discussed on 2026-09-29. Describes how a ranking goes from private to public and how a crowd votes on it. Infrastructure is in `docs/online-architecture.md`. "Published board" and "shared board" mean the same thing.
+Status: **live** (versus.steevepommier.com): server in `worker/` (rules in `src/core/board.ts`), app in `src/app/publish.ts` and `src/app/board.ts`. Runs locally with `npm run worker:dev`; CI deploys it from `main`. Discussed on 2026-09-29. Describes how a ranking goes from private to public and how a crowd votes on it. Infrastructure is in `docs/online-architecture.md`. "Published board" and "shared board" mean the same thing.
 
 ## Two kinds of rankings
 
@@ -153,6 +153,6 @@ To keep publishing light, the modal shows four things: the warning, "push my vot
 
 ## Still open
 
-- Anti-abuse beyond per-IP limits and Turnstile at publication: an author option to require a check (Turnstile) per voter?
+- Anti-abuse beyond per-IP limits, the cap on new voters per address and Turnstile (at publication, and before a first vote on the official boards): an author option to require a check (Turnstile) per voter?
 - Pictures for every author, or by author: today one variable turns the review queue on for everyone; a condition per author (an account, a track record) would need accounts.
-- TTL of inactive published boards (proposal: 60 days without a vote) and warning the author before deletion.
+- Warning the author before an inactive board is deleted (60 days without activity, `TTL_DAYS`).

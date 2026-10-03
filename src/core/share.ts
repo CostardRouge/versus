@@ -1,4 +1,4 @@
-import { ALIAS_RE, LIMITS } from './board.ts';
+import { ALIAS_RE } from './board.ts';
 import type { BoardView, RankingView } from './protocol.ts';
 import { agreement, ownRanking } from './published.ts';
 import { compute } from './scoring.ts';
@@ -322,5 +322,3 @@ export function isCardImage(bytes: Uint8Array): boolean {
 
 /** Rows a card shows, by format: the podium and as many of the rest as fit. */
 export const CARD_ROWS: Record<CardFormat, number> = { post: 12, story: 20, landscape: 5 };
-
-export { LIMITS };

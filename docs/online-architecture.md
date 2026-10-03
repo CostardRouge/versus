@@ -1,6 +1,6 @@
 # Online architecture
 
-Status: **built in `worker/`**, running locally and in tests, not deployed yet (steps below). Discussed on 2026-09-29. Goal: published (shared, real-time) boards for potentially hundreds of thousands of users, on a near-zero budget. Product behavior of published boards (lifecycle, voting rules, visibility, live updates) is in `docs/published-boards.md`.
+Status: **live**: built in `worker/`, deployed by CI from `main` to versus.steevepommier.com (steps below), also run locally and in the tests. Discussed on 2026-09-29. Goal: published (shared, real-time) boards for potentially hundreds of thousands of users, on a near-zero budget. Product behavior of published boards (lifecycle, voting rules, visibility, live updates) is in `docs/published-boards.md`.
 
 ## Load estimate
 

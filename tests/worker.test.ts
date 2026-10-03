@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
 import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS, NEW_VOTERS_PER_ADDRESS } from '../src/core/board';
@@ -30,6 +30,15 @@ const NO_CACHE = { CACHE_SECONDS: '0' };
 const server = createTestHarness({
   workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: NO_CACHE }],
 });
+/** Every request the tests make, as "METHOD /path": the last test checks that each route of the router was called. */
+const called: string[] = [];
+const harnessFetch = server.fetch.bind(server);
+server.fetch = (input, init) => {
+  const req = input instanceof Request ? input : null;
+  const url = new URL(req ? req.url : String(input), 'http://localhost');
+  called.push(`${init?.method ?? req?.method ?? 'GET'} ${url.pathname}`);
+  return harnessFetch(input, init);
+};
 /** Reloads the Worker with these variables and secrets (the admin token always, the cache off unless said). */
 const configure = (vars: Record<string, string> = {}, secrets: Record<string, string> = {}) =>
   server.update({
@@ -155,6 +164,7 @@ class Client {
     ip?: string,
   ): Promise<Client> {
     const url = new URL(`/api/boards/${alias}`, base);
+    called.push(`GET ${url.pathname}`);
     url.protocol = 'ws:';
     const init = ip ? { headers: { 'CF-Connecting-IP': ip } } : undefined;
     const ws = new WebSocket(url, init as unknown as string[]);
@@ -900,6 +910,9 @@ describe('registry and admin', () => {
     expect(full.ranking?.order).toHaveLength(items.length);
     expect((await adminApi(`/boards/${alias}/close`, { method: 'POST' })).status).toBe(200);
     expect((await view(alias)).body.status).toBe('closed');
+    expect((await adminApi(`/boards/${alias}/reopen`, { method: 'POST' })).status).toBe(200);
+    expect((await view(alias)).body.status).toBe('open');
+    expect((await adminApi(`/boards/${alias}/close`, { method: 'POST' })).status).toBe(200);
     expect((await adminApi(`/boards/${alias}/items/p0`, { method: 'DELETE' })).status).toBe(200);
     expect((await view(alias)).body.items).toHaveLength(items.length - 1);
     const voter = await Client.open(alias, 'voter-one-1');
@@ -1530,5 +1543,36 @@ describe('cleanup', () => {
     const { alias } = await publish();
     expect((await view(alias)).status).toBe(200);
     await vi.waitFor(async () => expect((await view(alias)).status).toBe(404), { timeout: 8000, interval: 250 });
+  });
+});
+
+describe('routes', () => {
+  /**
+   * The routes worker/src/index.ts lists at its top, as method and path pattern: `a | b` and `x, y` are two routes,
+   * `[…]` is optional, a query is left out, `:name` is one segment.
+   */
+  const routes = (): [string, RegExp, string][] => {
+    const source = readFileSync('worker/src/index.ts', 'utf8');
+    const head = source.slice(0, source.indexOf('*/'));
+    return [...head.matchAll(/^ \*\s+(GET|POST|PUT|PATCH|DELETE)\s+(\S.*?)(?:\s{2,}|$)/gm)].flatMap(
+      ([, method, spec]) =>
+        (spec ?? '').split(', ').flatMap((path) => {
+          const [first = '', ...others] = path.replace(/\[\?[^\]]*\]|\?\S*$/g, '').split(' | ');
+          const paths = [first, ...others.map((last) => first.replace(/[^/]+$/, last))];
+          return paths.map((p): [string, RegExp, string] => {
+            const re = p.replace(/\./g, '\\.').replace(/\[/g, '(?:').replace(/\]/g, ')?').replace(/:\w+/g, '[^/]+');
+            return [method ?? '', new RegExp(`^${re}$`), p];
+          });
+        }),
+    );
+  };
+
+  it('calls every route the router lists at least once', () => {
+    const listed = routes();
+    expect(listed.length).toBeGreaterThan(30);
+    const missing = listed
+      .filter(([method, re]) => !called.some((c) => c.startsWith(`${method} `) && re.test(c.slice(method.length + 1))))
+      .map(([method, , path]) => `${method} ${path}`);
+    expect(missing).toEqual([]);
   });
 });

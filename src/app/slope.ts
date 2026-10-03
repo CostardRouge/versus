@@ -45,18 +45,44 @@ export function drawSlopes(): void {
   for (const box of $$('[data-slope]')) draw(box);
 }
 
-/** Pointing at an item (in either ranking, or its line) highlights it on both sides. */
+/**
+ * Pointing at an item (in either ranking, or its line) highlights it on both sides. Its rows are also toggle
+ * buttons, for touch and the keyboard: a tap, Enter or Space keeps the item highlighted, a second one lets go.
+ */
 export function bindSlopes(root: ParentNode = doc): void {
   for (const box of $$('[data-slope]', root)) {
+    const rows = $$('[data-slope-l] li[data-id], [data-slope-r] li[data-id]', box);
+    let kept: string | null = null;
     const light = (key: string | null) => {
       box.classList.toggle('hovering', key !== null);
       for (const el of $$<Element>('[data-id]', box)) el.classList.toggle('hl', el.getAttribute('data-id') === key);
     };
+    const keep = (key: string | null) => {
+      kept = key === kept ? null : key;
+      for (const li of rows) li.setAttribute('aria-pressed', String(li.dataset.id === kept));
+      light(kept);
+    };
+    for (const li of rows) {
+      li.tabIndex = 0;
+      li.setAttribute('role', 'button');
+      li.setAttribute('aria-pressed', 'false');
+    }
     box.addEventListener('pointerover', (e) => {
+      if (kept !== null) return;
       const el = (e.target as Element | null)?.closest?.('[data-id]');
       light(el?.getAttribute('data-id') ?? null);
     });
-    box.addEventListener('pointerleave', () => light(null));
+    box.addEventListener('pointerleave', () => light(kept));
+    box.addEventListener('click', (e) => {
+      const li = (e.target as Element | null)?.closest?.<HTMLElement>('li[data-id]');
+      if (li && rows.includes(li)) keep(li.dataset.id ?? null);
+    });
+    box.addEventListener('keydown', (e) => {
+      const li = e.target as HTMLElement;
+      if ((e.key !== 'Enter' && e.key !== ' ') || !rows.includes(li)) return;
+      e.preventDefault();
+      keep(li.dataset.id ?? null);
+    });
   }
 }
 

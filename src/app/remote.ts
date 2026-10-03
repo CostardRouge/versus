@@ -1,11 +1,12 @@
-import type {
-  BoardSummary,
-  BoardView,
-  ClientMessage,
-  HttpErrorCode,
-  PopularBoard,
-  ServerConfig,
-  ServerMessage,
+import {
+  type BoardSummary,
+  type BoardView,
+  CLOSE_GONE,
+  type ClientMessage,
+  type HttpErrorCode,
+  type PopularBoard,
+  type ServerConfig,
+  type ServerMessage,
 } from '../core/protocol';
 import type { PublishRequest } from '../core/published';
 import { duelQuery } from '../core/share';
@@ -161,8 +162,6 @@ export const putItemImage = (alias: string, token: string, id: string, jpeg: Blo
 
 export type Connection = 'connecting' | 'open' | 'lost' | 'gone';
 
-/** Close code the server uses when the board no longer exists. */
-const GONE = 4004;
 /** How long a failed connection waits for the API to say whether the board still exists before saying it's lost. */
 const LOST_AFTER_MS = 1000;
 
@@ -209,7 +208,7 @@ export class BoardSocket {
     ws.addEventListener('close', (e) => {
       if (this.ws !== ws || this.stopped) return;
       this.ws = null;
-      if (e.code === GONE) this.gone();
+      if (e.code === CLOSE_GONE) this.gone();
       else void this.retry();
     });
   }

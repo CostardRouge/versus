@@ -1,3 +1,5 @@
+import { fill, type Lang, pluralIsMany } from './text.ts';
+
 /**
  * Texts of a board's link preview (title and description a social network shows when the link is pasted),
  * written by the Worker into the app page's head (worker/src/index.ts) in the board's language. Kept apart
@@ -28,7 +30,7 @@ export const unfurlEn = {
   tplHow2:
     'The crowd’s ranking is computed with a Bradley-Terry model (the “Balanced” method): it estimates, for each item, the probability that a random voter prefers it, and absorbs the crowd’s contradictions. The share shown next to each item is how often it won its duels.',
   tplHow3:
-    'Want the same duel with your own list? Open the board and make your own version: a ranking of yours, with these items, ready to change and publish.',
+    'Want the same duel with your own list? Open the ranking and make your own version: a ranking of yours, with these items, ready to change and publish.',
   tplMoreTitle: 'More rankings to vote on',
   tplAbout: 'Made with Versus, the free app that ranks anything two at a time.',
   item: ['item', 'items'],
@@ -59,7 +61,7 @@ export const unfurlFr: typeof unfurlEn = {
   tplHow2:
     'Le classement de la foule est calculé avec un modèle de Bradley-Terry (la méthode « Équilibré ») : il estime, pour chaque élément, la probabilité qu’un votant pris au hasard le préfère, et absorbe les contradictions de la foule. La part affichée à côté de chaque élément est la fréquence à laquelle il a gagné ses duels.',
   tplHow3:
-    'Envie du même duel avec ta propre liste ? Ouvre le tableau et fais ta version : un classement à toi, avec ces éléments, prêt à modifier et à publier.',
+    'Envie du même duel avec ta propre liste ? Ouvre le classement et fais ta version : un classement à toi, avec ces éléments, prêt à modifier et à publier.',
   tplMoreTitle: 'D’autres classements où voter',
   tplAbout: 'Fait avec Versus, l’app gratuite qui classe n’importe quoi deux par deux.',
   item: ['élément', 'éléments'],
@@ -67,17 +69,17 @@ export const unfurlFr: typeof unfurlEn = {
   voter: ['votant', 'votants'],
 };
 
-export type UnfurlLang = 'en' | 'fr';
+export type UnfurlLang = Lang;
 export const UNFURL: Record<UnfurlLang, typeof unfurlEn> = { en: unfurlEn, fr: unfurlFr };
 
 /** "3 votes", "1 vote"; French treats 0 and 1 as singular. */
 export const unfurlPlural = (lang: UnfurlLang, n: number, key: 'item' | 'vote' | 'voter'): string => {
   const [one, many] = UNFURL[lang][key];
-  return `${n} ${lang === 'fr' ? (n > 1 ? many : one) : n === 1 ? one : many}`;
+  return `${n} ${pluralIsMany(n, lang) ? many : one}`;
 };
 
 export type UnfurlKey = Exclude<keyof typeof unfurlEn, 'item' | 'vote' | 'voter'>;
 
 /** A text with its placeholders filled. */
 export const unfurlText = (lang: UnfurlLang, key: UnfurlKey, vars: Record<string, string> = {}): string =>
-  UNFURL[lang][key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '');
+  fill(UNFURL[lang][key], vars);
