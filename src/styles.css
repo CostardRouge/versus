@@ -452,6 +452,17 @@ kbd {
   margin: 18px 0 0;
   font-size: 13px;
 }
+/* The Popular section's place while its list loads: about a row of cards, so nothing jumps when it comes */
+.g-wait {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  margin: 0;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-lg);
+  color: var(--muted);
+  font-size: 14px;
+}
 /* An address that led nowhere: a word at the top of the gallery, until closed */
 .g-notice {
   display: flex;

@@ -466,6 +466,7 @@ export const fr: Messages = {
   cpTypeAria: 'Unie ou dégradé',
   differs: 'diffère de la méthode active',
   pathUnknown: 'Cette adresse ne mène nulle part dans Versus. Voici tes classements.',
+  popularLoading: 'Chargement des classements populaires…',
   recordText: (v: Vars) =>
     [
       `${v.w} ${Number(v.w) > 1 ? 'victoires' : 'victoire'}`,

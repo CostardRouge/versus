@@ -11,7 +11,8 @@ import { getLang, methodText as M, pct, plural, t } from '../i18n';
 import { aboutHTML } from './about';
 import { trashSvg } from './dom';
 import { ago, fmtScore } from './format';
-import { popularBoards } from './popular';
+import { joinedRefreshing } from './joined';
+import { popularBoards, popularWaiting } from './popular';
 import { iosHomeScreen } from './pwa';
 import { online } from './remote';
 import { routeURL } from './router';
@@ -182,13 +183,18 @@ export function galleryHTML(): string {
   const hide = !!S.prefs.hideDemos;
   // The liveliest eight: enough to pick from, not a second gallery.
   const popular = popularBoards().slice(0, 8);
-  const popularSec = popular.length
-    ? `<div class="sec-head popular-head">
+  const popularHead = `<div class="sec-head popular-head">
       <div><h2>${t('popular')}</h2><p class="muted">${t('popularIntro')}</p></div>
-    </div>
+    </div>`;
+  const popularSec = popular.length
+    ? `${popularHead}
     <div class="g-grid">${popular.map(pcardHTML).join('')}</div>`
-    : '';
-  const votesGrid = `<div class="g-grid">${joined.map(jcardHTML).join('')}</div>`;
+    : popularWaiting()
+      ? `${popularHead}
+    <p class="g-wait" role="status">${t('popularLoading')}</p>`
+      : '';
+  // Busy while the server is asked how these boards are doing (joined.ts).
+  const votesGrid = `<div class="g-grid votes-grid" aria-busy="${joinedRefreshing()}">${joined.map(jcardHTML).join('')}</div>`;
   // Someone who came through a shared link and made nothing yet sees their votes first.
   const top =
     !mine.length && joined.length

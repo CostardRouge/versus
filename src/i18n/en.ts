@@ -457,6 +457,7 @@ export const en = {
   cpTypeAria: 'Solid or gradient',
   differs: 'differs from the active method',
   pathUnknown: 'This address leads nowhere in Versus. Here are your rankings.',
+  popularLoading: 'Loading popular rankings…',
   recordText: (v: Vars) =>
     [
       `${v.w} ${Number(v.w) === 1 ? 'win' : 'wins'}`,
