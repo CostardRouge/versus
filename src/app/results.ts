@@ -122,7 +122,7 @@ function compareHTML(r: Ranking, C: Computed): string {
   const head = cols
     .map(
       (c) =>
-        `<th scope="col" class="${c.k === C.m ? 'on' : ''}"><button type="button" data-action="set-method" data-m="${c.k}">${M(c.k).name}<span class="mono">${M(c.k).tech}</span></button></th>`,
+        `<th scope="col" class="${c.k === C.m ? 'on' : ''}"><button class="cmp-m" type="button" data-action="set-method" data-m="${c.k}">${M(c.k).name}<span class="mono">${M(c.k).tech}</span></button></th>`,
     )
     .join('');
   return `<section class="cmp">

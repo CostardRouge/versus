@@ -4,7 +4,7 @@ import { compute, methodOf } from '../core/scoring';
 import type { Item, Ranking } from '../core/types';
 import { methodText as M, plural, t } from '../i18n';
 import { closeColor, cp } from './color';
-import { $$, toast } from './dom';
+import { $, $$, doc, keepFocus, toast } from './dom';
 import { fileToThumb, imageFiles, imageName, type Row, renderRows, type Typed, takeColor, typed } from './editor';
 import { fmtScore } from './format';
 import { cur, S, save, stat } from './state';
@@ -116,13 +116,25 @@ function dropItems(r: Ranking, ids: Set<string>): void {
   if (cur() === r) afterItemsChange(r, prev);
   else save();
 }
-/** Removes an item at once; Undo puts it back in its place with its id, so its duels count again. */
+/** The name field of a row of the list. */
+const nameField = (id: string | undefined): HTMLElement | null =>
+  id ? $(`#item-list .row-label[data-id="${id}"]`) : null;
+
+/**
+ * Removes an item at once; Undo puts it back in its place with its id, so its duels count again. The focus goes
+ * on to the next row's name (the previous one at the end), or to the add field once the list is empty.
+ */
 export function removeItem(id: string | undefined): void {
   const r = cur();
   const at = r && id ? r.items.findIndex((i) => i.id === id) : -1;
   const it = r?.items[at];
   if (!r || !it) return;
-  dropItems(r, new Set([it.id]));
+  const row = $(`#item-list li[data-id="${it.id}"]`);
+  const next = (row?.nextElementSibling ?? row?.previousElementSibling) as HTMLElement | null | undefined;
+  keepFocus(
+    () => dropItems(r, new Set([it.id])),
+    () => nameField(next?.dataset.id) ?? $('#add-input'),
+  );
   toast(t('itemRemovedNamed', { label: it.label }), {
     label: t('undoToast'),
     run: () => {
@@ -130,8 +142,13 @@ export function removeItem(id: string | undefined): void {
       const prev = r.items.length;
       r.items.splice(Math.min(at, prev), 0, it);
       r.updated = Date.now();
-      if (cur() === r) afterItemsChange(r, prev);
-      else save();
+      if (cur() !== r) {
+        save();
+        return;
+      }
+      afterItemsChange(r, prev);
+      // Put back where the focus can find it (the toast's button is gone).
+      if (doc.activeElement === doc.body) nameField(it.id)?.focus();
     },
   });
 }

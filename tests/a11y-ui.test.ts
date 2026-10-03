@@ -298,10 +298,69 @@ describe('color editor', () => {
   it('takes the focus on phones too, on its switch rather than a text field', () => {
     setMedia('narrow', true);
     click('.tab[data-tab="items"]');
+    // The Items tab focuses the add field a moment later.
+    vi.advanceTimersByTime(50);
     click('#item-list .thumb-btn');
     expect(document.activeElement).toBe($('.cp-seg [aria-pressed="true"]'));
     key('Escape');
     setMedia('narrow', false);
     click('.tab[data-tab="duel"]');
+  });
+});
+
+describe('focus across a render', () => {
+  it('goes to the new duel’s card after Enter on a card', () => {
+    click('[data-action="back"]');
+    click('.rcard [data-action="open"][data-id="demo-destinations"][data-tab="duel"]');
+    const card = $('#stage .card-a');
+    const n = duels('demo-destinations') ?? 0;
+    card.focus();
+    key('Enter', card);
+    vi.advanceTimersByTime(600);
+    expect(duels('demo-destinations')).toBe(n + 1);
+    expect(card.isConnected).toBe(false);
+    expect(document.activeElement).toBe($('#stage .card-a'));
+  });
+
+  it('stays on the button that voted, and on Skip', () => {
+    $('.ctl[data-action="pick"][data-side="b"]').focus();
+    click('.ctl[data-action="pick"][data-side="b"]');
+    vi.advanceTimersByTime(600);
+    expect(document.activeElement).toBe($('.ctl[data-action="pick"][data-side="b"]'));
+    $('.ctl[data-action="skip"]').focus();
+    click('.ctl[data-action="skip"]');
+    expect(document.activeElement).toBe($('.ctl[data-action="skip"]'));
+  });
+
+  it('stays on a method of the comparison table after switching to it', () => {
+    click('.tab[data-tab="results"]');
+    const elo = () => $('.cmp-table [data-action="set-method"][data-m="elo"]');
+    elo().focus();
+    elo().click();
+    expect($('#method-name').textContent).toBe('Dynamic');
+    expect(document.activeElement).toBe(elo());
+    click('.cmp-table [data-action="set-method"][data-m="bt"]');
+  });
+
+  it('goes on to the next item’s name after a removal, and to the add field once the list is empty', () => {
+    click('[data-action="back"]');
+    click('[data-action="new-rank"]');
+    const input = $<HTMLInputElement>('#add-input');
+    // Typed, a list's lines are separated by a written \n (core/list.ts).
+    input.value = 'One\\nTwo\\nThree';
+    $('#add-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const ids = () => [...document.querySelectorAll<HTMLElement>('#item-list li[data-id]')].map((li) => li.dataset.id);
+    const [first, second, third] = ids();
+    const remove = (id: string | undefined) => {
+      const rm = $(`#item-list .rm[data-id="${id}"]`);
+      rm.focus();
+      rm.click();
+    };
+    remove(first);
+    expect(document.activeElement?.matches(`.row-label[data-id="${second}"]`)).toBe(true);
+    remove(third);
+    expect(document.activeElement?.matches(`.row-label[data-id="${second}"]`)).toBe(true);
+    remove(second);
+    expect(document.activeElement).toBe($('#add-input'));
   });
 });

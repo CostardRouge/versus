@@ -149,7 +149,8 @@ export function keepFocus(render: () => void, fallback?: () => HTMLElement | nul
   const key = at instanceof HTMLElement && at !== doc.body ? focusKey(at) : null;
   render();
   if (!(at instanceof HTMLElement) || at === doc.body || at.isConnected) return;
-  ((key ? $(key) : null) ?? fallback?.())?.focus();
+  const same = key ? $<HTMLButtonElement>(key) : null;
+  (same && !same.disabled && !same.closest('[hidden]') ? same : fallback?.())?.focus();
 }
 /**
  * Confirm modal. `html` replaces the text body with markup the caller reads back after OK (a small

@@ -4,7 +4,7 @@ import type { MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, t } from '../i18n';
 import { authorSetMethod, renderAuthorMain } from './author';
-import { $, $$, castSvg, doc, narrow, toast } from './dom';
+import { $, $$, castSvg, doc, keepFocus, narrow, toast } from './dom';
 import { bindStage, duelHTML } from './duel';
 import { paneHTML } from './editor';
 import { clearEnding, mountEnding } from './ending';
@@ -181,8 +181,11 @@ export function setMethod(k: string | undefined): void {
   const nm = $('#method-name');
   if (nm) nm.textContent = M(key).name;
   for (const b of $$('.mopt')) b.setAttribute('aria-checked', String(b.dataset.m === key));
-  renderList(r, true);
-  renderMain(r);
+  // Switched from the comparison table, the focus stays on its method's button.
+  keepFocus(() => {
+    renderList(r, true);
+    renderMain(r);
+  });
   toast(t('methodChanged', { name: M(key).name }));
 }
 export function renderMain(r: Ranking): void {
