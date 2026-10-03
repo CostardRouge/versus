@@ -4,7 +4,7 @@ import { freshLabels, labelKey } from '../core/list';
 import type { BoardView } from '../core/protocol';
 import { dataURLBytes } from '../core/published';
 import { ownerFragment } from '../core/route';
-import type { Fill, Item, MethodKey } from '../core/types';
+import type { BoardSettings, Fill, Item, MethodKey } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
 import {
@@ -34,6 +34,7 @@ import {
   typed,
   typedItems,
 } from './editor';
+import { errorKey, OWNER_ERRORS } from './errors';
 import { optionsHTML, readSettings, visibilityHTML } from './publish';
 import {
   addBoardItem,
@@ -244,8 +245,22 @@ export async function authorSetMethod(k: string | undefined): Promise<void> {
   }
 }
 
-/** The board's settings, links and lifecycle, behind the header's Published button. Changes apply at once. */
-export function authorSettings(): void {
+/** The open settings dialog's form as the author left it, read at each change; sent once it closes on Done. */
+let settingsForm: { draft: Partial<BoardSettings> | null } | null = null;
+
+/** What `next` changes in `now`: the fields to send, none when nothing changed. */
+function changedSettings(next: Partial<BoardSettings>, now: BoardSettings): Partial<BoardSettings> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(next)) if (v !== now[k as keyof BoardSettings]) out[k] = v;
+  return out as Partial<BoardSettings>;
+}
+
+/**
+ * The board's settings, links and lifecycle, behind the header's Published button. Changes apply on Done (or one of
+ * the dialog's actions), in one request with the changed fields only: a keyboard going through the radio buttons
+ * publishes nothing on its way. Refused, the dialog opens again on the settings in force, saying why.
+ */
+export async function authorSettings(problem?: string): Promise<void> {
   const b = authored();
   if (!b) return;
   const v = b.view;
@@ -263,8 +278,23 @@ export function authorSettings(): void {
       <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
       <button class="btn sm danger" type="button" data-action="b-withdraw">${t('withdraw')}</button>
     </div>
-  </div>`;
-  void ask({ title: t('boardSettings'), html, ok: t('done'), cancel: false });
+  </div>${problem ? `<p class="m-error" role="alert">${esc(problem)}</p>` : ''}`;
+  const form: { draft: Partial<BoardSettings> | null } = { draft: null };
+  settingsForm = form;
+  const ok = await ask({ title: t('boardSettings'), html, ok: t('done') });
+  const { draft } = form;
+  if (settingsForm === form) settingsForm = null;
+  if (!ok || !draft || authored() !== b) return;
+  const changes = changedSettings(draft, b.view.settings);
+  if (!Object.keys(changes).length) return;
+  try {
+    await patchBoard(b.alias, b.owner, changes);
+  } catch (e) {
+    const why = `${t('settingsNotSaved')} ${t(errorKey(e, OWNER_ERRORS))}`;
+    // Unless another dialog opened meanwhile (an action of the settings): then a word is enough.
+    if ($('#modal')?.hidden && authored() === b) void authorSettings(why);
+    else toast(why);
+  }
 }
 
 /**
@@ -298,8 +328,7 @@ export function authorChange(tg: HTMLInputElement): boolean {
     if (tg.files) void authorAddFiles([...tg.files]);
     tg.value = '';
   } else if (tg.closest('#b-settings')) {
-    const settings = readSettings($('#b-settings') ?? tg, 'b');
-    void ownerCall((alias, token) => patchBoard(alias, token, settings));
+    if (settingsForm) settingsForm.draft = readSettings($('#b-settings') ?? tg, 'b');
   } else return false;
   return true;
 }

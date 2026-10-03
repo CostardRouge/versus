@@ -272,7 +272,7 @@ function onClick(e: MouseEvent): void {
       void authorNewAdminLink();
       break;
     case 'b-settings':
-      authorSettings();
+      void authorSettings();
       break;
     case 'b-close':
       void boardStatus('closed');

@@ -498,6 +498,7 @@ export const fr: Messages = {
   retry: 'Réessayer',
   lastVisit: 'Lors de ta dernière visite',
   publishing: 'Publication…',
+  settingsNotSaved: 'Tes changements n’ont pas été enregistrés.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

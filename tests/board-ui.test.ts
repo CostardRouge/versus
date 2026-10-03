@@ -719,13 +719,53 @@ describe('author', () => {
     click('[data-action="b-settings"]');
     expect($('#m-title')?.textContent).toBe('Published ranking settings');
     expect($('#b-settings input[name="b-m"]')).toBeNull();
-    const blind = $('#b-settings input[name="b-vis"][value="blind"]') as HTMLInputElement;
-    blind.checked = true;
-    change(blind);
+    // Going through the radio buttons (each one a change, as with the arrow keys) sends nothing…
+    calls.length = 0;
+    for (const vis of ['after', 'always', 'blind']) {
+      const radio = $(`#b-settings input[name="b-vis"][value="${vis}"]`) as HTMLInputElement;
+      radio.checked = true;
+      change(radio);
+    }
     await flush();
-    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', url: `/api/boards/${ALIAS}`, auth: `Bearer ${OWNER}` });
-    expect(calls.at(-1)?.body).toMatchObject({ visibility: 'blind' });
+    expect(calls).toHaveLength(0);
+    // …Done sends what changed, once.
+    click('#m-ok');
+    await flush();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}`,
+      auth: `Bearer ${OWNER}`,
+      body: { visibility: 'blind' },
+    });
+    // Nothing changed, nothing sent; Cancel forgets the changes.
+    click('[data-action="b-settings"]');
+    click('#m-ok');
+    click('[data-action="b-settings"]');
+    ($('#b-visitors') as HTMLInputElement).checked = true;
+    change($('#b-visitors') as HTMLInputElement);
+    click('#m-cancel');
+    await flush();
+    expect(calls).toHaveLength(1);
+    // Refused: the settings open again on what is in force, saying why.
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    click('[data-action="b-settings"]');
+    const after = $('#b-settings input[name="b-vis"][value="after"]') as HTMLInputElement;
+    after.checked = true;
+    change(after);
+    click('#m-ok');
+    await flush();
+    expect($('#modal')?.hidden).toBe(false);
+    expect($('#m-body [role="alert"]')?.textContent).toBe(
+      'Your changes weren’t saved. You’re offline or the server can’t be reached. Try again in a moment.',
+    );
+    expect(($('#b-settings input[name="b-vis"][value="always"]') as HTMLInputElement).checked).toBe(true);
+    click('#m-cancel');
+    respond = (c) => ({ status: 200, body: c.method === 'PATCH' ? view().settings : 'closed' });
     // Closing the vote from the settings closes them first.
+    click('[data-action="b-settings"]');
     click('#b-settings [data-action="b-close"]');
     expect($('#modal')?.hidden).toBe(true);
     await flush();

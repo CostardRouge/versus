@@ -488,6 +488,7 @@ export const en = {
   retry: 'Retry',
   lastVisit: 'As of your last visit',
   publishing: 'Publishing…',
+  settingsNotSaved: 'Your changes weren’t saved.',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;
