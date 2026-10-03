@@ -25,9 +25,18 @@ import { setTab, wsHTML } from './workspace';
 
 /** Top-level view switch (gallery, workspace or published board), navigation and actions on whole rankings. */
 
-/** Draws the view the route names. The same view drawn again keeps its focused control (keepFocus). */
-export function render(): void {
-  keepFocus(draw);
+/**
+ * Draws the view the route names. The same view drawn again keeps its focused control (keepFocus), else gives the
+ * focus to `fallback`'s element.
+ */
+export function render(fallback?: () => HTMLElement | null): void {
+  keepFocus(draw, fallback);
+}
+/** The view's heading, ready to take the focus. */
+function heading(): HTMLElement | null {
+  const h = $('#view h1');
+  if (h && !h.hasAttribute('tabindex')) h.tabIndex = -1;
+  return h;
 }
 function draw(): void {
   const pop = $('#cpop');
@@ -179,14 +188,25 @@ export async function deleteRank(id: string | undefined): Promise<void> {
     danger: true,
   });
   if (!ok) return;
-  S.ranks = S.ranks.filter((x) => x.id !== id);
+  const at = S.ranks.indexOf(r);
+  S.ranks = S.ranks.filter((x) => x !== r);
   save();
   if (S.route.id === id) {
     S.route = { view: 'gallery', tab: 'duel' };
     syncURL('replace');
   }
-  render();
-  toast(t('deleted'));
+  // Its card is gone: the focus goes to the gallery's heading.
+  render(heading);
+  // Undo puts it back in its place, duels and all.
+  toast(t('deleted'), {
+    label: t('undoToast'),
+    run: () => {
+      if (S.ranks.some((x) => x.id === r.id)) return;
+      S.ranks.splice(Math.min(at, S.ranks.length), 0, r);
+      save();
+      render();
+    },
+  });
 }
 
 /**
@@ -249,6 +269,8 @@ function route(): void {
     history.replaceState(null, '', routeURL({ view: 'board', alias: legacy.alias }));
   }
   const route = parseRoute(currentPath());
+  // The gallery on screen already (the step back "‹ Rankings" takes, goBack): nothing to draw again.
+  if (booted && route?.view === 'gallery' && S.route.view === 'gallery' && $('#view .gallery')) return;
   if (route?.view === 'board') {
     owner ??= parseOwnerFragment(location.hash);
     // A duel link (`?duel=a.b`): the board opens on that duel; the address loses the query once open.

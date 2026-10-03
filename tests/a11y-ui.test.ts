@@ -574,3 +574,32 @@ describe('Back and addresses', () => {
     expect(document.querySelector('.g-notice')).toBeNull();
   });
 });
+
+describe('deleting a ranking', () => {
+  it('still asks, then offers Undo, which puts it back in its place with its duels', async () => {
+    click('[data-action="back"]');
+    click('[data-action="new-rank"]');
+    const input = $<HTMLInputElement>('#add-input');
+    input.value = 'Tea\\nCoffee';
+    $('#add-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    click('.tab[data-tab="duel"]');
+    click('[data-action="pick"][data-side="a"]');
+    vi.advanceTimersByTime(600);
+    click('.ws-head [data-action="back"]');
+    const before = stored();
+    const doomed = before.find((r) => r.items.length === 2 && r.history.length === 1);
+    if (!doomed) throw new Error('missing the new ranking');
+    const del = $(`[data-action="delete"][data-id="${doomed.id}"]`);
+    del.focus();
+    del.click();
+    await vi.advanceTimersByTimeAsync(20);
+    click('#m-ok');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stored().some((r) => r.id === doomed.id)).toBe(false);
+    expect(document.activeElement).toBe($('#view h1'));
+    expect($('#toast').textContent).toContain('Ranking deleted');
+    click('[data-action="toast-act"]');
+    expect(stored()).toEqual(before);
+    expect(document.querySelector(`.rcard [data-action="delete"][data-id="${doomed.id}"]`)).not.toBeNull();
+  });
+});
