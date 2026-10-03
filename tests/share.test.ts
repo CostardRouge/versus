@@ -8,6 +8,7 @@ import {
   type CardTexts,
   cardKey,
   cardPath,
+  cardUpload,
   compareSpec,
   crowdSpec,
   duelQuery,
@@ -18,6 +19,8 @@ import {
   parseCardPath,
   parseDuelQuery,
   pngSize,
+  previewRanked,
+  previewSpec,
 } from '../src/core/share';
 import type { Item } from '../src/core/types';
 import { UNFURL, unfurlEn, unfurlFr, unfurlPlural, unfurlText } from '../src/i18n/unfurl';
@@ -183,6 +186,50 @@ describe('card specs', () => {
     const spec = duelSpec('Pizzas', a, b, 'https://x.example/b/1?duel=i0.i1', TEXTS);
     expect(spec).toMatchObject({ kind: 'duel', title: 'Pizzas', rows: [], ranked: false });
     expect(spec.pair?.map((i) => i.label)).toEqual(['Margherita', 'Regina']);
+  });
+});
+
+describe('link preview cards', () => {
+  it('show a ranking only when anyone may see it', () => {
+    expect(previewRanked({ visibility: 'always' }, 'open')).toBe(true);
+    expect(previewRanked({ visibility: 'after' }, 'open')).toBe(false);
+    expect(previewRanked({ visibility: 'blind' }, 'open')).toBe(false);
+    for (const visibility of ['always', 'after', 'blind'] as const) {
+      expect(previewRanked({ visibility }, 'closed')).toBe(true);
+    }
+  });
+
+  it('draw the items in board order, unranked, while the ranking is hidden', () => {
+    const list = items(['Margherita', 'Regina', 'Calzone']);
+    const crowd: RankingView = {
+      method: 'bt',
+      order: ['i2', 'i0', 'i1'],
+      stats: Object.fromEntries(list.map((it, i) => [it.id, { score: 1600 - i * 100, se: 20, w: 1, l: 1, d: 0 }])),
+    };
+    const spec = crowdSpec({ title: 'Pizzas', items: list }, crowd, '3 votes', '', TEXTS, () => '1600');
+    expect(previewSpec(spec, list, { visibility: 'always' }, 'open')).toBe(spec);
+    const blind = previewSpec(spec, list, { visibility: 'blind' }, 'open');
+    expect(blind.ranked).toBe(false);
+    expect(blind.rows.map((r) => [r.it.label, r.meta])).toEqual([
+      ['Margherita', ''],
+      ['Regina', ''],
+      ['Calzone', ''],
+    ]);
+    expect(blind).toMatchObject({ kind: 'crowd', title: 'Pizzas', mine: [], agree: null });
+    expect(previewSpec(spec, list, { visibility: 'after' }, 'closed')).toBe(spec);
+  });
+
+  it('come from the author for the board, from anyone the first time for a duel', () => {
+    // The board's own card: its author only.
+    expect(cardUpload('owner', false, false, true)).toBe('ok');
+    expect(cardUpload('visitor', false, false, false)).toBe('forbidden');
+    // A duel's card: the first one drawn is kept; its author may draw it again.
+    expect(cardUpload('visitor', false, true, false)).toBe('ok');
+    expect(cardUpload('visitor', false, true, true)).toBe('exists');
+    expect(cardUpload('owner', false, true, true)).toBe('ok');
+    // The site's own boards take none from visitors.
+    expect(cardUpload('visitor', true, true, false)).toBe('forbidden');
+    expect(cardUpload('visitor', true, false, false)).toBe('forbidden');
   });
 });
 

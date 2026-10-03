@@ -39,8 +39,8 @@ export async function storeCard(
   return 'ok';
 }
 
-/** Deletes every card of a board (when the board goes). */
-export const deleteCards = (bucket: R2Bucket, alias: string): Promise<void> => deletePrefix(bucket, `og/${alias}`);
+/** Deletes every card of a board (when the board goes, or the admin asks); returns how many went. */
+export const deleteCards = (bucket: R2Bucket, alias: string): Promise<number> => deletePrefix(bucket, `og/${alias}`);
 
 /** The stored card a `/og/b/…` address names, or null (the caller then serves the site's card). */
 export async function readCard(bucket: R2Bucket | undefined, parts: readonly string[]): Promise<Response | null> {

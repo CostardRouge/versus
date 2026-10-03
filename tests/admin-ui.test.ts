@@ -252,6 +252,10 @@ describe('the page', () => {
     click('[data-act="clear-reports"]');
     await flush();
     expect(requests('DELETE').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}/reports`);
+    click('[data-act="delete-cards"]');
+    await flush();
+    expect(confirm).toHaveBeenLastCalledWith(adminText('en', 'confirmDeleteCards', { title: 'Pizzas' }));
+    expect(requests('DELETE').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}/cards`);
     click('[data-act="remove-item"][data-id="p0"]');
     await flush();
     expect(confirm).toHaveBeenLastCalledWith(

@@ -372,10 +372,14 @@ describe('your votes', () => {
 
 describe('link previews', () => {
   const card = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 4096);
-  const upload = (alias: string, bytes: Uint8Array, query = '', type = 'image/png') =>
+  const upload = (alias: string, bytes: Uint8Array, query = '', token = '', type = 'image/png') =>
     server.fetch(`/api/boards/${alias}/card${query}`, {
       method: 'PUT',
-      headers: { 'Content-Type': type, 'CF-Connecting-IP': nextIp() },
+      headers: {
+        'Content-Type': type,
+        'CF-Connecting-IP': nextIp(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: bytes,
     });
   const page = async (path: string) => {
@@ -445,12 +449,15 @@ describe('link previews', () => {
   });
 
   it('stores the card the app drew, serves it under /og/ and puts it in the head', async () => {
-    const { alias } = await publish();
-    expect((await upload(alias, card, '', 'text/plain')).status).toBe(415);
-    expect((await upload(alias, fakePng(1080, 1350))).status).toBe(400);
-    expect((await upload('1111111117', card)).status).toBe(404);
+    const { alias, owner } = await publish();
+    expect((await upload(alias, card, '', owner, 'text/plain')).status).toBe(415);
+    expect((await upload(alias, fakePng(1080, 1350), '', owner)).status).toBe(400);
+    expect((await upload('1111111117', card, '', owner)).status).toBe(404);
     expect((await upload(alias, card, '?duel=p0.zz')).status).toBe(400);
-    const stored = await upload(alias, card);
+    // The board's own card is its author's to draw.
+    expect((await upload(alias, card)).status).toBe(403);
+    expect((await upload(alias, card, '', 'f'.repeat(64))).status).toBe(403);
+    const stored = await upload(alias, card, '', owner);
     expect(stored.status).toBe(201);
     const { url } = (await stored.json()) as { url: string };
     expect(url).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/\\d+\\.png$`));
@@ -463,7 +470,7 @@ describe('link previews', () => {
     expect(content(html, 'twitter:image')).toBe(content(html, 'og:image'));
     expect(content(html, 'og:image:alt')).toBe('The ranking “Pizzas” on Versus');
 
-    // A duel card of its own; the board's link keeps the board's card.
+    // A duel card of its own, from whoever shares it first; the board's link keeps the board's card.
     const duelCard = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 2048);
     expect((await upload(alias, duelCard, '?duel=p1.p0')).status).toBe(201);
     const duel = await page(`/app/b/${alias}?duel=p0.p1`);
@@ -473,6 +480,11 @@ describe('link previews', () => {
     );
     const bytes = await (await server.fetch(content(duel.html, 'og:image') ?? '')).arrayBuffer();
     expect(new Uint8Array(bytes)).toEqual(duelCard);
+    // Another visitor can't replace it; the author can.
+    expect((await upload(alias, card, '?duel=p0.p1')).status).toBe(409);
+    expect((await upload(alias, card, '?duel=p0.p1', owner)).status).toBe(201);
+    const redrawn = content((await page(`/app/b/${alias}?duel=p0.p1`)).html, 'og:image') ?? '';
+    expect(new Uint8Array(await (await server.fetch(redrawn)).arrayBuffer())).toEqual(card);
     // A duel without a card: the board's link preview falls back to the site's card.
     expect(content((await page(`/app/b/${alias}?duel=p3.p4`)).html, 'og:image')).toMatch(/\/og\.png$/);
     // An address that names no stored card gets the site's card.
@@ -494,8 +506,9 @@ describe('link previews', () => {
         stored++;
       }
     }
-    // Drawing a card again for a duel that has one is always fine.
-    expect((await upload(alias, card, '?duel=q0.q1')).status).toBe(201);
+    // Drawing a card again for a duel that has one is its author's to do.
+    expect((await upload(alias, card, '?duel=q0.q1')).status).toBe(409);
+    expect((await upload(alias, card, '?duel=q0.q1', owner)).status).toBe(201);
     const first = content((await page(`/app/b/${alias}?duel=q0.q1`)).html, 'og:image') ?? '';
     expect(first).toContain(`/og/b/${alias}/q0.q1/`);
     await api(`/${alias}`, { method: 'DELETE', token: owner });
@@ -507,6 +520,48 @@ describe('link previews', () => {
       },
       { timeout: 5000, interval: 200 },
     );
+  });
+
+  it('takes no card from visitors on the site’s own boards', async () => {
+    const alias = (await (await server.fetch('/t/pizzas/')).text()).match(/\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/)?.[1];
+    expect(alias).toBeDefined();
+    expect((await upload(alias ?? '', card)).status).toBe(403);
+    const { items: list } = (await view(alias ?? '')).body;
+    expect((await upload(alias ?? '', card, `?duel=${list[0]?.id}.${list[1]?.id}`)).status).toBe(403);
+  });
+
+  it('drops the board’s card once its ranking no longer shows to everyone', async () => {
+    const image = async (alias: string) => content((await page(`/app/b/${alias}`)).html, 'og:image') ?? '';
+    const gone = { timeout: 5000, interval: 200 };
+    // Results hidden again.
+    const open = await publish();
+    expect((await upload(open.alias, card, '', open.owner)).status).toBe(201);
+    expect(await image(open.alias)).toContain(`/og/b/${open.alias}/`);
+    await api(`/${open.alias}`, { method: 'PATCH', token: open.owner, body: { visibility: 'blind' } });
+    await vi.waitFor(async () => expect(await image(open.alias)).toMatch(/\/og\.png$/), gone);
+    // A blind vote reopened after its close showed the ranking to everyone.
+    const blind = await publish({ visibility: 'blind' });
+    await api(`/${blind.alias}/close`, { method: 'POST', token: blind.owner });
+    expect((await upload(blind.alias, card, '', blind.owner)).status).toBe(201);
+    await api(`/${blind.alias}/reopen`, { method: 'POST', token: blind.owner });
+    await vi.waitFor(async () => expect(await image(blind.alias)).toMatch(/\/og\.png$/), gone);
+    // Nothing goes while it stays public.
+    expect((await upload(open.alias, card, '?duel=p0.p1')).status).toBe(201);
+    await api(`/${open.alias}`, { method: 'PATCH', token: open.owner, body: { visibility: 'always' } });
+    expect((await upload(open.alias, card, '', open.owner)).status).toBe(201);
+    await api(`/${open.alias}`, { method: 'PATCH', token: open.owner, body: { allowChange: false } });
+    expect(await image(open.alias)).toContain(`/og/b/${open.alias}/`);
+  });
+
+  it('lets the admin delete a board’s cards', async () => {
+    const { alias, owner } = await publish();
+    expect((await upload(alias, card, '', owner)).status).toBe(201);
+    expect((await upload(alias, card, '?duel=p0.p1')).status).toBe(201);
+    expect((await adminApi(`/boards/${alias}/cards`, { method: 'DELETE', token: 'wrong' })).status).toBe(403);
+    expect(await (await adminApi(`/boards/${alias}/cards`, { method: 'DELETE' })).json()).toBe(2);
+    expect(content((await page(`/app/b/${alias}`)).html, 'og:image')).toMatch(/\/og\.png$/);
+    expect(content((await page(`/app/b/${alias}?duel=p0.p1`)).html, 'og:image')).toMatch(/\/og\.png$/);
+    expect(await (await adminApi(`/boards/${alias}/cards`, { method: 'DELETE' })).json()).toBe(0);
   });
 });
 
@@ -1190,7 +1245,9 @@ describe('limits', () => {
     const { alias } = (await res.json()) as { alias: string };
     // One byte over: refused, for JSON, a card and a picture alike.
     expect((await send('/api/boards', 'POST', 'application/json', chunked(512 * 1024 + 1))).status).toBe(413);
-    expect((await send(`/api/boards/${alias}/card`, 'PUT', 'image/png', chunked(CARD_MAX_BYTES + 1))).status).toBe(413);
+    expect(
+      (await send(`/api/boards/${alias}/card?duel=p0.p1`, 'PUT', 'image/png', chunked(CARD_MAX_BYTES + 1))).status,
+    ).toBe(413);
     const picture = `/api/boards/${alias}/items/p0/image`;
     expect((await send(picture, 'PUT', 'image/jpeg', chunked(LIMITS.picture + 1))).status).toBe(413);
   });

@@ -60,6 +60,7 @@ import {
   unfurlOf,
 } from '../../src/core/protocol';
 import { pairKey } from '../../src/core/scoring';
+import { type CardSender, cardKey, previewRanked } from '../../src/core/share';
 import type {
   BoardMeta,
   BoardSettings,
@@ -357,17 +358,29 @@ export class BoardObject extends DurableObject<Env> {
     return this.board ? unfurlOf(this.board) : null;
   }
 
+  /**
+   * Who the bearer of `token` is on this board, its author or a visitor, and whether the board is one of the site's
+   * own (the Worker decides what they may store with it, `cardUpload`). Null when the board is gone.
+   */
+  async access(token: string): Promise<{ by: CardSender; official: boolean } | null> {
+    const owner = await this.isOwner(token);
+    const board = this.board;
+    return board ? { by: owner ? 'owner' : 'visitor', official: board.official } : null;
+  }
+
   /** The author's settings, and the title when the patch carries one (the registry's lists show it). */
   async updateSettings(token: string, patch: unknown): Promise<Result<BoardSettings>> {
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
     const title = board.value.title;
+    const shown = previewRanked(board.value.settings, board.value.status);
     updateSettings(board.value, patch, Date.now());
     this.saveMeta(board.value);
     this.dirty = true;
     this.cache = null;
     this.pushState(board.value);
     if (board.value.title !== title) this.touchRegistry(board.value, true);
+    this.previewChanged(board.value, shown);
     return { ok: true, value: board.value.settings };
   }
 
@@ -514,11 +527,23 @@ export class BoardObject extends DurableObject<Env> {
   }
 
   private applyStatus(board: SharedBoard, status: BoardStatus): Result<BoardStatus> {
+    const shown = previewRanked(board.settings, board.status);
     setStatus(board, status, Date.now());
     this.saveMeta(board);
     this.pushState(board);
     this.touchRegistry(board, true);
+    this.previewChanged(board, shown);
     return { ok: true, value: status };
+  }
+
+  /**
+   * After settings or status changes: when the ranking no longer shows to everyone (results hidden again, a vote
+   * reopened), the board's card goes, since it may show it; its links get the site's card until the author shares.
+   */
+  private previewChanged(board: SharedBoard, shown: boolean): void {
+    const images = this.env.IMAGES;
+    if (!shown || previewRanked(board.settings, board.status) || !images || !this.alias) return;
+    this.later('cards_delete_failed', images.delete(cardKey(this.alias)));
   }
 
   private applyRemove(board: SharedBoard, id: string): Result<number> {

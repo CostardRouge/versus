@@ -72,8 +72,8 @@ export async function approvePicture(bucket: R2Bucket, alias: string, id: string
 export const deletePicture = (bucket: R2Bucket, alias: string, id: string): Promise<void> =>
   bucket.delete(pictureKey(alias, id));
 
-/** Deletes every object under a prefix (a board's cards or pictures, when the board goes). */
-export async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<void> {
+/** Deletes every object under a prefix (a board's cards or pictures, when the board goes); returns how many went. */
+export async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<number> {
   const keys: string[] = [];
   let cursor: string | undefined;
   do {
@@ -82,4 +82,5 @@ export async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<vo
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   if (keys.length) await bucket.delete(keys);
+  return keys.length;
 }

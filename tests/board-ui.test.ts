@@ -216,6 +216,7 @@ describe('publishing', () => {
     expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
       url: `/api/boards/${ALIAS}/card`,
       body: { blob: 'image/png' },
+      auth: `Bearer ${OWNER}`,
     });
     expect(location.pathname).toBe(`/b/${ALIAS}`);
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
@@ -826,7 +827,7 @@ describe('sharing', () => {
     expect($('.card-a')?.textContent).toContain('Regina');
   });
 
-  it('shares the board as an image and sends its card for the link preview', async () => {
+  it('shares the board as an image; the link’s preview is its author’s to draw', async () => {
     respond = (c) =>
       c.method === 'PUT' ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } } : { status: 404, body: {} };
     expect($('.b-head [data-action="b-make-mine"]')).not.toBeNull();
@@ -838,24 +839,30 @@ describe('sharing', () => {
     expect(msg).toContain('Pizzas · 3 votes · 2 voters');
     expect(msg).toContain('1. Margherita');
     expect(msg).toContain(`Vote too: http://localhost:3000/b/${DUEL}`);
-    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card` });
-    click('#m-ok');
-    // Opening it again draws no new card: one per link and session.
-    calls.length = 0;
-    click('[data-action="share-board"]');
-    await flush();
+    // A visitor sends no card for the board.
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     click('#m-ok');
   });
 
   it('shares the duel on screen, with a link that opens on it', async () => {
+    // The duel's card is drawn by whoever shares it first; the next ones are told it exists, and keep quiet.
+    respond = (c) => (c.method === 'PUT' ? { status: 409, body: { error: 'exists' } } : { status: 404, body: {} });
     click('[data-action="share-duel"]');
     expect($('#m-title')?.textContent).toBe('Share this duel');
     await flush();
     expect($('.share-msg')?.textContent).toBe(
       `Regina or Calzone? Vote too: http://localhost:3000/b/${DUEL}?duel=p1.p2`,
     );
-    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card?duel=p1.p2` });
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: `/api/boards/${DUEL}/card?duel=p1.p2`,
+      auth: null,
+    });
+    click('#m-ok');
+    calls.length = 0;
+    click('[data-action="share-duel"]');
+    await flush();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    expect($('#toast')?.textContent).not.toContain('didn’t work');
     click('#m-ok');
   });
 
@@ -922,6 +929,30 @@ describe('sharing', () => {
     expect($('[data-action="b-make-mine"]')).toBeNull();
     click('.tab[data-tab="results"]');
     expect($('.b-results [data-action="share-board"]')).not.toBeNull();
+    click('.tab[data-tab="duel"]');
+    click('[data-action="back"]');
+  });
+
+  it('sends the board’s card with the author’s token when the author shares', async () => {
+    const MINE = 'Au7hEf7hJk';
+    respond = (c) =>
+      c.method === 'PUT' ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } } : { status: 404, body: {} };
+    history.pushState(null, '', `/b/${MINE}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({ settings: { ...view().settings, visibility: 'blind' } }, true));
+    click('.tab[data-tab="results"]');
+    calls.length = 0;
+    click('.b-results [data-action="share-board"]');
+    await flush();
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: `/api/boards/${MINE}/card`,
+      auth: `Bearer ${OWNER}`,
+    });
+    // The author sees the standings in the panel; the preview, public, doesn't show them (core/share.ts).
+    expect($('.share-msg')?.textContent).toContain('1. Margherita');
+    click('#m-ok');
     click('.tab[data-tab="duel"]');
     click('[data-action="back"]');
   });

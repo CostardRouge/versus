@@ -13,7 +13,7 @@ import { type AdminKey, type AdminLang, adminText } from '../i18n/admin';
 /**
  * The publisher's moderation page (/admin/): the boards of the registry with their counts, flags and reports;
  * per board, the full view and the admin actions (close or reopen, feature, hide, remove an item, clear the
- * reports, take down). Talks to /api/admin with the token typed on the page, kept in this tab only
+ * reports, delete its link previews, take down). Talks to /api/admin with the token typed on the page, kept in this tab only
  * (docs/published-boards.md#moderation). Rendered as HTML strings with delegated events, like the app.
  */
 
@@ -261,6 +261,7 @@ export function mountAdmin(opts: AdminOpts): void {
       button('feature', tx(v.mod.featured ? 'unfeature' : 'feature'), `data-on="${!v.mod.featured}"`),
       button('hide', tx(v.mod.hidden ? 'unhideBoard' : 'hideBoard'), `data-on="${!v.mod.hidden}"`),
       v.reports.length ? button('clear-reports', tx('clearReports')) : '',
+      button('delete-cards', tx('deleteCards')),
       button('delete', tx('takeDown'), '', 'ad-btn danger'),
     ].join('');
     const reports = v.reports.length
@@ -461,6 +462,11 @@ export function mountAdmin(opts: AdminOpts): void {
         }
         break;
       }
+      case 'delete-cards':
+        if (alias && opts.confirm(tx('confirmDeleteCards', { title }))) {
+          void act(() => call('DELETE', `/boards/${alias}/cards`));
+        }
+        break;
       case 'delete':
         if (alias && opts.confirm(tx('confirmTakeDown', { title }))) {
           void act(() => call('DELETE', `/boards/${alias}`), 'list');

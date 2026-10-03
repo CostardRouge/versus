@@ -129,11 +129,20 @@ async function upload<T>(path: string, body: Blob, token?: string): Promise<T> {
   return data as T;
 }
 
-/** The card a board's link (or one duel's link) unfurls with: a PNG the app drew. Resolves with its address. */
-export async function putCard(alias: string, png: Blob, pair: readonly [string, string] | null): Promise<string> {
+/**
+ * The card a board's link (or one duel's link) unfurls with: a PNG the app drew, sent with the author's token when
+ * this browser holds it (the board's own card needs it). Resolves with its address.
+ */
+export async function putCard(
+  alias: string,
+  png: Blob,
+  pair: readonly [string, string] | null,
+  token?: string,
+): Promise<string> {
   const data = await upload<{ url?: string }>(
     `/api/boards/${alias}/card${pair ? duelQuery(pair[0], pair[1]) : ''}`,
     png,
+    token,
   );
   if (!data.url) throw new ApiError('network');
   return data.url;

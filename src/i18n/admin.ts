@@ -77,6 +77,9 @@ export const adminEn = {
   picturesTitle: 'Pictures to review',
   approve: 'Approve',
   refuse: 'Refuse',
+  deleteCards: 'Delete link previews',
+  confirmDeleteCards:
+    'Delete the images the links of “{title}” unfurl with? They show the site’s card until someone shares again.',
 };
 
 export type AdminKey = keyof typeof adminEn;
@@ -157,6 +160,9 @@ export const adminFr: AdminMessages = {
   picturesTitle: 'Images à valider',
   approve: 'Valider',
   refuse: 'Refuser',
+  deleteCards: 'Supprimer les aperçus de liens',
+  confirmDeleteCards:
+    'Supprimer les images d’aperçu des liens de « {title} » ? Ils montreront la carte du site jusqu’au prochain partage.',
 };
 
 export type AdminLang = 'en' | 'fr';

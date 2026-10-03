@@ -1,8 +1,8 @@
 import { ALIAS_RE, type ImagePolicy, isRecord, LIMITS, parsePublish } from '../../src/core/board';
 import { parseSummaryRequest, type ServerConfig } from '../../src/core/protocol';
-import { CARD_MAX_BYTES, parseDuelQuery } from '../../src/core/share';
+import { CARD_MAX_BYTES, cardKey, cardUpload, parseDuelQuery } from '../../src/core/share';
 import type { BoardLang, ErrorCode, Result } from '../../src/core/types';
-import { cardURL, preview, readCard, rewriteHead, storeCard } from './cards';
+import { cardURL, deleteCards, preview, readCard, rewriteHead, storeCard } from './cards';
 import type { Env } from './env';
 import { log } from './log';
 import { approvePicture, deletePicture, parsePicturePath, readPicture, storePicture } from './pictures';
@@ -29,7 +29,9 @@ export { BoardObject } from './board-object';
  *   DELETE /api/boards/:alias/items/:id         remove an item and its votes     (owner)
  *   DELETE /api/boards/:alias                   withdraw; returns the local copy (owner)
  *   PUT    /api/boards/:alias/card[?duel=a.b]   the card the board's link (or one duel's) unfurls with: a
- *                                               1200×630 PNG drawn by the app → { url }
+ *                                               1200×630 PNG drawn by the app → { url }. The board's card from
+ *                                               its author (owner); a duel's from anyone while it has none, then
+ *                                               from its author; the site's own boards take none from visitors
  *   POST   /api/boards/:alias/report            { voter, reason, note? }: a visitor reports the board
  *   PUT    /api/boards/:alias/items/:id/image   the picture an item announced (`pic: 'pending'`): a JPEG, kept
  *                                               for the admin's review                             (owner)
@@ -58,6 +60,7 @@ export { BoardObject } from './board-object';
  *   GET    /api/admin/boards/:alias/items/:id/image    a picture awaiting review, to look at it
  *   POST   /api/admin/boards/:alias/items/:id/picture  { decision: 'ok' | 'refused' }
  *   DELETE /api/admin/boards/:alias/reports     the reports were reviewed
+ *   DELETE /api/admin/boards/:alias/cards       delete its link preview cards → how many went
  *   DELETE /api/admin/boards/:alias             take the board down
  *
  * Owners send `Authorization: Bearer <owner token>`, admins `Authorization: Bearer <ADMIN_TOKEN>`. The admin
@@ -195,17 +198,24 @@ async function summaries(req: Request, env: Env): Promise<Response> {
 
 /**
  * The card a board's link (or one of its duels' links) unfurls with, drawn by the app: stored when the board
- * exists and the bytes are the expected PNG. Off (404) without the images bucket.
+ * exists, the sender may (`cardUpload`: the board's card from its author, a duel's from anyone the first time) and
+ * the bytes are the expected PNG. Off (404) without the images bucket.
  */
 async function putCard(req: Request, env: Env, alias: string): Promise<Response> {
   const bucket = env.IMAGES;
   if (!bucket) return error('not_found');
   if (!req.headers.get('Content-Type')?.toLowerCase().startsWith('image/png')) return error('unsupported');
+  const stub = env.BOARDS.getByName(alias);
+  const [access, unfurl] = await Promise.all([stub.access(bearer(req)), stub.unfurl()]);
+  if (!access || !unfurl) return error('not_found');
+  const pair = parseDuelQuery(new URL(req.url).search);
+  // Whether the duel has a card already matters to visitors only.
+  const asks = access.by === 'visitor' && !access.official && pair !== null;
+  const exists = asks && (await bucket.head(cardKey(alias, pair))) !== null;
+  const may = cardUpload(access.by, access.official, pair !== null, exists);
+  if (may !== 'ok') return error(may);
   const bytes = await readBody(req, CARD_MAX_BYTES);
   if (!bytes) return error('too_large');
-  const unfurl = await env.BOARDS.getByName(alias).unfurl();
-  if (!unfurl) return error('not_found');
-  const pair = parseDuelQuery(new URL(req.url).search);
   const stored = await storeCard(bucket, alias, unfurl, pair, bytes);
   if (stored !== 'ok') return error(stored);
   return json({ url: cardURL(new URL(req.url).origin, alias, pair, new Date()) }, 201);
@@ -335,6 +345,9 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
     return reply(await stub.adminRemoveItem(id));
   } else if (action === 'reports' && id === undefined && m === 'DELETE') {
     return reply(await stub.adminClearReports());
+  } else if (action === 'cards' && id === undefined && m === 'DELETE') {
+    // The images its links unfurl with (drawn by whoever shared): they go, the links show the site's card.
+    return env.IMAGES ? json(await deleteCards(env.IMAGES, alias)) : error('not_found');
   }
   return error('not_found');
 }

@@ -191,7 +191,7 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
     saveOwner(alias, owner);
     save();
     // The link's preview image, drawn here from the same items and votes the server just received.
-    uploadPublishedCard(r, alias, withVotes);
+    uploadPublishedCard(r, alias, withVotes, used);
     if (pictures) void sendPictures(r, alias, owner);
     const copied = await copyText(boardURL(alias));
     openBoard(alias);
