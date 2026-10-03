@@ -492,6 +492,8 @@ export const en = {
   picNotSent: 'Picture not sent',
   picRetryAria: 'Send the picture of {label} again',
   picturesUnsent: (v: Vars) => `${v.pictures} not sent. Retry from the list of items.`,
+  loadingPair: 'Loading the next pair…',
+  drawingCard: 'Drawing the picture…',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

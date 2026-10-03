@@ -503,6 +503,8 @@ export const fr: Messages = {
   picRetryAria: 'Renvoyer l’image de {label}',
   picturesUnsent: (v: Vars) =>
     `${v.pictures} non envoyée${Number(v.n) > 1 ? 's' : ''}. Réessaie depuis la liste des éléments.`,
+  loadingPair: 'Chargement de la paire suivante…',
+  drawingCard: 'Dessin de l’image…',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

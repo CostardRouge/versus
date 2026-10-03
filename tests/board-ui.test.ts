@@ -512,6 +512,16 @@ describe('voting', () => {
     expect($('#stage .card-a')?.dataset.id).toBe('p0');
   });
 
+  it('says the next pair is loading while the queue is empty', () => {
+    const ws = FakeSocket.last();
+    ws.receive({ ...state(), pairs: [] } as ServerMessage);
+    const wait = $('#b-main .empty-duel');
+    expect(wait?.getAttribute('aria-busy')).toBe('true');
+    expect(wait?.querySelector('[role="status"]')?.textContent).toBe('Loading the next pair…');
+    ws.receive(state());
+    expect($('#b-main .card-a')).not.toBeNull();
+  });
+
   it('says a new version is out when the server no longer serves this one', () => {
     FakeSocket.last().receive({ t: 'error', code: 'upgrade' });
     expect($('#toast')?.textContent).toBe('A new version of Versus is out: reload the page to keep voting.');
@@ -1099,8 +1109,15 @@ describe('sharing', () => {
     expect($('.b-head [data-action="b-make-mine"]')).not.toBeNull();
     click('[data-action="share-board"]');
     expect($('#m-title')?.textContent).toBe('Share this ranking');
+    // While the card is drawn, the preview says so; the canvas then names itself.
+    const box = $('#share-preview');
+    expect(box?.getAttribute('aria-busy')).toBe('true');
+    expect(box?.querySelector('[role="status"]')?.textContent).toBe('Drawing the picture…');
     await flush();
     expect($('#share-preview canvas')).not.toBeNull();
+    expect(box?.hasAttribute('aria-busy')).toBe(false);
+    expect(box?.hasAttribute('role')).toBe(false);
+    expect($('#share-preview canvas')?.getAttribute('role')).toBe('img');
     const msg = $('.share-msg')?.textContent ?? '';
     expect(msg).toContain('Pizzas · 3 votes · 2 voters');
     expect(msg).toContain('1. Margherita');

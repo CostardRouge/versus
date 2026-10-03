@@ -540,7 +540,8 @@ function duelHTML(b: Board, v: BoardView): string {
   const C = pair ? itemOf(pair[1]) : undefined;
   if (!A || !C) {
     if (b.count >= totalPairs(v.items.length)) return emptyHTML(t('votedAll'), t('votedAllBody'), resultHTML(b, v));
-    return `<div class="empty-duel"><p class="muted">…</p></div>`;
+    // The next pair is on its way from the server: said, not a bare ellipsis.
+    return `<div class="empty-duel" aria-busy="true"><p class="muted" role="status">${t('loadingPair')}</p></div>`;
   }
   // No forecast and no crowd score here: the duel itself stays blind.
   return `<div class="duel">
