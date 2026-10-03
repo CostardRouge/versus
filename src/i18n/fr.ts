@@ -487,6 +487,24 @@ export const fr: Messages = {
       `${v.l} ${Number(v.l) > 1 ? 'défaites' : 'défaite'}`,
       ...(v.d === undefined ? [] : [`${v.d} ${Number(v.d) > 1 ? 'égalités' : 'égalité'}`]),
     ].join(', '),
+  // Published rankings: errors, waiting and busy states, screen reader texts
+  reportReason: 'Motif',
+  offline: 'Tu es hors ligne ou le serveur est injoignable. Réessaie dans un instant.',
+  ownerKeyLost:
+    'Cet appareil n’a plus la clé admin de ce classement. Ouvre ici ton dernier lien admin pour le gérer à nouveau.',
+  publishInvalid: 'Le serveur a refusé ce classement tel quel. Vérifie ses éléments, puis réessaie.',
+  publishTooLarge: 'Ce classement est trop gros pour être publié. Retire des éléments, ou publie-le sans tes votes.',
+  boardOffline: 'Hors ligne ou serveur injoignable — nouvel essai en cours',
+  retry: 'Réessayer',
+  lastVisit: 'Lors de ta dernière visite',
+  publishing: 'Publication…',
+  settingsNotSaved: 'Tes changements n’ont pas été enregistrés.',
+  picNotSent: 'Image non envoyée',
+  picRetryAria: 'Renvoyer l’image de {label}',
+  picturesUnsent: (v: Vars) =>
+    `${v.pictures} non envoyée${Number(v.n) > 1 ? 's' : ''}. Réessaie depuis la liste des éléments.`,
+  loadingPair: 'Chargement de la paire suivante…',
+  drawingCard: 'Dessin de l’image…',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

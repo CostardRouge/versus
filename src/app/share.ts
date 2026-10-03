@@ -1086,7 +1086,7 @@ function panelHTML(p: Panel): string {
           .join('')}</div>`
       : '';
   return `<div class="share" id="share">
-    <div class="share-preview ${p.format}" id="share-preview" aria-label="${t('sharePreviewAlt')}" role="img"><span class="share-wait">…</span></div>
+    <div class="share-preview ${p.format}" id="share-preview" aria-busy="true"><span class="share-wait" role="status">${t('drawingCard')}</span></div>
     ${views}
     <div class="share-fmts" role="group" aria-label="${t('shareFormat')}">${fmts}</div>
     <div class="share-acts">
@@ -1114,9 +1114,12 @@ async function showPreview(p: Panel): Promise<void> {
   if (!box) return;
   const run = ++p.drawing;
   box.className = `share-preview ${p.format}`;
+  // The card on screen stays until the next one is drawn; meanwhile the preview is busy (the canvas names itself).
+  box.setAttribute('aria-busy', 'true');
   const canvas = await canvasOf(p, p.format);
   if (panel !== p || run !== p.drawing || !box.isConnected) return;
   box.innerHTML = canvas ? '' : `<span class="share-wait">${esc(t('shareNoImage'))}</span>`;
+  box.removeAttribute('aria-busy');
   if (canvas) {
     canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', t('sharePreviewAlt'));

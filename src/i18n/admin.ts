@@ -50,7 +50,6 @@ export const adminEn = {
   prev: 'Previous',
   next: 'Next',
   details: 'Details',
-  less: 'Close details',
   closeVote: 'Close the vote',
   reopenVote: 'Reopen the vote',
   feature: 'Feature',
@@ -83,6 +82,10 @@ export const adminEn = {
   deleteCards: 'Delete link previews',
   confirmDeleteCards:
     'Delete the images the links of “{title}” unfurl with? They show the site’s card until someone shares again.',
+  filters: 'Show the boards',
+  cActions: 'Actions',
+  confirmRefuse: 'Refuse the picture of “{label}”? It is deleted, and the item shows as text.',
+  confirmClearReports: 'Mark the reports on “{title}” as reviewed? They are deleted.',
 };
 
 export type AdminKey = keyof typeof adminEn;
@@ -134,7 +137,6 @@ export const adminFr: AdminMessages = {
   prev: 'Précédents',
   next: 'Suivants',
   details: 'Détails',
-  less: 'Fermer les détails',
   closeVote: 'Clore le vote',
   reopenVote: 'Rouvrir le vote',
   feature: 'Mettre à la une',
@@ -167,6 +169,10 @@ export const adminFr: AdminMessages = {
   deleteCards: 'Supprimer les aperçus de liens',
   confirmDeleteCards:
     'Supprimer les images d’aperçu des liens de « {title} » ? Ils montreront la carte du site jusqu’au prochain partage.',
+  filters: 'Afficher les tableaux',
+  cActions: 'Actions',
+  confirmRefuse: 'Refuser l’image de « {label} » ? Elle est supprimée, et l’élément s’affiche en texte.',
+  confirmClearReports: 'Marquer les signalements de « {title} » comme traités ? Ils sont supprimés.',
 };
 
 export type AdminLang = Lang;

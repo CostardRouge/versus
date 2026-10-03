@@ -109,6 +109,8 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   share.ts            share as an image: draws the card on a canvas (tokens, fonts), the share panel (share sheet, copy,
                       download), and sends a board's or a duel's landscape card for its link preview
+  errors.ts           what a failed API call says, one full map per kind of call (owner, publish, report, read): typed, so a
+                      new error code must say something
   remote.ts           API calls (15 s time limit) and the board WebSocket (hello with the protocol version, reconnect, gone)
   turnstile.ts        Cloudflare Turnstile's widget, when the build has a site key: at publication, before a first vote on an official board
   router.ts           the address bar follows the view (push, replace), app folder from the page's <base>; counts each view

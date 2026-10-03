@@ -8,6 +8,7 @@ import {
   authorNewAdminLink,
   authorOnScreen,
   authorRemove,
+  authorRetryPicture,
   authorSettings,
 } from './author';
 import { exportAll, exportOne, importFile, isBackupFile, pickImport } from './backup';
@@ -21,6 +22,7 @@ import {
   boardRefresh,
   boardReport,
   boardReset,
+  boardRetry,
   boardShare,
   boardSkip,
   boardStatus,
@@ -271,7 +273,7 @@ function onClick(e: MouseEvent): void {
       void authorNewAdminLink();
       break;
     case 'b-settings':
-      authorSettings();
+      void authorSettings();
       break;
     case 'b-close':
       void boardStatus('closed');
@@ -284,6 +286,12 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-unlink':
       boardUnlink();
+      break;
+    case 'b-retry':
+      boardRetry();
+      break;
+    case 'pic-retry':
+      void authorRetryPicture(id);
       break;
     case 'b-finale':
       openFinale();

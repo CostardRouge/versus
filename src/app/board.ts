@@ -10,9 +10,10 @@ import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { authorAdd, authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
 import { closeColor, cp } from './color';
-import { $, announce, ask, copyText, reduced, thumbHTML, toast } from './dom';
+import { $, announce, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML } from './duel';
 import { addFormHTML, typed } from './editor';
+import { errorKey, OWNER_ERRORS, REPORT_ERRORS } from './errors';
 import {
   type FinaleData,
   type FinaleMode,
@@ -24,18 +25,10 @@ import {
   setPodiumWho,
 } from './finale';
 import { fmtCrowd } from './format';
-import { flushJoined, markGone, noteBoard } from './joined';
+import { flushJoined, joinedOf, markGone, noteBoard } from './joined';
 import { makeOwn, open } from './rankings';
-import {
-  ApiError,
-  BoardSocket,
-  type Connection,
-  fetchConfig,
-  reportBoard,
-  setBoardStatus,
-  withdrawBoard,
-} from './remote';
-import { routeURL } from './router';
+import { BoardSocket, type Connection, fetchConfig, reportBoard, setBoardStatus, withdrawBoard } from './remote';
+import { currentLayer, dropLayer, popLayer, pushLayer, routeURL } from './router';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
 import { turnstileKey, turnstileWidget } from './turnstile';
@@ -79,11 +72,17 @@ export interface Board {
   finaleDirty: boolean;
   /** Whether the server takes pictures for review (asked once the author is known); null until it answers. */
   pictures: boolean | null;
+  /** A connection failed: while the first state waits, the page offers to try again. */
+  failed: boolean;
+  /** Opened on the end-of-vote page's history entry: the first state shows that page again, if it can. */
+  reopen: boolean;
 }
 
 interface Pending {
   kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add' | 'check';
   revert?: () => void;
+  /** Refused already: only the queue that follows is awaited. */
+  refused?: boolean;
 }
 
 let B: Board | null = null;
@@ -115,16 +114,66 @@ function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey |
   return kind === 'undo' || kind === 'reset' ? 'actionFailed' : null;
 }
 
-const ownerErrors: Partial<Record<string, MsgKey>> = {
-  full: 'boardFull',
-  exists: 'itemExists',
-  too_few: 'needTwoItems',
-  closed: 'voteClosed',
-  rate_limited: 'tooManyTries',
-};
-
 /** A board's own address (b/<alias> under the app's folder), the link to share. */
 export const boardURL = (alias: string): string => routeURL({ view: 'board', alias });
+
+// ─── Focus across re-renders ────────────────────────────────────────────────
+
+/** The focused control, as a selector that finds it again once its part of the page is drawn anew. */
+export interface FocusMark {
+  sel: string;
+  /** A text field's value and caret; null for any other control. */
+  value: string | null;
+  start: number | null;
+  end: number | null;
+}
+
+/** The data attributes that tell one control from its siblings, after its data-action. */
+const MARK_KEYS = ['action', 'id', 'side', 'view', 'who', 'tab', 'm', 'alias'] as const;
+const attr = (k: string, v: string): string => `[data-${k}="${v.replace(/["\\]/g, '\\$&')}"]`;
+
+function markOf(el: HTMLElement): string | null {
+  if (el.id) return `#${el.id}`;
+  const d = el.dataset;
+  if (d.action) return MARK_KEYS.map((k) => (d[k] === undefined ? '' : attr(k, d[k]))).join('');
+  if (el.classList.contains('row-label') && d.id) return `#item-list .row-label${attr('id', d.id)}`;
+  if (el.classList.contains('card') && d.side) return `.card${attr('side', d.side)}`;
+  return null;
+}
+
+/**
+ * Where the focus is, when it is inside `root` (the part about to be redrawn): a live update must never send a
+ * keyboard or screen reader user back to the top of the page.
+ */
+export function focusMark(root: Element | null = $('#view')): FocusMark | null {
+  const el = doc.activeElement as HTMLInputElement | null;
+  const sel = el && root?.contains(el) && el !== root ? markOf(el) : null;
+  if (!el || !sel) return null;
+  let start: number | null = null;
+  let end: number | null = null;
+  try {
+    start = el.selectionStart ?? null;
+    end = el.selectionEnd ?? null;
+  } catch {
+    /* a field without a caret (a number) */
+  }
+  const text = (el.tagName === 'INPUT' && start !== null) || el.tagName === 'TEXTAREA';
+  return { sel, value: text ? el.value : null, start, end };
+}
+
+/** Puts the focus (and a text field's caret) back on the control `mark` names, if it is still there. */
+export function refocus(mark: FocusMark | null): void {
+  if (!mark) return;
+  const el = $<HTMLInputElement>(mark.sel);
+  if (!el || el === doc.activeElement || el.disabled) return;
+  el.focus({ preventScroll: true });
+  if (mark.start === null) return;
+  try {
+    el.setSelectionRange(mark.start, mark.end);
+  } catch {
+    /* not a text field anymore */
+  }
+}
 
 const live = (): boolean => S.prefs.live !== false;
 export const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
@@ -169,10 +218,21 @@ export function enterBoard(
     finale: false,
     finaleDirty: false,
     pictures: null,
+    failed: false,
+    reopen: currentLayer() === 'finale',
   };
   B = board;
   resetFinale();
   if (available) connect(board, wanted);
+}
+
+/** The first state of a board opened on its end-of-vote page's entry (a reload, Back from elsewhere) shows it again. */
+function reopenFinale(b: Board, v: BoardView): void {
+  if (!b.reopen) return;
+  b.reopen = false;
+  if (currentLayer() !== 'finale' || b.finale) return;
+  if (votedAll(b, v)) b.finale = true;
+  else dropLayer();
 }
 
 /** Opens the board's connection, with the author's token in the hello when there is one. */
@@ -220,6 +280,11 @@ function settleCandidate(board: Board, owner: boolean): boolean {
   return true;
 }
 
+/** The Retry button of a board that can't be reached: a new connection at once. */
+export function boardRetry(): void {
+  B?.socket?.retryNow();
+}
+
 export function leaveBoard(): void {
   flushJoined();
   B?.socket?.close();
@@ -237,8 +302,16 @@ function onConnection(board: Board, c: Connection): void {
     board.view = null;
     markGone(board.alias);
   }
-  if (!board.view) renderBoard();
-  else {
+  if (c === 'lost') board.failed = true;
+  if (!board.view) {
+    // Still waiting for the first state: the message changes in place, so screen readers hear it.
+    const wait = $('#b-wait');
+    if (wait && (c === 'connecting' || c === 'lost')) {
+      wait.innerHTML = waitText(board);
+      const acts = $('#b-wait-acts');
+      if (acts) acts.hidden = !board.failed;
+    } else renderBoard();
+  } else {
     const banner = $('#b-conn');
     if (banner) banner.hidden = c !== 'lost';
   }
@@ -272,6 +345,7 @@ function onMessage(board: Board, m: ServerMessage): void {
       });
     }
     note(board);
+    reopenFinale(board, m.board);
     renderBoard();
   } else if (m.t === 'pairs') {
     const head = board.pending.shift();
@@ -282,6 +356,7 @@ function onMessage(board: Board, m: ServerMessage): void {
     // replay the cards' entrance, halfway through it on a slow (mobile) connection.
     if (!board.busy && $('#b-main')?.dataset.duel !== duelKey(board)) renderDuel();
     renderRanking();
+    if (head?.kind === 'add') addBusy(suggesting(board));
   } else if (m.t === 'ranking') {
     board.counts = m.counts;
     board.latest = m.ranking;
@@ -305,7 +380,11 @@ function onMessage(board: Board, m: ServerMessage): void {
       head.revert = undefined;
       renderRanking();
     }
-    if (head?.kind === 'add') board.sentLabel = null;
+    if (head?.kind === 'add') {
+      board.sentLabel = null;
+      head.refused = true;
+      addBusy(suggesting(board));
+    }
     if (m.code === 'captcha' && head?.kind === 'vote') void humanCheck(board);
     const key = errorText(m.code, head?.kind);
     if (key) toast(t(key));
@@ -348,8 +427,10 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
     renderAuthor(b);
     return;
   }
-  // Keep what someone is typing when another change re-renders the page, unless it was just added.
+  // Keep what someone is typing when another change re-renders the page, unless it was just added, and where the
+  // focus was (the caret too).
   const draft = ($('#add-input') as HTMLInputElement | null)?.value ?? '';
+  const mark = focusMark(view);
   view.innerHTML = boardHTML(b);
   const input = $('#add-input') as HTMLInputElement | null;
   if (input && draft && draft !== b.sentLabel) input.value = draft;
@@ -359,20 +440,62 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
     renderDuel();
     renderRanking();
   }
+  addBusy(suggesting(b));
+  refocus(mark);
+}
+
+/**
+ * The add field's button while what it sent waits for its answer: disabled and busy, so that Enter pressed again,
+ * or a second click, sends nothing more.
+ */
+export function addBusy(busy: boolean): void {
+  const btn = $<HTMLButtonElement>('#add-form .add-btn');
+  if (!btn) return;
+  btn.disabled = busy;
+  if (busy) btn.setAttribute('aria-busy', 'true');
+  else btn.removeAttribute('aria-busy');
+}
+
+/** A visitor's suggestion was sent and the server hasn't answered yet. */
+const suggesting = (b: Board): boolean => b.pending.some((p) => p.kind === 'add' && !p.refused);
+
+const waitText = (b: Board): string => `<h2 class="q">${b.conn === 'lost' ? t('boardOffline') : t('connecting')}</h2>`;
+
+/**
+ * The board's first state hasn't come: connecting, or offline and trying again, with a way to try at once or to
+ * leave. A board under "Your votes" shows what it was at the last visit meanwhile.
+ */
+function waitHTML(b: Board, back: string): string {
+  const j = joinedOf(b.alias);
+  const snap = j
+    ? `<p class="b-counts mono">${plural(j.votes, 'vote')} · ${plural(j.voters, 'voter')} · ${t('myVotes', { n: j.count })}</p>
+      <p class="note">${t('lastVisit')}</p>`
+    : '';
+  return `<div class="board">
+    <div class="ws-head b-head">${back}${j ? `<h1 class="b-title">${esc(j.title)}</h1>` : ''}</div>
+    ${snap}
+    <div class="empty-duel">
+      <div id="b-wait" role="status">${waitText(b)}</div>
+      <p class="b-wait-acts" id="b-wait-acts" ${b.failed ? '' : 'hidden'}>
+        <button class="btn primary" type="button" data-action="b-retry">${t('retry')}</button>
+        <button class="btn" type="button" data-action="back">${t('yourRankings')}</button>
+      </p>
+    </div>
+  </div>`;
 }
 
 function boardHTML(b: Board): string {
   const back = `<button class="back" type="button" data-action="back">${t('back')}</button>`;
   const v = b.view;
   if (!v) {
-    const final = b.conn === 'gone' || b.conn === 'unavailable';
-    const msg = b.conn === 'gone' ? t('boardGone') : b.conn === 'unavailable' ? t('boardUnavailable') : t('connecting');
-    const local = b.conn === 'gone' ? localOf(b.alias) : undefined;
+    if (b.conn === 'connecting' || b.conn === 'lost' || b.conn === 'open') return waitHTML(b, back);
+    const gone = b.conn === 'gone';
+    const local = gone ? localOf(b.alias) : undefined;
     const action = local
       ? `<button class="btn primary" type="button" data-action="b-unlink">${t('keepLocal')}</button>`
       : `<button class="btn primary" type="button" data-action="back">${t('yourRankings')}</button>`;
     return `<div class="board"><div class="ws-head">${back}</div>
-      <div class="empty-duel"><h2 class="q">${msg}</h2>${final ? action : ''}</div></div>`;
+      <div class="empty-duel"><h2 class="q">${gone ? t('boardGone') : t('boardUnavailable')}</h2>${action}</div></div>`;
   }
   const closed = v.status === 'closed';
   // Voters can start their own version from these items; the author has the ranking already.
@@ -408,9 +531,7 @@ const emptyHTML = (title: string, body: string, action = ''): string =>
 
 /** Once every pair is voted, the way (back) to the end-of-vote page. */
 const resultHTML = (b: Board, v: BoardView): string =>
-  b.count && b.count >= totalPairs(v.items.length)
-    ? `<button class="btn primary" type="button" data-action="b-finale">${t('seeResult')}</button>`
-    : '';
+  votedAll(b, v) ? `<button class="btn primary" type="button" data-action="b-finale">${t('seeResult')}</button>` : '';
 
 function duelHTML(b: Board, v: BoardView): string {
   if (v.status === 'closed') return emptyHTML(t('voteClosed'), t('voteClosedBody'), resultHTML(b, v));
@@ -419,7 +540,8 @@ function duelHTML(b: Board, v: BoardView): string {
   const C = pair ? itemOf(pair[1]) : undefined;
   if (!A || !C) {
     if (b.count >= totalPairs(v.items.length)) return emptyHTML(t('votedAll'), t('votedAllBody'), resultHTML(b, v));
-    return `<div class="empty-duel"><p class="muted">…</p></div>`;
+    // The next pair is on its way from the server: said, not a bare ellipsis.
+    return `<div class="empty-duel" aria-busy="true"><p class="muted" role="status">${t('loadingPair')}</p></div>`;
   }
   // No forecast and no crowd score here: the duel itself stays blind.
   return `<div class="duel">
@@ -446,26 +568,30 @@ export function renderDuel(): void {
   const main = $('#b-main');
   const b = B;
   if (!main || !b?.view) return;
+  const mark = focusMark(main);
   main.innerHTML = duelHTML(b, b.view);
   main.dataset.duel = duelKey(b);
   bindStage(boardPick, () => B?.busy ?? true);
   if (authoring(b)) markAuthorPair();
+  refocus(mark);
 }
 
+const rankHeadHTML = (): string => `<div class="b-rank-head"><h2>${t('crowdTitle')}</h2>
+    <label class="live-toggle"><input type="checkbox" id="b-live" ${live() ? 'checked' : ''}> ${t('live')}</label></div>`;
+
+/** The crowd ranking under its heading: the rows, the refresh button, the agreement, the reset link. */
 function rankingHTML(b: Board, v: BoardView): string {
   const s = v.settings;
-  const head = `<div class="b-rank-head"><h2>${t('crowdTitle')}</h2>
-    <label class="live-toggle"><input type="checkbox" id="b-live" ${live() ? 'checked' : ''}> ${t('live')}</label></div>`;
   const reset =
     s.allowChange && v.status === 'open' && b.count
       ? `<p class="b-foot"><button class="link" type="button" data-action="b-reset">${t('resetMyVotes')}</button></p>`
       : '';
   const shown = b.shown;
   if (!shown) {
-    if (s.visibility !== 'after') return `${head}<p class="note">${t('hiddenBlind')}</p>${reset}`;
+    if (s.visibility !== 'after') return `<p class="note">${t('hiddenBlind')}</p>${reset}`;
     const need = revealAt(s.revealAfter, v.items.length);
     const k = Math.min(b.count, need);
-    return `${head}<p class="note">${t('hiddenAfter', { n: need, k })}</p>
+    return `<p class="note">${t('hiddenAfter', { n: need, k })}</p>
       <span class="bar b-progress"><i style="width:${Math.round((100 * k) / need)}%"></i></span>${reset}`;
   }
   const newer = b.latestVotes - b.shownVotes;
@@ -479,18 +605,34 @@ function rankingHTML(b: Board, v: BoardView): string {
       const it = itemOf(id);
       const x = shown.stats[id];
       if (!it || !x) return '';
-      const neck = close.has(id) ? `<span class="neck" title="${t('neck')}" aria-label="${t('neck')}">≈</span>` : '';
+      // A text for screen readers: an aria-label on a plain span is ignored.
+      const neck = close.has(id)
+        ? `<span class="neck" role="img" title="${t('neck')}" aria-label="${t('neck')}">≈</span>`
+        : '';
       return `<li><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span>${neck}<span class="num mono">${fmtCrowd(shown.method, x)}</span></li>`;
     })
     .join('');
   const ag = agreement(b.mine, shown);
   const agree = ag === null ? '' : `<p class="b-agree">${t('agreement', { pct: pct(Math.round(ag * 100)) })}</p>`;
-  return `${head}${refresh}<ol class="b-rows">${rows}</ol>${agree}${reset}`;
+  return `${refresh}<ol class="b-rows">${rows}</ol>${agree}${reset}`;
 }
 
+/**
+ * Draws the crowd ranking. Its heading and the Live switch are drawn once: a live update replaces the rows only,
+ * so whoever is on the switch (the way to pause the updates) keeps it.
+ */
 export function renderRanking(): void {
   const el = $('#b-rank');
-  if (el && B?.view) el.innerHTML = rankingHTML(B, B.view);
+  if (!el || !B?.view) return;
+  let body = $('#b-rank-body', el);
+  if (!body) {
+    el.innerHTML = `${rankHeadHTML()}<div id="b-rank-body"></div>`;
+    body = $('#b-rank-body', el);
+  }
+  if (!body) return;
+  const mark = focusMark(body);
+  body.innerHTML = rankingHTML(B, B.view);
+  refocus(mark);
 }
 
 // ─── Voting ─────────────────────────────────────────────────────────────────
@@ -705,22 +847,55 @@ function renderFinale(b: Board, v: BoardView, mode: FinaleMode): void {
   });
 }
 
-/** Shows the end-of-vote page, with its reveal. */
+/** Shows the end-of-vote page, with its reveal, in a history entry of its own: Back closes it. */
 export function openFinale(): void {
   const b = B;
   if (!b?.view) return;
   b.finale = true;
+  pushLayer('finale');
   renderBoard('play');
   window.scrollTo?.(0, 0);
 }
 
+/** Set while the end-of-vote page's entry goes away after its own button closed it: that Back is ours. */
+let closing = false;
+
+/** Back to the board from the end-of-vote page's own button: its history entry goes too. */
 export function closeFinale(): void {
+  if (!B?.finale) return;
+  hideFinale();
+  if (closing || currentLayer() !== 'finale') return;
+  closing = true;
+  popLayer('finale');
+}
+
+function hideFinale(): void {
   const b = B;
   if (!b?.finale) return;
   b.finale = false;
   resetFinale();
   renderBoard();
   window.scrollTo?.(0, 0);
+}
+
+/** Every pair voted: the end-of-vote page can show. */
+const votedAll = (b: Board, v: BoardView): boolean => b.count > 0 && b.count >= totalPairs(v.items.length);
+
+/** Back or Forward between the board and its end-of-vote page, at the same address. */
+export function followLayer(): void {
+  const b = B;
+  if (closing) {
+    closing = false;
+    return;
+  }
+  if (!b?.view) return;
+  const finale = currentLayer() === 'finale';
+  if (finale === b.finale) return;
+  if (!finale) hideFinale();
+  else if (votedAll(b, b.view)) {
+    b.finale = true;
+    renderBoard();
+  } else dropLayer();
 }
 
 /** Podium or face-à-face; remembered in this browser. */
@@ -776,13 +951,14 @@ export async function boardAdd(text: string): Promise<void> {
     return;
   }
   const item = typed(text);
-  if (!item.label) return;
+  if (!item.label || suggesting(b)) return;
   if (!b.socket?.send({ t: 'add', item })) {
     toast(t('notSent'));
     return;
   }
   b.sentLabel = text;
   b.pending.push({ kind: 'add' });
+  addBusy(true);
 }
 
 export async function copyBoardLink(alias: string | undefined, admin = false): Promise<void> {
@@ -846,7 +1022,7 @@ export async function boardReport(): Promise<void> {
       `<label class="opt"><input type="radio" name="report-reason" value="${r}" ${i === 0 ? 'checked' : ''}> ${t(REASON_KEYS[r])}</label>`,
   ).join('');
   const html = `<p class="muted">${t('reportBody')}</p>
-    <fieldset class="set">${options}</fieldset>
+    <fieldset class="set"><legend class="sr-only">${t('reportReason')}</legend>${options}</fieldset>
     <label class="report-note"><span class="muted">${t('reportNote')}</span>
       <textarea id="report-note" rows="3" maxlength="${LIMITS.note}"></textarea></label>`;
   const ok = await ask({ title: t('reportTitle'), html, ok: t('reportSend'), danger: true });
@@ -859,8 +1035,7 @@ export async function boardReport(): Promise<void> {
     toast(t('reported'));
   } catch (e) {
     // Reports come from the board's voters: someone who voted at least once.
-    const code = e instanceof ApiError ? e.code : null;
-    toast(t(code === 'forbidden' ? 'reportNeedsVote' : code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
+    toast(t(errorKey(e, REPORT_ERRORS)));
   }
 }
 
@@ -873,7 +1048,7 @@ export async function ownerCall<T>(fn: (alias: string, token: string) => Promise
   try {
     return await fn(b.alias, b.owner);
   } catch (e) {
-    toast(t((e instanceof ApiError && ownerErrors[e.code]) || 'actionFailed'));
+    toast(t(errorKey(e, OWNER_ERRORS)));
     return null;
   }
 }

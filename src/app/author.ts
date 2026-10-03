@@ -4,10 +4,23 @@ import { freshLabels, labelKey } from '../core/list';
 import type { BoardView } from '../core/protocol';
 import { dataURLBytes } from '../core/published';
 import { ownerFragment } from '../core/route';
-import type { Fill, Item, MethodKey } from '../core/types';
+import type { BoardSettings, Fill, Item, MethodKey } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
-import { type Board, boardState, boardURL, countsText, itemOf, ownerCall, renderDuel, renderRanking } from './board';
+import {
+  addBusy,
+  type Board,
+  boardState,
+  boardURL,
+  countsText,
+  type FocusMark,
+  focusMark,
+  itemOf,
+  ownerCall,
+  refocus,
+  renderDuel,
+  renderRanking,
+} from './board';
 import { closeColor, cp, openBoardColor } from './color';
 import { $, $$, ask, castSvg, copyText, doc, toast } from './dom';
 import {
@@ -22,6 +35,7 @@ import {
   typed,
   typedItems,
 } from './editor';
+import { errorKey, OWNER_ERRORS } from './errors';
 import { optionsHTML, readSettings, visibilityHTML } from './publish';
 import {
   addBoardItem,
@@ -104,7 +118,13 @@ function rows(b: Authored): Row[] {
     const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
     const note =
       it.pic === 'pending'
-        ? { text: t('picPending') }
+        ? unsent.has(picKey(b.alias, it.id))
+          ? {
+              text: t('picNotSent'),
+              bad: true,
+              action: { name: 'pic-retry', label: t('retry'), aria: t('picRetryAria', { label: it.label }) },
+            }
+          : { text: t('picPending') }
         : it.pic === 'refused'
           ? { text: t('picRefused'), bad: true }
           : twin
@@ -136,29 +156,17 @@ export function refreshAuthorList(animate: boolean): void {
   renderList(b, animate);
 }
 
-/** What the author was typing, and where, so that a new state from the server doesn't lose it. */
+/** What the author was typing, and where the focus was, so that a new state from the server doesn't lose them. */
 interface Typing {
   draft: string;
-  title: string | null;
-  focus: { sel: string; value: string; start: number | null; end: number | null } | null;
+  focus: FocusMark | null;
   scroll: number;
 }
 
 function keepTyping(): Typing {
-  const active = doc.activeElement as HTMLInputElement | null;
-  const field = active?.matches?.('#add-input, #rank-title, #item-list .row-label') ? active : null;
-  const title = $<HTMLInputElement>('#rank-title');
   return {
     draft: $<HTMLInputElement>('#add-input')?.value ?? '',
-    title: title && title === field ? title.value : null,
-    focus: field
-      ? {
-          sel: field.id ? `#${field.id}` : `#item-list .row-label[data-id="${field.dataset.id ?? ''}"]`,
-          value: field.value,
-          start: field.selectionStart,
-          end: field.selectionEnd,
-        }
-      : null,
+    focus: focusMark(),
     scroll: $('#item-list')?.scrollTop ?? 0,
   };
 }
@@ -170,16 +178,10 @@ function restoreTyping(k: Typing, b: Authored): void {
   b.sentLabel = null;
   const list = $('#item-list');
   if (list) list.scrollTop = k.scroll;
-  if (!k.focus) return;
-  const el = $<HTMLInputElement>(k.focus.sel);
-  if (!el || el.disabled) return;
-  if (el.id !== 'add-input') el.value = k.focus.value;
-  el.focus();
-  try {
-    el.setSelectionRange(k.focus.start, k.focus.end);
-  } catch {
-    /* not a text field */
-  }
+  // A title or a name being edited keeps what was typed in it.
+  const el = k.focus ? $<HTMLInputElement>(k.focus.sel) : null;
+  if (el && k.focus?.value != null && el.id !== 'add-input') el.value = k.focus.value;
+  refocus(k.focus);
 }
 
 /** The whole workspace, from the board's state. */
@@ -190,7 +192,6 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
   const typing = keepTyping();
   view.innerHTML = shell(a);
   renderList(a, false);
-  restoreTyping(typing, a);
   // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
   if (cp.id) {
     const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
@@ -198,6 +199,9 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
     else closeColor();
   }
   setTab(S.route.tab);
+  addBusy(adding);
+  // Once the main pane is drawn too: the focus may have been in the duel.
+  restoreTyping(typing, a);
 }
 
 /** The main pane: the duel (server-assigned pairs, like any voter), or the crowd's ranking with the ways to share. */
@@ -249,8 +253,22 @@ export async function authorSetMethod(k: string | undefined): Promise<void> {
   }
 }
 
-/** The board's settings, links and lifecycle, behind the header's Published button. Changes apply at once. */
-export function authorSettings(): void {
+/** The open settings dialog's form as the author left it, read at each change; sent once it closes on Done. */
+let settingsForm: { draft: Partial<BoardSettings> | null } | null = null;
+
+/** What `next` changes in `now`: the fields to send, none when nothing changed. */
+function changedSettings(next: Partial<BoardSettings>, now: BoardSettings): Partial<BoardSettings> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(next)) if (v !== now[k as keyof BoardSettings]) out[k] = v;
+  return out as Partial<BoardSettings>;
+}
+
+/**
+ * The board's settings, links and lifecycle, behind the header's Published button. Changes apply on Done (or one of
+ * the dialog's actions), in one request with the changed fields only: a keyboard going through the radio buttons
+ * publishes nothing on its way. Refused, the dialog opens again on the settings in force, saying why.
+ */
+export async function authorSettings(problem?: string): Promise<void> {
   const b = authored();
   if (!b) return;
   const v = b.view;
@@ -268,8 +286,23 @@ export function authorSettings(): void {
       <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
       <button class="btn sm danger" type="button" data-action="b-withdraw">${t('withdraw')}</button>
     </div>
-  </div>`;
-  void ask({ title: t('boardSettings'), html, ok: t('done'), cancel: false });
+  </div>${problem ? `<p class="m-error" role="alert">${esc(problem)}</p>` : ''}`;
+  const form: { draft: Partial<BoardSettings> | null } = { draft: null };
+  settingsForm = form;
+  const ok = await ask({ title: t('boardSettings'), html, ok: t('done') });
+  const { draft } = form;
+  if (settingsForm === form) settingsForm = null;
+  if (!ok || !draft || authored() !== b) return;
+  const changes = changedSettings(draft, b.view.settings);
+  if (!Object.keys(changes).length) return;
+  try {
+    await patchBoard(b.alias, b.owner, changes);
+  } catch (e) {
+    const why = `${t('settingsNotSaved')} ${t(errorKey(e, OWNER_ERRORS))}`;
+    // Unless another dialog opened meanwhile (an action of the settings): then a word is enough.
+    if ($('#modal')?.hidden && authored() === b) void authorSettings(why);
+    else toast(why);
+  }
 }
 
 /**
@@ -303,8 +336,7 @@ export function authorChange(tg: HTMLInputElement): boolean {
     if (tg.files) void authorAddFiles([...tg.files]);
     tg.value = '';
   } else if (tg.closest('#b-settings')) {
-    const settings = readSettings($('#b-settings') ?? tg, 'b');
-    void ownerCall((alias, token) => patchBoard(alias, token, settings));
+    if (settingsForm) settingsForm.draft = readSettings($('#b-settings') ?? tg, 'b');
   } else return false;
   return true;
 }
@@ -338,9 +370,25 @@ async function dropItems(b: Authored, items: Item[]): Promise<void> {
 }
 
 /** What was typed or pasted in the add field: one item, or every new label of a list (core/list.ts). */
+/** Items being sent from the add field (typed, pasted, a color): another Enter or click waits for the answer. */
+let adding = false;
+
+/** Runs `send` as the add field's one request in flight, its button busy meanwhile. */
+async function addOnce<T>(send: () => Promise<T>): Promise<T | null> {
+  if (adding) return null;
+  adding = true;
+  addBusy(true);
+  try {
+    return await send();
+  } finally {
+    adding = false;
+    addBusy(false);
+  }
+}
+
 export async function authorAdd(text: string): Promise<boolean> {
   const b = authored();
-  if (b?.view.status !== 'open') return false;
+  if (b?.view.status !== 'open' || adding) return false;
   const all = typedItems(text);
   if (!all.length) return false;
   const { fresh, dupes } = freshLabels(
@@ -352,7 +400,7 @@ export async function authorAdd(text: string): Promise<boolean> {
     return true;
   }
   b.sentLabel = text;
-  const added = await sendItems(b, fresh.map(typed), dupes, all.length > 1);
+  const added = await addOnce(() => sendItems(b, fresh.map(typed), dupes, all.length > 1));
   if (!added) {
     b.sentLabel = null;
     return false;
@@ -365,8 +413,9 @@ export async function authorAdd(text: string): Promise<boolean> {
 /** The color picked beside the add field. */
 export async function authorAddColor(): Promise<void> {
   const b = authored();
+  if (!b || adding) return;
   const color = takeColor();
-  if (b && color) await sendItems(b, [color], 0, false);
+  if (color) await addOnce(() => sendItems(b, [color], 0, false));
 }
 
 /** Labels for new images, each new on the board: "Beach", then "Beach 2". */
@@ -416,17 +465,68 @@ export async function authorAddFiles(files: FileList | File[]): Promise<void> {
   const added = await ownerCall((alias, token) => addBoardItems(alias, token, items));
   if (!added) return;
   let sent = 0;
+  let failed = 0;
   for (const it of added) {
     const data = dataURLBytes(read[labels.indexOf(it.label)]?.data ?? '');
     if (!data) continue;
-    try {
-      await putItemImage(b.alias, b.owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }));
-      sent++;
-    } catch {
-      /* this item stays as text */
-    }
+    if (await sendPicture(b.alias, b.owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
+    else failed++;
   }
-  toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+  picturesToast(sent, failed);
+}
+
+// ─── Pictures the server never received ─────────────────────────────────────
+
+/**
+ * Pictures whose upload failed, by board and item. The server can't tell a picture it never received from one
+ * awaiting review (both are `pending`), so this browser remembers them, in memory, for their rows to say so and offer
+ * to send them again (a reload forgets them: those rows say "awaiting review" again).
+ */
+const unsent = new Map<string, Blob>();
+const picKey = (alias: string, id: string): string => `${alias}/${id}`;
+const retrying = new Set<string>();
+
+/** Sends an item's picture for review; one that fails is kept, and its row offers to send it again. */
+export async function sendPicture(alias: string, owner: string, id: string, jpeg: Blob): Promise<boolean> {
+  try {
+    await putItemImage(alias, owner, id, jpeg);
+    unsent.delete(picKey(alias, id));
+    return true;
+  } catch {
+    unsent.set(picKey(alias, id), jpeg);
+    return false;
+  }
+}
+
+/** What sending a batch of pictures came to; the list shows which ones didn't go. */
+export function picturesToast(sent: number, failed: number): void {
+  if (failed) toast(t('picturesUnsent', { pictures: plural(failed, 'picture'), n: failed }));
+  else toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+  refreshAuthorList(false);
+}
+
+/** "Retry" on a picture that wasn't sent. */
+export async function authorRetryPicture(id: string | undefined): Promise<void> {
+  const b = authored();
+  const key = b && id ? picKey(b.alias, id) : '';
+  const jpeg = unsent.get(key);
+  if (!b || !id || !jpeg || retrying.has(key)) return;
+  retrying.add(key);
+  const btn = $<HTMLButtonElement>(`[data-action="pic-retry"][data-id="${id}"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+  }
+  try {
+    await putItemImage(b.alias, b.owner, id, jpeg);
+    unsent.delete(key);
+    toast(t('picturesSent', { pictures: plural(1, 'picture') }));
+  } catch (e) {
+    toast(t(errorKey(e, OWNER_ERRORS)));
+  } finally {
+    retrying.delete(key);
+  }
+  if (authored() === b) renderList(b, false);
 }
 
 /**

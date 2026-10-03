@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { TurnstileOptions } from '../src/app/turnstile';
 import type { BoardView, ClientMessage, ItemScore, RankingView, ServerMessage } from '../src/core/protocol';
 import type { Ranking } from '../src/core/types';
 import { installFakeCanvas } from './helpers/canvas';
@@ -50,8 +51,9 @@ class FakeSocket {
 }
 
 type Call = { method: string; url: string; body: unknown; auth: string | null };
+type Answer = { status: number; body: unknown };
 const calls: Call[] = [];
-let respond: (c: Call) => { status: number; body: unknown } = () => ({ status: 404, body: { error: 'not_found' } });
+let respond: (c: Call) => Answer | Promise<Answer> = () => ({ status: 404, body: { error: 'not_found' } });
 
 const html = readFileSync(resolve(process.cwd(), 'app/index.html'), 'utf8');
 const body = (html.match(/<body>([\s\S]*)<\/body>/)?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
@@ -135,7 +137,7 @@ beforeAll(async () => {
         auth: headers.Authorization ?? null,
       };
       calls.push(call);
-      const r = respond(call);
+      const r = await respond(call);
       return new Response(JSON.stringify(r.body), { status: r.status });
     }),
   );
@@ -348,6 +350,39 @@ describe('voting', () => {
     ws.receive(state());
   });
 
+  it('gives the end-of-vote page a history entry of its own: Back closes it, at the same address', async () => {
+    // jsdom moves through the history a few tasks later.
+    const settle = () => vi.advanceTimersByTimeAsync(5);
+    await settle();
+    const ws = FakeSocket.last();
+    const mine = [
+      { a: 'p0', b: 'p1', s: 1 as const },
+      { a: 'p1', b: 'p2', s: 1 as const },
+      { a: 'p0', b: 'p2', s: 1 as const },
+    ];
+    ws.receive({ ...state(), mine, pairs: [] } as ServerMessage);
+    const path = location.pathname;
+    click('[data-action="b-finale"]');
+    expect($('#fin')).not.toBeNull();
+    expect((history.state as { layer?: string } | null)?.layer).toBe('finale');
+    history.back();
+    await settle();
+    expect($('#fin')).toBeNull();
+    expect(location.pathname).toBe(path);
+    expect($('#b-main')?.textContent).toContain('You voted on every pair');
+    // Forward shows it again; its own button closes it, and its entry with it.
+    history.forward();
+    await settle();
+    expect($('#fin')).not.toBeNull();
+    click('[data-action="b-finale-close"]');
+    expect($('#fin')).toBeNull();
+    await settle();
+    expect(location.pathname).toBe(path);
+    expect((history.state as { layer?: string } | null)?.layer).toBeUndefined();
+    expect($('#b-main')?.textContent).toContain('You voted on every pair');
+    ws.receive(state());
+  });
+
   it('holds the ranking while live updates are off', () => {
     const ws = FakeSocket.last();
     const liveBox = $('#b-live') as HTMLInputElement;
@@ -362,6 +397,52 @@ describe('voting', () => {
     again.checked = true;
     change(again);
     expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').live).toBe(true);
+  });
+
+  it('keeps the focus where it was through live updates: the Live switch, a suggestion being typed', () => {
+    const ws = FakeSocket.last();
+    const suggest = { settings: { ...view().settings, visitorsAddItems: true } };
+    ws.receive(state(suggest));
+    // A new crowd order replaces the rows only: the switch that pauses the updates stays under the focus.
+    const box = $('#b-live') as HTMLInputElement;
+    box.focus();
+    ws.receive({ t: 'ranking', counts: { votes: 6, voters: 2, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    expect($('#b-rank .rlabel')?.textContent).toBe('Calzone');
+    expect($('#b-live')).toBe(box);
+    expect(document.activeElement).toBe(box);
+    // A new state draws the page again: the suggestion keeps its text, the focus and the caret.
+    const input = $('#add-input') as HTMLInputElement;
+    input.focus();
+    input.value = 'Quattro formaggi';
+    input.setSelectionRange(3, 5);
+    ws.receive(state({ ...suggest, counts: { votes: 7, voters: 3, online: 2 } }));
+    const again = $('#add-input') as HTMLInputElement;
+    expect(again).not.toBe(input);
+    expect(again.value).toBe('Quattro formaggi');
+    expect(document.activeElement).toBe(again);
+    expect([again.selectionStart, again.selectionEnd]).toEqual([3, 5]);
+    // Any other control too.
+    $('[data-action="b-report"]')?.focus();
+    ws.receive(state(suggest));
+    expect(document.activeElement).toBe($('[data-action="b-report"]'));
+    again.value = '';
+    ($('#add-input') as HTMLInputElement).value = '';
+    ws.receive(state());
+  });
+
+  it('names the neck-and-neck marker and the report reasons for screen readers', async () => {
+    const ws = FakeSocket.last();
+    const close = ranking(['p0', 'p1', 'p2']);
+    for (const s of Object.values(close.stats)) s.se = 80;
+    ws.receive({ t: 'ranking', counts: { votes: 7, voters: 3, online: 2 }, ranking: close });
+    const neck = $('#b-rank .neck');
+    expect(neck?.getAttribute('role')).toBe('img');
+    expect(neck?.getAttribute('aria-label')).toBe('Neck and neck with the one above');
+    click('[data-action="b-report"]');
+    expect($('#m-body fieldset legend')?.textContent).toBe('Reason');
+    click('#m-cancel');
+    await flush();
+    ws.receive(state());
   });
 
   it('says how many votes reveal the ranking', () => {
@@ -392,6 +473,23 @@ describe('voting', () => {
     expect($('#add-input')).toBeNull();
   });
 
+  it('sends a suggestion once, however often Enter is pressed, until the server answers', () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    const sent = ws.sent.length;
+    submit('Hawaii');
+    submit('Hawaii');
+    expect(ws.sent.slice(sent).filter((m) => m.t === 'add')).toHaveLength(1);
+    const btn = $('#add-form .add-btn') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    expect(btn.disabled).toBe(false);
+    expect(btn.hasAttribute('aria-busy')).toBe(false);
+    ($('#add-input') as HTMLInputElement).value = '';
+    ws.receive(state());
+  });
+
   it('draws a skipped duel once, even when the server confirms it late', () => {
     const ws = FakeSocket.last();
     click('[data-action="b-skip"]');
@@ -412,6 +510,16 @@ describe('voting', () => {
     ws.receive({ t: 'pairs', pairs: [['p0', 'p2']], mine: 0 });
     expect($('#stage')).not.toBe(stage);
     expect($('#stage .card-a')?.dataset.id).toBe('p0');
+  });
+
+  it('says the next pair is loading while the queue is empty', () => {
+    const ws = FakeSocket.last();
+    ws.receive({ ...state(), pairs: [] } as ServerMessage);
+    const wait = $('#b-main .empty-duel');
+    expect(wait?.getAttribute('aria-busy')).toBe('true');
+    expect(wait?.querySelector('[role="status"]')?.textContent).toBe('Loading the next pair…');
+    ws.receive(state());
+    expect($('#b-main .card-a')).not.toBeNull();
   });
 
   it('says a new version is out when the server no longer serves this one', () => {
@@ -492,6 +600,46 @@ describe('author', () => {
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p0` });
     expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
+  });
+
+  it('sends what the author adds once, however often Enter is pressed, until the server answers', async () => {
+    FakeSocket.last().receive(state({}, true));
+    respond = () =>
+      new Promise<Answer>((res) =>
+        setTimeout(
+          () => res({ status: 200, body: { id: 'n-Bianca', label: 'Bianca', img: null, fill: null, h: 1 } }),
+          500,
+        ),
+      );
+    calls.length = 0;
+    submit('Bianca');
+    submit('Bianca');
+    const btn = $('#add-form .add-btn') as HTMLButtonElement;
+    expect([btn.disabled, btn.getAttribute('aria-busy')]).toEqual([true, 'true']);
+    // A new state meanwhile draws the field again: still busy.
+    FakeSocket.last().receive(state({}, true));
+    expect(($('#add-form .add-btn') as HTMLButtonElement).disabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    expect(($('#add-form .add-btn') as HTMLButtonElement).disabled).toBe(false);
+    expect($('#add-form .add-btn')?.hasAttribute('aria-busy')).toBe(false);
+  });
+
+  it('tells the author when the server can’t be reached, and when this device lost the admin key', async () => {
+    FakeSocket.last().receive(state({}, true));
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    submit('Hawaii');
+    await flush();
+    expect($('#toast')?.textContent).toBe('You’re offline or the server can’t be reached. Try again in a moment.');
+    respond = () => ({ status: 403, body: { error: 'forbidden' } });
+    submit('Hawaii');
+    await flush();
+    expect($('#toast')?.textContent).toBe(
+      'This device no longer holds this ranking’s admin key. Open your latest admin link here to manage it again.',
+    );
+    ($('#add-input') as HTMLInputElement).value = '';
   });
 
   it('renames an item: at once without votes, asking what its votes become otherwise', async () => {
@@ -654,13 +802,53 @@ describe('author', () => {
     click('[data-action="b-settings"]');
     expect($('#m-title')?.textContent).toBe('Published ranking settings');
     expect($('#b-settings input[name="b-m"]')).toBeNull();
-    const blind = $('#b-settings input[name="b-vis"][value="blind"]') as HTMLInputElement;
-    blind.checked = true;
-    change(blind);
+    // Going through the radio buttons (each one a change, as with the arrow keys) sends nothing…
+    calls.length = 0;
+    for (const vis of ['after', 'always', 'blind']) {
+      const radio = $(`#b-settings input[name="b-vis"][value="${vis}"]`) as HTMLInputElement;
+      radio.checked = true;
+      change(radio);
+    }
     await flush();
-    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', url: `/api/boards/${ALIAS}`, auth: `Bearer ${OWNER}` });
-    expect(calls.at(-1)?.body).toMatchObject({ visibility: 'blind' });
+    expect(calls).toHaveLength(0);
+    // …Done sends what changed, once.
+    click('#m-ok');
+    await flush();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}`,
+      auth: `Bearer ${OWNER}`,
+      body: { visibility: 'blind' },
+    });
+    // Nothing changed, nothing sent; Cancel forgets the changes.
+    click('[data-action="b-settings"]');
+    click('#m-ok');
+    click('[data-action="b-settings"]');
+    ($('#b-visitors') as HTMLInputElement).checked = true;
+    change($('#b-visitors') as HTMLInputElement);
+    click('#m-cancel');
+    await flush();
+    expect(calls).toHaveLength(1);
+    // Refused: the settings open again on what is in force, saying why.
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    click('[data-action="b-settings"]');
+    const after = $('#b-settings input[name="b-vis"][value="after"]') as HTMLInputElement;
+    after.checked = true;
+    change(after);
+    click('#m-ok');
+    await flush();
+    expect($('#modal')?.hidden).toBe(false);
+    expect($('#m-body [role="alert"]')?.textContent).toBe(
+      'Your changes weren’t saved. You’re offline or the server can’t be reached. Try again in a moment.',
+    );
+    expect(($('#b-settings input[name="b-vis"][value="always"]') as HTMLInputElement).checked).toBe(true);
+    click('#m-cancel');
+    respond = (c) => ({ status: 200, body: c.method === 'PATCH' ? view().settings : 'closed' });
     // Closing the vote from the settings closes them first.
+    click('[data-action="b-settings"]');
     click('#b-settings [data-action="b-close"]');
     expect($('#modal')?.hidden).toBe(true);
     await flush();
@@ -921,8 +1109,15 @@ describe('sharing', () => {
     expect($('.b-head [data-action="b-make-mine"]')).not.toBeNull();
     click('[data-action="share-board"]');
     expect($('#m-title')?.textContent).toBe('Share this ranking');
+    // While the card is drawn, the preview says so; the canvas then names itself.
+    const box = $('#share-preview');
+    expect(box?.getAttribute('aria-busy')).toBe('true');
+    expect(box?.querySelector('[role="status"]')?.textContent).toBe('Drawing the picture…');
     await flush();
     expect($('#share-preview canvas')).not.toBeNull();
+    expect(box?.hasAttribute('aria-busy')).toBe(false);
+    expect(box?.hasAttribute('role')).toBe(false);
+    expect($('#share-preview canvas')?.getAttribute('role')).toBe('img');
     const msg = $('.share-msg')?.textContent ?? '';
     expect(msg).toContain('Pizzas · 3 votes · 2 voters');
     expect(msg).toContain('1. Margherita');
@@ -1153,6 +1348,13 @@ describe('reporting', () => {
     click('#m-ok');
     await flush();
     expect($('#toast')?.textContent).toBe('Vote at least once to report this ranking.');
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    click('[data-action="b-report"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('You’re offline or the server can’t be reached. Try again in a moment.');
   });
 
   it('shows no report link to the author', () => {
@@ -1185,9 +1387,12 @@ describe('pictures for review', () => {
   });
 
   it('announces the pictures and sends them after publishing, when the server reviews them', async () => {
+    // The picture's upload fails the first time.
+    let pictureUp = false;
     respond = (c) => {
       if (c.url === '/api/config') return { status: 200, body: { images: 'review' } };
       if (c.method === 'POST') return { status: 201, body: { alias: PICS, owner: OWNER } };
+      if (c.url.endsWith('/image') && !pictureUp) return { status: 503, body: {} };
       return { status: 201, body: { url: `http://localhost:3000/og/b/${PICS}/1.png`, ok: true } };
     };
     click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
@@ -1210,8 +1415,8 @@ describe('pictures for review', () => {
       body: { blob: 'image/jpeg' },
       auth: `Bearer ${OWNER}`,
     });
-    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
-    // The author panel says the picture waits.
+    expect($('#toast')?.textContent).toBe('1 picture not sent. Retry from the list of items.');
+    // The author panel says it wasn't sent, not that it waits for a review, and sends it again on demand.
     const ws = FakeSocket.last();
     ws.open();
     ws.receive(
@@ -1227,10 +1432,126 @@ describe('pictures for review', () => {
         true,
       ),
     );
-    expect($('#item-list li[data-id="i1"] .row-note')?.textContent).toBe('Picture awaiting review');
+    const note = () => $('#item-list li[data-id="i1"] .row-note');
+    expect(note()?.textContent).toBe('Picture not sent Retry');
+    expect(note()?.querySelector('button')?.getAttribute('aria-label')).toBe('Send the picture of Beach again');
+    pictureUp = true;
+    calls.length = 0;
+    click('#item-list [data-action="pic-retry"][data-id="i1"]');
+    await flush();
+    expect(calls.filter((c) => c.method === 'PUT')).toMatchObject([
+      { url: `/api/boards/${PICS}/items/i1/image`, auth: `Bearer ${OWNER}` },
+    ]);
+    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
+    expect(note()?.textContent).toBe('Picture awaiting review');
     // Images added later go the same way: announced, then sent.
     await flush();
     expect($('[data-action="pick-files"]')).not.toBeNull();
+    click('[data-action="back"]');
+  });
+});
+
+describe('offline', () => {
+  const VISITED = 'Vs3dEf7hJk';
+
+  it('says when a board can’t be reached at first, shows what "Your votes" remembers, and tries again', async () => {
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    history.pushState(null, '', `/b/${VISITED}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect($('#b-wait')?.textContent).toBe('Connecting…');
+    const ws = FakeSocket.last();
+    ws.drop(1006);
+    await flush();
+    const wait = $('#b-wait');
+    expect(wait?.getAttribute('role')).toBe('status');
+    expect(wait?.textContent).toBe('Offline or the server can’t be reached — trying again');
+    // The card under "Your votes": the title and the counts of the last visit.
+    expect($('.board .b-title')?.textContent).toBe('Pizzas');
+    expect($('.board .b-counts')?.textContent).toContain('Your votes: 1');
+    // Retry connects at once; the message changes in place.
+    click('[data-action="b-retry"]');
+    const again = FakeSocket.last();
+    expect(again).not.toBe(ws);
+    expect($('#b-wait')).toBe(wait);
+    expect(wait?.textContent).toBe('Connecting…');
+    again.open();
+    again.receive(state());
+    expect($('#b-wait')).toBeNull();
+    expect($('#b-main .card-a')).not.toBeNull();
+  });
+
+  it('goes back from a board that can’t be reached', async () => {
+    history.pushState(null, '', '/b/Wa1tNgBrd2');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    FakeSocket.last().drop(1006);
+    await flush();
+    expect($('.board .b-title')).toBeNull();
+    click('#b-wait-acts [data-action="back"]');
+    expect($('h1')?.textContent).toBe('Your rankings');
+  });
+});
+
+describe('publishing, slowly', () => {
+  it('keeps the dialog open and busy until the server answers, with what went wrong in it', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    let widget: TurnstileOptions | undefined;
+    const reset = vi.fn();
+    (window as { turnstile?: unknown }).turnstile = {
+      render: (_el: HTMLElement, o: TurnstileOptions) => {
+        widget = o;
+        return 'w9';
+      },
+      getResponse: () => 'human-token',
+      reset,
+      remove() {},
+    };
+    click('.g-head [data-action="new-rank"]');
+    for (const v of ['Tea', 'Coffee']) submit(v);
+    click('[data-action="publish"]');
+    await flush();
+    const ok = $('#m-ok') as HTMLButtonElement;
+    // Publish waits for the check's token.
+    expect(ok.disabled).toBe(true);
+    widget?.callback?.('human-token');
+    expect(ok.disabled).toBe(false);
+    ($('#m-body input[name="pub-vis"][value="blind"]') as HTMLInputElement).checked = true;
+    const later = (a: Answer) => new Promise<Answer>((res) => setTimeout(() => res(a), 1000));
+    respond = () => later({ status: 429, body: { error: 'rate_limited' } });
+    calls.length = 0;
+    click('#m-ok');
+    expect(ok.disabled).toBe(true);
+    expect(ok.textContent).toBe('Publishing…');
+    expect($('.modal-box')?.getAttribute('aria-busy')).toBe('true');
+    // Nothing closes it meanwhile, and nothing goes twice.
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    ok.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect($('#modal')?.hidden).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    // What went wrong, in the dialog, the settings as chosen.
+    expect($('#modal')?.hidden).toBe(false);
+    expect($('#m-error')?.textContent).toBe('Too many attempts. Try again in a minute.');
+    expect(($('#m-body input[name="pub-vis"][value="blind"]') as HTMLInputElement).checked).toBe(true);
+    expect([ok.disabled, ok.textContent]).toEqual([false, 'Publish']);
+    expect($('.modal-box')?.hasAttribute('aria-busy')).toBe(false);
+    // The token was spent: the check starts again.
+    expect(reset).toHaveBeenCalledWith('w9');
+    const SLOW = 'S1owPubbd7';
+    respond = (c) =>
+      c.method === 'PUT'
+        ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } }
+        : later({ status: 201, body: { alias: SLOW, owner: OWNER } });
+    click('#m-ok');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect($('#modal')?.hidden).toBe(true);
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.body).toMatchObject({ settings: { visibility: 'blind' }, turnstile: 'human-token' });
+    expect(location.pathname).toBe(`/b/${SLOW}`);
+    vi.unstubAllEnvs();
+    delete (window as { turnstile?: unknown }).turnstile;
     click('[data-action="back"]');
   });
 });

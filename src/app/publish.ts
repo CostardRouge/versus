@@ -11,10 +11,12 @@ import {
 } from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
 import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
+import { picturesToast, sendPicture } from './author';
 import { boardURL } from './board';
 import { $, ask, copyText, toast } from './dom';
+import { errorKey, PUBLISH_ERRORS } from './errors';
 import { openBoard } from './rankings';
-import { ApiError, fetchConfig, publishBoard, putItemImage } from './remote';
+import { fetchConfig, publishBoard } from './remote';
 import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
@@ -79,33 +81,45 @@ const BLOCKS: Record<PublishBlock, MsgKey> = {
 
 let publishing = false;
 
-const PUBLISH_ERRORS: Partial<Record<string, MsgKey>> = {
-  captcha: 'captchaFailed',
-  rate_limited: 'tooManyTries',
-  images_not_allowed: 'blockImages',
-};
+/** What the server answered a publication with, and what was sent. */
+interface Published {
+  alias: string;
+  owner: string;
+  chosen: Partial<BoardSettings>;
+  withVotes: boolean;
+}
 
 /**
  * Sends the pictures the published items announced, one by one, for the moderator's review. A picture that
- * fails leaves its item as text: the author panel says it waits, and nothing else breaks.
+ * fails leaves its item as text, and the author's list offers to send it again (author.ts).
  */
 async function sendPictures(r: Ranking, alias: string, owner: string): Promise<void> {
   let sent = 0;
+  let failed = 0;
   for (const it of pictureItems(r)) {
     const data = dataURLBytes(it.img);
     if (!data) continue;
-    try {
-      await putItemImage(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }));
-      sent++;
-    } catch {
-      /* this item stays as text */
-    }
+    if (await sendPicture(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
+    else failed++;
   }
-  toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+  picturesToast(sent, failed);
 }
 
 export async function publishRanking(r: Ranking | undefined): Promise<void> {
   if (!r || r.pub || publishing) return;
+  publishing = true;
+  try {
+    await publish(r);
+  } finally {
+    publishing = false;
+  }
+}
+
+/**
+ * The publish dialog: settings, then Publish, which keeps the dialog open and busy until the server answers. What
+ * goes wrong shows in it, the settings as chosen; once published, the board opens.
+ */
+async function publish(r: Ranking): Promise<void> {
   let block = publishBlock(r);
   // Pictures travel only when the server reviews them (docs/published-boards.md#images).
   let pictures = 0;
@@ -126,48 +140,64 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
     ${duels ? `<label class="opt pub-votes"><input type="checkbox" id="pub-votes" checked> ${t('publishVotes', { duels: plural(duels, 'duel') })}</label>` : ''}
     ${settingsHTML('pub', settings)}
     <details class="more"><summary>${t('moreOptions')}</summary>${optionsHTML('pub', settings)}</details>
-    ${check ? '<div class="pub-captcha" id="pub-captcha"></div>' : ''}`;
-  const asked = ask({ title: t('publishTitle'), html, ok: t('publish') });
-  const widget = turnstileWidget('#pub-captcha');
+    ${check ? `<div class="pub-captcha" id="pub-captcha"></div><p class="m-error" id="pub-captcha-err" role="alert" hidden>${t('captchaFailed')}</p>` : ''}`;
+  let done: Published | null = null;
+  const send = async (): Promise<string | true> => {
+    const turnstile = widget.token();
+    if (check && !turnstile) return t('captchaMissing');
+    const form = $('#m-body');
+    if (!form) return t('publishFailed');
+    const chosen = readSettings(form, 'pub');
+    const withVotes = $<HTMLInputElement>('#pub-votes', form)?.checked ?? false;
+    try {
+      const { alias, owner } = await publishBoard({
+        ...publishRequest(r, S.voter, chosen, withVotes, getLang(), pictures > 0),
+        ...(turnstile ? { turnstile } : {}),
+      });
+      done = { alias, owner, chosen, withVotes };
+      return true;
+    } catch (e) {
+      // The token was spent (or may have been): another check for the next try.
+      widget.reset();
+      return t(errorKey(e, PUBLISH_ERRORS, 'publishFailed'));
+    }
+  };
+  const asked = ask({
+    title: t('publishTitle'),
+    html,
+    ok: t('publish'),
+    confirm: { run: send, busy: t('publishing') },
+  });
+  // With a check, Publish waits for its token.
+  const ok = $<HTMLButtonElement>('#m-ok');
+  if (check && ok) ok.disabled = true;
+  const widget = turnstileWidget('#pub-captcha', (state) => {
+    if (ok && $('#pub-captcha')) ok.disabled = state !== 'ready';
+    const err = $('#pub-captcha-err');
+    if (err) err.hidden = state !== 'failed';
+  });
   const confirmed = await asked;
-  const turnstile = widget.take();
-  if (!confirmed) return;
-  if (check && !turnstile) {
-    toast(t('captchaMissing'));
-    return;
-  }
-  const form = $('#m-body');
-  if (!form) return;
-  const chosen = readSettings(form, 'pub');
-  const withVotes = $<HTMLInputElement>('#pub-votes', form)?.checked ?? false;
-  publishing = true;
-  try {
-    const request = {
-      ...publishRequest(r, S.voter, chosen, withVotes, getLang(), pictures > 0),
-      ...(turnstile ? { turnstile } : {}),
-    };
-    const { alias, owner } = await publishBoard(request);
-    const used = { ...settings, ...chosen };
-    trackEvent('board-published', {
-      method: used.method,
-      visibility: used.visibility,
-      items: r.items.length,
-      votes: withVotes,
-      pictures,
-    });
-    r.pub = { alias, status: 'open' };
-    r.updated = Date.now();
-    saveOwner(alias, owner);
-    save();
-    // The link's preview image, drawn here from the same items and votes the server just received.
-    uploadPublishedCard(r, alias, withVotes, used);
-    if (pictures) void sendPictures(r, alias, owner);
-    const copied = await copyText(boardURL(alias));
-    openBoard(alias);
-    toast(t(copied ? 'published' : 'publishedShare'));
-  } catch (e) {
-    toast(t((e instanceof ApiError && PUBLISH_ERRORS[e.code]) || 'publishFailed'));
-  } finally {
-    publishing = false;
-  }
+  widget.take();
+  // Set by send(), which TypeScript can't see run.
+  const published = done as Published | null;
+  if (!confirmed || !published) return;
+  const { alias, owner, chosen, withVotes } = published;
+  const used = { ...settings, ...chosen };
+  trackEvent('board-published', {
+    method: used.method,
+    visibility: used.visibility,
+    items: r.items.length,
+    votes: withVotes,
+    pictures,
+  });
+  r.pub = { alias, status: 'open' };
+  r.updated = Date.now();
+  saveOwner(alias, owner);
+  save();
+  // The link's preview image, drawn here from the same items and votes the server just received.
+  uploadPublishedCard(r, alias, withVotes, used);
+  if (pictures) void sendPictures(r, alias, owner);
+  const copied = await copyText(boardURL(alias));
+  openBoard(alias);
+  toast(t(copied ? 'published' : 'publishedShare'));
 }

@@ -74,6 +74,9 @@ export type ServerMessage =
   | { t: 'ranking'; counts: Counts; ranking: RankingView | null }
   | { t: 'error'; code: ErrorCode };
 
+/** What an HTTP route answers an error with: a code of the protocol, or a body too big or of the wrong type. */
+export type HttpErrorCode = ErrorCode | 'too_large' | 'unsupported';
+
 /** Largest client message accepted, in characters. */
 export const MAX_MESSAGE = 4096;
 /** The close code of a board's socket when the board is gone (withdrawn, taken down, expired): don't reconnect. */

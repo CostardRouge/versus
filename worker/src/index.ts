@@ -1,7 +1,7 @@
 import { ALIAS_RE, isRecord, LIMITS, parsePublish } from '../../src/core/board';
-import { parseSummaryRequest, type ServerConfig } from '../../src/core/protocol';
+import { type HttpErrorCode, parseSummaryRequest, type ServerConfig } from '../../src/core/protocol';
 import { CARD_MAX_BYTES, cardKey, cardUpload, parseDuelQuery } from '../../src/core/share';
-import type { BoardLang, ErrorCode, Result } from '../../src/core/types';
+import type { BoardLang, Result } from '../../src/core/types';
 import { cached } from './cache';
 import { cardURL, deleteCards, preview, readCard, rewriteHead, storeCard } from './cards';
 import { type Env, imagePolicy } from './env';
@@ -75,7 +75,7 @@ export { BoardObject } from './board-object';
 
 const MAX_BODY = 512 * 1024;
 
-const STATUS: Record<string, number> = {
+const STATUS: Partial<Record<HttpErrorCode, number>> = {
   not_found: 404,
   forbidden: 403,
   captcha: 403,
@@ -89,12 +89,10 @@ const STATUS: Record<string, number> = {
   rate_limited: 429,
 };
 
-type Code = ErrorCode | 'too_large' | 'unsupported';
-
 const json = (body: unknown, status = 200): Response =>
   Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 
-const error = (code: Code): Response => json({ error: code }, STATUS[code] ?? 400);
+const error = (code: HttpErrorCode): Response => json({ error: code }, STATUS[code] ?? 400);
 
 const reply = <T>(r: Result<T>): Response => (r.ok ? json(r.value) : error(r.error));
 

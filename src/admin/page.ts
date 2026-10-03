@@ -215,13 +215,14 @@ export function mountAdmin(opts: AdminOpts): void {
   }
 
   function toolsHTML(): string {
+    // Toggle buttons, one pressed: they filter the one list below (not tabs, which would have panels).
     const filters = ADMIN_FILTERS.map(
       (f) =>
-        `<button class="ad-filter" type="button" role="tab" aria-selected="${f === st.filter}" data-act="filter" data-filter="${f}">${tx(FILTER_KEYS[f])}</button>`,
+        `<button class="ad-filter" type="button" aria-pressed="${f === st.filter}" data-act="filter" data-filter="${f}">${tx(FILTER_KEYS[f])}</button>`,
     ).join('');
     return `<div class="ad-tools">
-      <div class="ad-filters" role="tablist">${filters}</div>
-      <form class="ad-search" data-form="search"><input type="search" name="q" value="${esc(st.q)}" placeholder="${esc(tx('search'))}" aria-label="${esc(tx('search'))}"><button class="ad-btn" type="submit">${tx('searchGo')}</button></form>
+      <div class="ad-filters" role="group" aria-label="${esc(tx('filters'))}">${filters}</div>
+      <form class="ad-search" data-form="search"><input id="ad-q" type="search" name="q" value="${esc(st.q)}" placeholder="${esc(tx('search'))}" aria-label="${esc(tx('search'))}"><button class="ad-btn" type="submit">${tx('searchGo')}</button></form>
       ${button('refresh', tx('refresh'))}
     </div>`;
   }
@@ -244,8 +245,8 @@ export function mountAdmin(opts: AdminOpts): void {
       <td class="mono ${b.reports ? 'ad-count' : ''}">${n(b.reports)}</td>
       <td class="ad-date">${when(b.created)}</td>
       <td class="ad-date">${when(b.active)}</td>
-      <td>${button(open ? 'less' : 'inspect', tx(open ? 'less' : 'details'), `data-alias="${esc(b.alias)}"`, 'ad-btn sm')}</td>
-    </tr>${open ? `<tr class="ad-detail"><td colspan="9">${detailHTML()}</td></tr>` : ''}`;
+      <td>${button('details', tx('details'), `data-alias="${esc(b.alias)}" aria-expanded="${open}" ${open ? `aria-controls="ad-detail-${esc(b.alias)}"` : ''}`, 'ad-btn sm')}</td>
+    </tr>${open ? `<tr class="ad-detail" id="ad-detail-${esc(b.alias)}"><td colspan="9">${detailHTML()}</td></tr>` : ''}`;
   }
 
   function detailHTML(): string {
@@ -291,7 +292,7 @@ export function mountAdmin(opts: AdminOpts): void {
         <ul class="ad-pics">${pending
           .map(
             (it) =>
-              `<li><img data-pic="${esc(it.id)}" alt="" width="160" height="160"><span class="ad-pic-label">${esc(it.label)}</span><span class="ad-pic-acts">${button('approve-pic', tx('approve'), `data-id="${esc(it.id)}"`, 'ad-btn sm primary')}${button('refuse-pic', tx('refuse'), `data-id="${esc(it.id)}"`, 'ad-btn sm danger')}</span></li>`,
+              `<li><img data-pic="${esc(it.id)}" alt="" width="160" height="160"><span class="ad-pic-label">${esc(it.label)}</span><span class="ad-pic-acts">${button('approve-pic', tx('approve'), `data-id="${esc(it.id)}"`, 'ad-btn sm primary')}${button('refuse-pic', tx('refuse'), `data-id="${esc(it.id)}" data-label="${esc(it.label)}"`, 'ad-btn sm danger')}</span></li>`,
           )
           .join('')}</ul></section>`
       : '';
@@ -321,14 +322,60 @@ export function mountAdmin(opts: AdminOpts): void {
     </nav>`;
     if (!list.boards.length) return `<p class="ad-muted ad-empty">${tx('empty')}</p>${list.offset ? pager : ''}`;
     return `<div class="ad-scroll"><table class="ad-table">
-      <thead><tr>${cols.map((c) => `<th>${tx(c)}</th>`).join('')}<th></th></tr></thead>
+      <thead><tr>${cols.map((c) => `<th>${tx(c)}</th>`).join('')}<th><span class="ad-vh">${tx('cActions')}</span></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>${pager}`;
   }
 
+  /**
+   * The control to give the focus back to once the page is drawn again, by a selector: every render rewrites the
+   * page, and an action disables the buttons while it runs, so the focus would fall back to the top each time.
+   */
+  let refocus: string | null = null;
+  let renders = 0;
+  /** The board the last click was about: its row is where the focus goes when the control clicked is gone. */
+  let near: string | null = null;
+
+  /** A selector for a control: its data-act with the board, item or filter it acts on, or its id. */
+  function keyOf(el: Element | null): string | null {
+    if (!(el instanceof HTMLElement) || !root.contains(el)) return null;
+    if (el.id) return `#${el.id}`;
+    const d = el.dataset;
+    if (!d.act) return null;
+    const attrs = (['alias', 'id', 'filter'] as const).filter((k) => d[k] !== undefined);
+    return `[data-act="${d.act}"]${attrs.map((k) => `[data-${k}="${(d[k] ?? '').replace(/["\\]/g, '\\$&')}"]`).join('')}`;
+  }
+
+  /**
+   * Focuses the first of `keys` on the page. Disabled while an action runs, it is marked busy and kept for the next
+   * render; gone (the item removed, the board taken down), the next one is tried.
+   */
+  function focusFirst(keys: (string | null)[]): void {
+    for (const key of keys) {
+      const el = key ? root.querySelector<HTMLButtonElement>(key) : null;
+      if (!key || !el) continue;
+      if (el.disabled) {
+        el.setAttribute('aria-busy', 'true');
+        refocus = key;
+      } else el.focus();
+      return;
+    }
+  }
+
   function render(): void {
+    renders++;
+    const want = refocus ?? keyOf(document.activeElement);
+    refocus = null;
+    draw();
+    if (want && root.querySelector(want) !== document.activeElement) {
+      const row = st.open ?? near;
+      focusFirst([want, row ? `[data-act="details"][data-alias="${row}"]` : null, '#ad-h']);
+    }
+  }
+
+  function draw(): void {
     // In a tab of its own: leaving this page would forget the token.
-    const brand = `<a class="ad-brand" href="../" target="_blank" rel="noopener"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h">${tx('title')}</h1>`;
+    const brand = `<a class="ad-brand" href="../" target="_blank" rel="noopener"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h" id="ad-h" tabindex="-1">${tx('title')}</h1>`;
     if (opts.api === null) {
       root.innerHTML = `<header class="ad-top">${brand}</header><main class="ad-main"><p class="ad-notice">${tx('noApi')}</p></main>`;
       return;
@@ -399,9 +446,19 @@ export function mountAdmin(opts: AdminOpts): void {
 
   root.addEventListener('click', (e) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
-    if (!el || (el as HTMLButtonElement).disabled) return;
+    // One request at a time: a second click while one runs does nothing.
+    if (!el || (el as HTMLButtonElement).disabled || (st.busy && el.dataset.act !== 'logout')) return;
     const alias = st.open;
     const title = st.detail?.title ?? '';
+    // The focus comes back to this control after the renders the click causes (a click doesn't focus it everywhere).
+    const n = renders;
+    refocus = keyOf(el);
+    near = alias ?? el.dataset.alias ?? null;
+    handle(el, alias, title);
+    if (renders === n) refocus = null;
+  });
+
+  function handle(el: HTMLElement, alias: string | null, title: string): void {
     switch (el.dataset.act) {
       case 'logout':
         st.token = '';
@@ -426,13 +483,13 @@ export function mountAdmin(opts: AdminOpts): void {
         st.offset += PAGE;
         void load();
         break;
-      case 'inspect':
-        if (el.dataset.alias) void inspect(el.dataset.alias);
-        break;
-      case 'less':
-        st.open = null;
-        st.detail = null;
-        render();
+      case 'details':
+        if (el.dataset.alias && el.dataset.alias !== st.open) void inspect(el.dataset.alias);
+        else {
+          st.open = null;
+          st.detail = null;
+          render();
+        }
         break;
       case 'close':
       case 'reopen':
@@ -445,13 +502,17 @@ export function mountAdmin(opts: AdminOpts): void {
         if (alias) void act(() => call('PATCH', `/boards/${alias}`, { hidden: el.dataset.on === 'true' }));
         break;
       case 'clear-reports':
-        if (alias) void act(() => call('DELETE', `/boards/${alias}/reports`));
+        if (alias && opts.confirm(tx('confirmClearReports', { title }))) {
+          void act(() => call('DELETE', `/boards/${alias}/reports`));
+        }
         break;
       case 'approve-pic':
       case 'refuse-pic': {
         const id = el.dataset.id;
         const decision = el.dataset.act === 'approve-pic' ? 'ok' : 'refused';
-        if (alias && id) {
+        // A refused picture is deleted: asked first.
+        const sure = decision === 'ok' || opts.confirm(tx('confirmRefuse', { label: el.dataset.label ?? '' }));
+        if (alias && id && sure) {
           const body = decision === 'ok' ? { decision, etag: etags.get(id) ?? '' } : { decision };
           void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, body));
         }
@@ -477,7 +538,7 @@ export function mountAdmin(opts: AdminOpts): void {
       default:
         break;
     }
-  });
+  }
 
   render();
   void load();

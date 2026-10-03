@@ -817,6 +817,12 @@ kbd {
   color: var(--bad);
   font-weight: 600;
 }
+/* What to do about the note (a picture to send again): a link in its color. */
+.row-act {
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+}
 .ed-frozen {
   display: flex;
   flex-wrap: wrap;
@@ -2078,6 +2084,12 @@ body.dropping .drop-overlay {
 }
 .m-body p:last-child {
   margin-bottom: 0;
+}
+/* What went wrong, in a dialog that stays open for another try (a publication refused, settings not saved). */
+.m-body .m-error {
+  margin-top: 12px;
+  color: var(--bad);
+  font-weight: 600;
 }
 .modal-actions {
   display: flex;

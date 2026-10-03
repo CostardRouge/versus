@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import type { BoardView, ClientMessage, ServerMessage } from '../../src/core/protocol';
 import { fakeApi } from './helpers';
 
@@ -26,7 +26,8 @@ const view: BoardView = {
   },
 };
 
-test('votes every pair of a published board, then sees the result on a page of its own', async ({ page }) => {
+/** Opens the board on a faked server, votes on its three pairs, and returns the messages sent. */
+async function voteAll(page: Page): Promise<ClientMessage[]> {
   await fakeApi(page, (method, path) =>
     method === 'GET' && path === `/api/boards/${ALIAS}` ? { status: 200, body: view } : null,
   );
@@ -60,6 +61,27 @@ test('votes every pair of a published board, then sees the result on a page of i
     await card.click();
     await expect.poll(() => sent.filter((m) => m.t === 'vote').length).toBe(i + 1);
   }
+  return sent;
+}
+
+test('votes every pair of a published board, then sees the result on a page of its own', async ({ page }) => {
+  const sent = await voteAll(page);
   await expect(page.getByRole('heading', { name: 'You voted on every pair' })).toBeVisible();
   expect(sent[0]).toMatchObject({ t: 'hello' });
+});
+
+test('Back from the end-of-vote page returns to the board, not out of it', async ({ page }) => {
+  await voteAll(page);
+  await expect(page.locator('#fin')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('#fin')).toHaveCount(0);
+  await expect(page.locator('#b-main [data-action="b-finale"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pizzas' })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe(`/app/b/${ALIAS}`);
+  // Forward opens it again; its own button closes it, at the same address.
+  await page.goForward();
+  await expect(page.locator('#fin')).toBeVisible();
+  await page.locator('#fin .back[data-action="b-finale-close"]').click();
+  await expect(page.locator('#fin')).toHaveCount(0);
+  expect(new URL(page.url()).pathname).toBe(`/app/b/${ALIAS}`);
 });

@@ -477,6 +477,23 @@ export const en = {
       `${v.l} ${Number(v.l) === 1 ? 'loss' : 'losses'}`,
       ...(v.d === undefined ? [] : [`${v.d} ${Number(v.d) === 1 ? 'tie' : 'ties'}`]),
     ].join(', '),
+  // Published rankings: errors, waiting and busy states, screen reader texts
+  reportReason: 'Reason',
+  offline: 'You’re offline or the server can’t be reached. Try again in a moment.',
+  ownerKeyLost:
+    'This device no longer holds this ranking’s admin key. Open your latest admin link here to manage it again.',
+  publishInvalid: 'The server refused this ranking as it is. Check its items, then try again.',
+  publishTooLarge: 'This ranking is too big to publish. Remove some items, or publish it without your votes.',
+  boardOffline: 'Offline or the server can’t be reached — trying again',
+  retry: 'Retry',
+  lastVisit: 'As of your last visit',
+  publishing: 'Publishing…',
+  settingsNotSaved: 'Your changes weren’t saved.',
+  picNotSent: 'Picture not sent',
+  picRetryAria: 'Send the picture of {label} again',
+  picturesUnsent: (v: Vars) => `${v.pictures} not sent. Retry from the list of items.`,
+  loadingPair: 'Loading the next pair…',
+  drawingCard: 'Drawing the picture…',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

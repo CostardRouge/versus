@@ -160,7 +160,8 @@ export function keepFocus(render: () => void, fallback?: () => HTMLElement | nul
 }
 /**
  * Confirm modal. `html` replaces the text body with markup the caller reads back after OK (a small
- * form); `cancel: false` makes it a plain notice.
+ * form); `cancel: false` makes it a plain notice. `confirm` runs on OK with the dialog still open and busy (OK
+ * disabled, labelled `busy`, nothing closes it): true closes it, a message shows in it and lets OK be tried again.
  */
 export function ask(opts: {
   title: string;
@@ -169,6 +170,7 @@ export function ask(opts: {
   ok?: string;
   danger?: boolean;
   cancel?: boolean;
+  confirm?: { run: () => Promise<string | true>; busy: string };
 }): Promise<boolean> {
   return new Promise((resolve) => {
     const m = $('#modal');
@@ -191,13 +193,47 @@ export function ask(opts: {
     // The page behind can't be reached (Tab, a screen reader's cursor) while the question is open.
     $('#app')?.setAttribute('inert', '');
     m.hidden = false;
-    modalDone = (v) => {
+    okB.disabled = false;
+    const done = (v: boolean) => {
       m.hidden = true;
       modalDone = null;
       $('#app')?.removeAttribute('inert');
       prev?.focus();
       resolve(v);
     };
+    let busy = false;
+    const step = opts.confirm;
+    const self = (v: boolean): void => {
+      if (busy) return;
+      if (!v || !step) {
+        done(v);
+        return;
+      }
+      busy = true;
+      okB.disabled = true;
+      okB.textContent = step.busy;
+      box?.setAttribute('aria-busy', 'true');
+      void step
+        .run()
+        .catch(() => t('actionFailed'))
+        .then((r) => {
+          busy = false;
+          if (modalDone !== self) return;
+          box?.removeAttribute('aria-busy');
+          okB.disabled = false;
+          okB.textContent = opts.ok ?? t('confirm');
+          if (r === true) {
+            done(true);
+            return;
+          }
+          if (!$('#m-error', body))
+            body.insertAdjacentHTML('beforeend', '<p class="m-error" id="m-error" role="alert"></p>');
+          const err = $('#m-error', body);
+          if (err) err.textContent = r;
+          if (!box?.contains(doc.activeElement)) okB.focus();
+        });
+    };
+    modalDone = self;
     // A destructive question starts on Cancel: Enter alone must never delete.
     setTimeout(() => (opts.danger && !cancel.hidden ? cancel : okB).focus(), 10);
   });

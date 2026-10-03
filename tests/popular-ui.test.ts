@@ -65,8 +65,11 @@ const view: BoardView = {
 };
 
 const urls: string[] = [];
+/** The server can't be reached for boards (the list itself was fetched before). */
+let down = false;
 const fetchMock = async (url: string) => {
   urls.push(url);
+  if (down && url.startsWith('/api/boards/')) throw new TypeError('Failed to fetch');
   if (url.includes('/api/popular')) return Response.json({ boards });
   if (url === `/api/boards/${TPL}`) return Response.json(view);
   return Response.json({ error: 'not_found' }, { status: 404 });
@@ -116,10 +119,27 @@ describe('the Popular section', () => {
     click('[data-action="toggle-demos"]');
   });
 
-  it('starts a ranking of your own from a template, with its items and no votes', async () => {
+  it('says so when the board can’t be read for lack of a connection', async () => {
+    down = true;
+    const before = stored().length;
     click(`[data-action="make-mine-popular"][data-alias="${TPL}"]`);
     await vi.advanceTimersByTimeAsync(0);
-    expect(urls).toContain(`/api/boards/${TPL}`);
+    expect($('#toast')?.textContent).toBe('You’re offline or the server can’t be reached. Try again in a moment.');
+    expect(stored()).toHaveLength(before);
+    down = false;
+  });
+
+  it('starts a ranking of your own from a template, with its items and no votes', async () => {
+    const before = stored().length;
+    const asked = urls.length;
+    // A double click: one request, one ranking.
+    click(`[data-action="make-mine-popular"][data-alias="${TPL}"]`);
+    const btn = $(`[data-action="make-mine-popular"][data-alias="${TPL}"]`) as HTMLButtonElement;
+    expect([btn.disabled, btn.getAttribute('aria-busy')]).toEqual([true, 'true']);
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(urls.slice(asked).filter((u) => u === `/api/boards/${TPL}`)).toHaveLength(1);
+    expect(stored()).toHaveLength(before + 1);
     expect(($('#rank-title') as HTMLInputElement).value).toBe('The best game console of all time');
     expect($('#toast')?.textContent).toBe('Your own version, ready to change and publish');
     const mine = stored().find((r) => r.title === 'The best game console of all time');

@@ -1,8 +1,9 @@
 import type { PopularBoard } from '../core/protocol';
 import { getLang, type Lang, t } from '../i18n';
-import { toast } from './dom';
+import { $, toast } from './dom';
+import { errorKey, READ_ERRORS } from './errors';
 import { makeOwn, render } from './rankings';
-import { ApiError, fetchBoard, fetchPopular, online } from './remote';
+import { fetchBoard, fetchPopular, online } from './remote';
 import { S } from './state';
 
 /**
@@ -51,13 +52,30 @@ export async function refreshPopular(): Promise<void> {
   }
 }
 
+/** The popular board whose items are being fetched for "Make my own": one at a time. */
+let making: string | null = null;
+
+/** The "Make my own" button of a popular card, busy while its board is read. */
+function makingBusy(alias: string, busy: boolean): void {
+  const btn = $<HTMLButtonElement>(`[data-action="make-mine-popular"][data-alias="${alias}"]`);
+  if (!btn) return;
+  btn.disabled = busy;
+  if (busy) btn.setAttribute('aria-busy', 'true');
+  else btn.removeAttribute('aria-busy');
+}
+
 /** "Make my own" from a popular card: the board's items become a ranking of this browser, without the votes. */
 export async function makeMineFromPopular(alias: string | undefined): Promise<void> {
-  if (!alias || !list.some((b) => b.alias === alias)) return;
+  if (!alias || making || !list.some((b) => b.alias === alias)) return;
+  making = alias;
+  makingBusy(alias, true);
   try {
     const view = await fetchBoard(alias);
     makeOwn(view.title, view.items, 'template');
   } catch (e) {
-    toast(t(e instanceof ApiError && e.code === 'not_found' ? 'boardGone' : 'actionFailed'));
+    toast(t(errorKey(e, READ_ERRORS)));
+  } finally {
+    making = null;
+    makingBusy(alias, false);
   }
 }
