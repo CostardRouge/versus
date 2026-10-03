@@ -64,7 +64,7 @@ These steps were run in Chromium with Playwright while building this (served und
 2. **Images in IndexedDB**: `localStorage` caps at about 5 MB, a few dozen photos.
 3. **Share target**: share photos or text from another app (gallery, browser) straight into a new or existing ranking. Android and installed Chromium apps.
 4. **Manifest shortcuts** ("New ranking") and **screenshots** for Chrome's richer install dialog.
-5. **Notifications** for published boards (Web Push) once the backend is deployed: a board closes, results are revealed. On iOS, only for home-screen apps, which are now `standalone`.
+5. **Notifications** for published boards (Web Push): a board closes, results are revealed. On iOS, only for home-screen apps, which are now `standalone`.
 6. **Capacitor shell**, only if the stores are ever wanted (D75): same build, native push and app links.
 
 Done since: the native share sheet (Web Share API) with the result drawn as an image, from the Ranking tab, a board, a duel and the end-of-vote page (D110, D111).

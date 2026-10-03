@@ -48,7 +48,7 @@ Decisions made while designing Versus (conversation of 2026-09-29, prototyped as
 | # | Decision | Status | Notes |
 | --- | --- | --- | --- |
 | D22 | English by default, French available, EN/FR switcher | Decided | Detection: saved choice → browser language → English. |
-| D23 | Launch with 2 languages, add others based on real traffic, max ~5 the first year | Proposed | Natural candidates: Spanish, Brazilian Portuguese, German. Never translate user content. Demos are translatable because they're fixed data. |
+| D23 | Launch with 2 languages, add others based on real traffic, max ~5 the first year | Decided | Natural candidates: Spanish, Brazilian Portuguese, German. Never translate user content. Demos are translatable because they're fixed data. |
 
 ## Engineering
 
@@ -66,9 +66,9 @@ See `docs/online-architecture.md`.
 
 | # | Decision | Status | Notes |
 | --- | --- | --- | --- |
-| D29 | The bottleneck is architecture and hosting cost, not language speed | Proposed | Estimated load for hundreds of thousands of users is a few hundred messages/s at peak; Node/TS handles that easily. |
-| D30 | Cloudflare (static front + Workers + one Durable Object per shared board + R2 for images later), TypeScript end to end | Proposed | Free tier covers the experiment; $5/month paid plan beyond. Keeps one language and shares `src/core`. |
-| D31 | Stay local-first; only shared boards hit the server | Proposed | Main cost lever. |
+| D29 | The bottleneck is architecture and hosting cost, not language speed | Decided | Estimated load for hundreds of thousands of users is a few hundred messages/s at peak; Node/TS handles that easily. |
+| D30 | Cloudflare (static front + Workers + one Durable Object per shared board + R2 for images later), TypeScript end to end | Decided | Free tier covers the experiment; $5/month paid plan beyond. Keeps one language and shares `src/core`. |
+| D31 | Stay local-first; only shared boards hit the server | Decided | Main cost lever. |
 | D32 | Plan B: self-host on the home Optiplex behind Cloudflare Tunnel | Proposed | Free, fine for a private beta, not for viral traffic. |
 | D33 | Board registry in D1 for the admin view | Decided | Durable Objects can't be listed with their data. Updated at most once a day per board. |
 | D34 | Move the front from GitHub Pages to Cloudflare when the backend lands | Decided | Same origin as the API (no CORS), custom domain. |
@@ -79,23 +79,23 @@ See `docs/published-boards.md`.
 
 | # | Decision | Status | Notes |
 | --- | --- | --- | --- |
-| D35 | Two kinds of rankings: local (private) and published (on the server, open to anyone with the link). A board is born local and published when ready | Proposed | The publish modal warns that it becomes public and can be withdrawn. |
-| D36 | At publication, the author chooses whether their local duels count as their votes | Proposed | Default on; repeated duels on a pair collapse to the last one. |
-| D37 | Lifecycle: local → published → closed (frozen, results revealed, reopenable) → withdrawn | Proposed | Withdrawing deletes the server data; the author keeps a local copy with the crowd's result. |
-| D38 | One voice per voter per pair; a new vote on a pair replaces the previous one | Proposed | Heavy voters cover more pairs but never weigh more on one. |
-| D39 | Voters can delete and redo their votes; the author can turn this off | Proposed | Not a weighting risk under D38; guards against strategic changes. Undoing the last vote stays possible for a few seconds. |
-| D40 | Results visibility is an author setting: always (default), after N votes, blind until closing | Proposed | Enforced by the server. Duel cards never show the crowd's score or rank. |
-| D41 | Live updates on by default; each viewer can turn them off | Proposed | Off = frozen ranking + "N new votes · Refresh". |
-| D42 | The server assigns pairs and accepts votes only on assigned pairs | Proposed | Needed for blind mode; blocks targeted vote stuffing. |
-| D43 | No images on published boards in v1 | Proposed | Images (R2) come with reporting and takedown. |
+| D35 | Two kinds of rankings: local (private) and published (on the server, open to anyone with the link). A board is born local and published when ready | Decided | The publish modal warns that it becomes public and can be withdrawn. |
+| D36 | At publication, the author chooses whether their local duels count as their votes | Decided | Default on; repeated duels on a pair collapse to the last one. |
+| D37 | Lifecycle: local → published → closed (frozen, results revealed, reopenable) → withdrawn | Decided | Withdrawing deletes the server data; the author keeps a local copy with the crowd's result. |
+| D38 | One voice per voter per pair; a new vote on a pair replaces the previous one | Decided | Heavy voters cover more pairs but never weigh more on one. |
+| D39 | Voters can delete and redo their votes; the author can turn this off | Decided | Not a weighting risk under D38; guards against strategic changes. Undoing the last vote stays possible for a few seconds. |
+| D40 | Results visibility is an author setting: always (default), after N votes, blind until closing | Decided | Enforced by the server. Duel cards never show the crowd's score or rank. |
+| D41 | Live updates on by default; each viewer can turn them off | Decided | Off = frozen ranking + "N new votes · Refresh". |
+| D42 | The server assigns pairs and accepts votes only on assigned pairs | Decided | Needed for blind mode; blocks targeted vote stuffing. |
+| D43 | No images on published boards in v1 | Superseded (D113) | Images (R2) come with reporting and takedown. |
 | D44 | Items are locked once published (deleting and adding stay possible) | Superseded (D116) | Editing an item would betray its votes. |
-| D45 | The author picks the method among Balanced (recommended), Dynamic and Simple; Exact sort is shown greyed out | Proposed | Binary insertion can't serve concurrent voters; showing it disabled with its reason teaches the difference. Switchable after publishing. |
-| D46 | Votes are anonymous; a voter is a random id per browser | Proposed | Nobody, the author included, sees who voted what. |
-| D47 | Minimal publish modal (warning, push my votes, visibility, method); other settings under "More options", with defaults, editable later | Proposed | Flexibility without a heavy form. |
+| D45 | The author picks the method among Balanced (recommended), Dynamic and Simple; Exact sort is shown greyed out | Decided | Binary insertion can't serve concurrent voters; showing it disabled with its reason teaches the difference. Switchable after publishing. |
+| D46 | Votes are anonymous; a voter is a random id per browser | Decided | Nobody, the author included, sees who voted what. |
+| D47 | Minimal publish modal (warning, push my votes, visibility, method); other settings under "More options", with defaults, editable later | Decided | Flexibility without a heavy form. |
 | D48 | Board rules in `src/core/board.ts`; the Durable Object only adapts them (SQLite, WebSockets, alarms) | Decided | Same code in the app and the Worker; unit tested in Node with the rest of the core. |
 | D49 | Worker tests run the real runtime: Wrangler's test harness starts workerd inside Vitest | Decided | Covers SQLite, hibernation, alarms and WebSockets without mocks; `@cloudflare/vitest-pool-workers` doesn't support Vitest 5 yet. |
 | D50 | One module per view in `src/app/` (gallery, workspace, items, duel, results, color), with navigation, events and state apart | Decided | Split from a 1,400-line `ui.ts` before adding published boards; code moved as is, no behavior change. |
-| D51 | Board links in the URL fragment: `#/b/<alias>` to share, `#/b/<alias>?owner=<token>` for the author | Decided | Works on any static host; the token never reaches a server log and is removed from the address bar once stored. |
+| D51 | Board links in the URL fragment: `#/b/<alias>` to share, `#/b/<alias>?owner=<token>` for the author | Superseded (D92) | Works on any static host; the token never reaches a server log and is removed from the address bar once stored. |
 | D52 | The app calls the API at `/api` on its own origin (Vite proxy in dev) or `VITE_API_URL`; builds without either hide publishing | Decided | The GitHub Pages build keeps working while the API isn't deployed. |
 | D53 | Never drop an owner token automatically | Decided | A board that looks gone may be a transient API error; the author chooses to go back to the local version. |
 | D54 | The Worker serves the app (`assets`) and the API on one origin; the `worker` build mode sets `VITE_API_URL=/` | Decided | No CORS; one deploy. The GitHub Pages build stays without publishing until it is retired. |

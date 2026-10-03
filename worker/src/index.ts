@@ -56,7 +56,7 @@ export { BoardObject } from './board-object';
  *
  *   GET    /api/admin/stats                     totals from the registry         (admin)
  *   GET    /api/admin/boards?limit&offset&filter&q   boards, most recently active first; `filter` is one of
- *                                               all, reported, featured, hidden, open, closed; `q` words of the title
+ *                                               all, reported, pictures, featured, hidden, open, closed; `q` words of the title
  *   GET    /api/admin/boards/:alias             full view, ranking, flags and reports included
  *   PATCH  /api/admin/boards/:alias             { hidden?, featured? }: moderation flags
  *   POST   /api/admin/boards/:alias/close | reopen

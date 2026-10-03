@@ -112,7 +112,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
   backup.ts           export (share sheet on phones, download elsewhere) and import (file picked or dropped)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
-  storage.ts          guarded localStorage access, prefs, migration from prototype keys
+  storage.ts          guarded localStorage access, prefs, migration from prototype keys, unreadable rankings set aside
 src/landing/          the home page: markup.ts renders it at build time (pure strings, like frame.ts: the demo frames'
                       HTML, shared with the script), data.ts (its items, EN/FR), sprite.ts (pastry drawings), strings.ts
                       (texts at build time), crowd.ts (simulated votes); main.ts + mount.ts bring it to life: board.ts (a
@@ -181,7 +181,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
-- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (built, not deployed).
+- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates, moderation, pictures, templates.
 - `docs/online-architecture.md`: backend for published boards on Cloudflare (`worker/`), how to deploy it.
 - `docs/seo.md`: head tags, JSON-LD, icons, social card, manifest, robots, sitemap, llms.txt; decisions and what the owner has to do (Search Console, `SITE_URL`).
 - `docs/analytics.md`: audience measurement (Umami, what is sent and never sent, how it loads, settings) and the legal notice; what is left to check live.
