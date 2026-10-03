@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
+  ACTION_INTERVAL_MS,
   addItems,
   addReport,
   admitNewVoter,
@@ -693,7 +694,7 @@ export class BoardObject extends DurableObject<Env> {
     if (!session) return send(ws, { t: 'error', code: 'hello_first' });
     const now = Date.now();
 
-    if (msg.t === 'check') return this.check(ws, session, msg.token);
+    if (msg.t === 'check') return this.check(ws, board, session, msg.token, now);
 
     if (msg.t === 'add') {
       const input = parseNewItem(msg.item);
@@ -741,24 +742,30 @@ export class BoardObject extends DurableObject<Env> {
 
   /**
    * A human check's token, sent after a `captcha` refusal: Turnstile says yes, and the connection may cast its first
-   * vote. Answered with the queue, after an error when refused; a check nobody asked for costs nothing.
+   * vote. Answered with the queue, after an error when refused. Turnstile is asked only when the vote would need
+   * the check, and at most once per ACTION_INTERVAL_MS per connection.
    */
-  private async check(ws: WebSocket, session: Session, token: string): Promise<void> {
+  private async check(ws: WebSocket, board: SharedBoard, session: Session, token: string, now: number): Promise<void> {
     const secret = this.env.TURNSTILE_SECRET;
-    if (secret && !session.human) {
-      const human = await verifyTurnstile(token, null, secret);
-      // Read again after the wait: the connection may have said hello meanwhile.
-      const now = ws.deserializeAttachment() as Session | null;
-      if (!human) send(ws, { t: 'error', code: 'captcha' });
-      else if (now) {
-        now.human = true;
-        ws.serializeAttachment(now);
+    if (secret && needsCheck(board, session, true)) {
+      if (now - session.lastActionAt < ACTION_INTERVAL_MS) send(ws, { t: 'error', code: 'too_fast' });
+      else {
+        session.lastActionAt = now;
+        ws.serializeAttachment(session);
+        const human = await verifyTurnstile(token, null, secret);
+        // Read again after the wait: the connection may have said hello meanwhile.
+        const current = ws.deserializeAttachment() as Session | null;
+        if (!human) send(ws, { t: 'error', code: 'captcha' });
+        else if (current) {
+          current.human = true;
+          ws.serializeAttachment(current);
+        }
       }
     }
-    const board = this.board;
-    if (!board) return ws.close(GONE, 'not_found');
+    const live = this.board;
+    if (!live) return ws.close(GONE, 'not_found');
     const current = (ws.deserializeAttachment() as Session | null) ?? session;
-    send(ws, { t: 'pairs', pairs: current.queue, mine: voteCount(board, current.voter) });
+    send(ws, { t: 'pairs', pairs: current.queue, mine: voteCount(live, current.voter) });
   }
 
   override async webSocketClose(): Promise<void> {

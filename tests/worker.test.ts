@@ -1443,10 +1443,13 @@ describe('human checks', () => {
     await vote(fresh);
     expect((await fresh.next('error')).code).toBe('captcha');
     expect((await fresh.next('pairs')).mine).toBe(0);
-    // A token Turnstile refuses keeps them out (an empty one is refused without asking Turnstile).
+    // A token Turnstile refuses keeps them out (an empty one is refused without asking Turnstile); checks are
+    // spaced out like votes.
+    fresh.send({ t: 'check', token: '' });
     fresh.send({ t: 'check', token: '' });
     expect((await fresh.next('error')).code).toBe('captcha');
     expect((await fresh.next('pairs')).mine).toBe(0);
+    expect((await fresh.next('error')).code).toBe('too_fast');
     fresh.close();
     // A voter who already voted there is never asked, nor is anyone on someone's own board.
     const back = await Client.open(alias, 'early-voter-1');
@@ -1456,6 +1459,11 @@ describe('human checks', () => {
     const visitor = await Client.open(theirs, 'fresh-voter-1');
     await vote(visitor);
     expect((await visitor.next('pairs')).mine).toBe(1);
+    // A check nobody asked for isn't sent to Turnstile: the queue comes back, no refusal.
+    visitor.send({ t: 'check', token: '' });
+    expect((await visitor.next('pairs')).mine).toBe(1);
+    visitor.send({ t: 'reset' });
+    expect((await visitor.next('pairs')).mine).toBe(0);
     visitor.close();
   });
 });
