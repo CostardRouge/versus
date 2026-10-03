@@ -485,6 +485,7 @@ export const fr: Messages = {
   boardOffline: 'Hors ligne ou serveur injoignable — nouvel essai en cours',
   retry: 'Réessayer',
   lastVisit: 'Lors de ta dernière visite',
+  publishing: 'Publication…',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

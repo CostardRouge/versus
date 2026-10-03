@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { TurnstileOptions } from '../src/app/turnstile';
 import type { BoardView, ClientMessage, ItemScore, RankingView, ServerMessage } from '../src/core/protocol';
 import type { Ranking } from '../src/core/types';
 import { installFakeCanvas } from './helpers/canvas';
@@ -50,8 +51,9 @@ class FakeSocket {
 }
 
 type Call = { method: string; url: string; body: unknown; auth: string | null };
+type Answer = { status: number; body: unknown };
 const calls: Call[] = [];
-let respond: (c: Call) => { status: number; body: unknown } = () => ({ status: 404, body: { error: 'not_found' } });
+let respond: (c: Call) => Answer | Promise<Answer> = () => ({ status: 404, body: { error: 'not_found' } });
 
 const html = readFileSync(resolve(process.cwd(), 'app/index.html'), 'utf8');
 const body = (html.match(/<body>([\s\S]*)<\/body>/)?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
@@ -135,7 +137,7 @@ beforeAll(async () => {
         auth: headers.Authorization ?? null,
       };
       calls.push(call);
-      const r = respond(call);
+      const r = await respond(call);
       return new Response(JSON.stringify(r.body), { status: r.status });
     }),
   );
@@ -1344,5 +1346,68 @@ describe('offline', () => {
     expect($('.board .b-title')).toBeNull();
     click('#b-wait-acts [data-action="back"]');
     expect($('h1')?.textContent).toBe('Your rankings');
+  });
+});
+
+describe('publishing, slowly', () => {
+  it('keeps the dialog open and busy until the server answers, with what went wrong in it', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    let widget: TurnstileOptions | undefined;
+    const reset = vi.fn();
+    (window as { turnstile?: unknown }).turnstile = {
+      render: (_el: HTMLElement, o: TurnstileOptions) => {
+        widget = o;
+        return 'w9';
+      },
+      getResponse: () => 'human-token',
+      reset,
+      remove() {},
+    };
+    click('.g-head [data-action="new-rank"]');
+    for (const v of ['Tea', 'Coffee']) submit(v);
+    click('[data-action="publish"]');
+    await flush();
+    const ok = $('#m-ok') as HTMLButtonElement;
+    // Publish waits for the check's token.
+    expect(ok.disabled).toBe(true);
+    widget?.callback?.('human-token');
+    expect(ok.disabled).toBe(false);
+    ($('#m-body input[name="pub-vis"][value="blind"]') as HTMLInputElement).checked = true;
+    const later = (a: Answer) => new Promise<Answer>((res) => setTimeout(() => res(a), 1000));
+    respond = () => later({ status: 429, body: { error: 'rate_limited' } });
+    calls.length = 0;
+    click('#m-ok');
+    expect(ok.disabled).toBe(true);
+    expect(ok.textContent).toBe('Publishing…');
+    expect($('.modal-box')?.getAttribute('aria-busy')).toBe('true');
+    // Nothing closes it meanwhile, and nothing goes twice.
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    ok.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect($('#modal')?.hidden).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    // What went wrong, in the dialog, the settings as chosen.
+    expect($('#modal')?.hidden).toBe(false);
+    expect($('#m-error')?.textContent).toBe('Too many attempts. Try again in a minute.');
+    expect(($('#m-body input[name="pub-vis"][value="blind"]') as HTMLInputElement).checked).toBe(true);
+    expect([ok.disabled, ok.textContent]).toEqual([false, 'Publish']);
+    expect($('.modal-box')?.hasAttribute('aria-busy')).toBe(false);
+    // The token was spent: the check starts again.
+    expect(reset).toHaveBeenCalledWith('w9');
+    const SLOW = 'S1owPubbd7';
+    respond = (c) =>
+      c.method === 'PUT'
+        ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } }
+        : later({ status: 201, body: { alias: SLOW, owner: OWNER } });
+    click('#m-ok');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect($('#modal')?.hidden).toBe(true);
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.body).toMatchObject({ settings: { visibility: 'blind' }, turnstile: 'human-token' });
+    expect(location.pathname).toBe(`/b/${SLOW}`);
+    vi.unstubAllEnvs();
+    delete (window as { turnstile?: unknown }).turnstile;
+    click('[data-action="back"]');
   });
 });

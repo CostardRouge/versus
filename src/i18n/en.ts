@@ -475,6 +475,7 @@ export const en = {
   boardOffline: 'Offline or the server can’t be reached — trying again',
   retry: 'Retry',
   lastVisit: 'As of your last visit',
+  publishing: 'Publishing…',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

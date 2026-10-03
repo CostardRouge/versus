@@ -6,11 +6,22 @@ import { $, doc } from './dom';
  * publication, and before a first vote on the site's own boards.
  */
 
+export interface TurnstileOptions {
+  sitekey: string;
+  callback?: (token: string) => void;
+  'expired-callback'?: () => void;
+  'error-callback'?: () => void;
+}
+
 export interface TurnstileApi {
-  render(el: HTMLElement, opts: { sitekey: string }): string;
+  render(el: HTMLElement, opts: TurnstileOptions): string;
   getResponse(id: string): string | undefined;
+  reset(id: string): void;
   remove(id: string): void;
 }
+
+/** Where a check stands: solved (a token is there), expired, or failed (the widget or its script). */
+export type CheckState = 'ready' | 'expired' | 'failed';
 
 /** The site key, or undefined when the build has none (no check is ever shown). */
 export const turnstileKey = (): string | undefined =>
@@ -37,19 +48,42 @@ function loadTurnstile(): Promise<TurnstileApi | undefined> {
 }
 
 /**
- * Renders the widget into the element `sel` names (in a modal just opened) once the script is there. `take()` reads
- * its token, if any, and removes it: call it when the modal closes.
+ * Renders the widget into the element `sel` names (in a modal just opened) once the script is there; `onState` hears
+ * when a token arrives, expires or can't come. `token()` reads it; a token is good once, so `reset()` asks for a new
+ * one after a refusal. `take()` reads it, if any, and removes the widget: call it when the modal closes.
  */
-export function turnstileWidget(sel: string): { take(): string | undefined } {
+export function turnstileWidget(
+  sel: string,
+  onState?: (s: CheckState) => void,
+): { token(): string | undefined; reset(): void; take(): string | undefined } {
   const key = turnstileKey();
   let widget: { api: TurnstileApi; id: string } | null = null;
   if (key) {
     void loadTurnstile().then((api) => {
       const el = $(sel);
-      if (api && el) widget = { api, id: api.render(el, { sitekey: key }) };
+      if (!api || !el) {
+        if (!api) onState?.('failed');
+        return;
+      }
+      const events: Omit<TurnstileOptions, 'sitekey'> = onState
+        ? {
+            callback: () => onState('ready'),
+            'expired-callback': () => onState('expired'),
+            'error-callback': () => onState('failed'),
+          }
+        : {};
+      widget = { api, id: api.render(el, { sitekey: key, ...events }) };
     });
   }
   return {
+    token() {
+      const current = widget as { api: TurnstileApi; id: string } | null;
+      return current?.api.getResponse(current.id) || undefined;
+    },
+    reset() {
+      const current = widget as { api: TurnstileApi; id: string } | null;
+      current?.api.reset(current.id);
+    },
     take() {
       const current = widget as { api: TurnstileApi; id: string } | null;
       widget = null;
