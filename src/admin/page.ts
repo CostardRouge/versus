@@ -13,8 +13,9 @@ import { type AdminKey, type AdminLang, adminText } from '../i18n/admin';
 /**
  * The publisher's moderation page (/admin/): the boards of the registry with their counts, flags and reports;
  * per board, the full view and the admin actions (close or reopen, feature, hide, remove an item, clear the
- * reports, delete its link previews, take down). Talks to /api/admin with the token typed on the page, kept in this tab only
- * (docs/published-boards.md#moderation). Rendered as HTML strings with delegated events, like the app.
+ * reports, delete its link previews, take down). Talks to /api/admin with the token typed on the page, kept in
+ * memory only: no storage a script could read, and a reload asks again (docs/published-boards.md#moderation).
+ * Rendered as HTML strings with delegated events, like the app.
  */
 
 export interface AdminOpts {
@@ -23,15 +24,12 @@ export interface AdminOpts {
   api: string | null;
   lang: AdminLang;
   fetch: typeof fetch;
-  /** Where the token lives between reloads of this tab; null when storage is unavailable. */
-  storage: Storage | null;
   confirm: (message: string) => boolean;
   /** The app's address for a board. */
   boardURL: (alias: string) => string;
   locale: string;
 }
 
-const TOKEN_KEY = 'versus-admin';
 const PAGE = 50;
 /** How long a request may take before the page says the server didn't answer. */
 const TIMEOUT_MS = 15_000;
@@ -79,24 +77,9 @@ export function mountAdmin(opts: AdminOpts): void {
   const numbers = new Intl.NumberFormat(opts.locale);
   const n = (x: number) => numbers.format(x);
   const when = (ts: number) => dates.format(new Date(ts));
-  const read = (): string => {
-    try {
-      return opts.storage?.getItem(TOKEN_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  };
-  const write = (token: string): void => {
-    try {
-      if (token) opts.storage?.setItem(TOKEN_KEY, token);
-      else opts.storage?.removeItem(TOKEN_KEY);
-    } catch {
-      /* the token lasts for this page only */
-    }
-  };
 
   const st: State = {
-    token: read(),
+    token: '',
     totals: null,
     list: null,
     filter: 'all',
@@ -138,7 +121,6 @@ export function mountAdmin(opts: AdminOpts): void {
     st.error = errors[code] ?? 'failed';
     if (code === 'forbidden') {
       st.token = '';
-      write('');
       st.totals = null;
       st.list = null;
       st.open = null;
@@ -345,7 +327,8 @@ export function mountAdmin(opts: AdminOpts): void {
   }
 
   function render(): void {
-    const brand = `<a class="ad-brand" href="../"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h">${tx('title')}</h1>`;
+    // In a tab of its own: leaving this page would forget the token.
+    const brand = `<a class="ad-brand" href="../" target="_blank" rel="noopener"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h">${tx('title')}</h1>`;
     if (opts.api === null) {
       root.innerHTML = `<header class="ad-top">${brand}</header><main class="ad-main"><p class="ad-notice">${tx('noApi')}</p></main>`;
       return;
@@ -406,7 +389,6 @@ export function mountAdmin(opts: AdminOpts): void {
     const data = new FormData(form);
     if (form.dataset.form === 'token') {
       st.token = String(data.get('token') ?? '').trim();
-      write(st.token);
       void load();
     } else if (form.dataset.form === 'search') {
       st.q = String(data.get('q') ?? '').trim();
@@ -423,7 +405,6 @@ export function mountAdmin(opts: AdminOpts): void {
     switch (el.dataset.act) {
       case 'logout':
         st.token = '';
-        write('');
         st.totals = st.list = st.detail = null;
         st.open = null;
         st.error = null;

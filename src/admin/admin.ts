@@ -11,14 +11,6 @@ import { mountAdmin } from './page';
 const configured = import.meta.env.VITE_API_URL as string | undefined;
 const API: string | null = configured !== undefined ? configured.replace(/\/+$/, '') : import.meta.env.DEV ? '' : null;
 
-const storage = (): Storage | null => {
-  try {
-    return sessionStorage;
-  } catch {
-    return null;
-  }
-};
-
 const root = document.getElementById('admin');
 if (root) {
   mountAdmin({
@@ -26,7 +18,6 @@ if (root) {
     api: API,
     lang: navigator.language.toLowerCase().startsWith('fr') ? 'fr' : 'en',
     fetch: (input, init) => fetch(input, init),
-    storage: storage(),
     confirm: (message) => window.confirm(message),
     boardURL: (alias) => new URL(`../app/b/${alias}`, location.href).href,
     locale: navigator.language,

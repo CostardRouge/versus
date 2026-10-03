@@ -117,28 +117,25 @@ const flush = async () => {
 };
 const requests = (method: string) => calls.filter((c) => c.method === method);
 
+/** Mounts the page; with a token, types it in the form as the admin would. */
 function mount(api: string | null = '', token = '') {
   document.body.innerHTML = '<div id="admin"></div>';
   const root = $('#admin') as HTMLElement;
-  const store = new Map<string, string>();
-  if (token) store.set('versus-admin', token);
-  const storage = {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-  } as unknown as Storage;
   const confirm = vi.fn(() => true);
   mountAdmin({
     root,
     api,
     lang: 'en',
     fetch: fetchMock as unknown as typeof fetch,
-    storage,
     confirm,
     boardURL: (alias) => `https://versus.example.com/app/b/${alias}`,
     locale: 'en-GB',
   });
-  return { root, store, confirm };
+  if (token) {
+    ($('#ad-token') as HTMLInputElement).value = token;
+    ($('form[data-form="token"]') as HTMLFormElement).requestSubmit();
+  }
+  return { root, confirm };
 }
 
 afterEach(() => {
@@ -179,20 +176,26 @@ describe('the page', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('asks for the token, refuses a wrong one and keeps a good one in the tab', async () => {
-    const { store } = mount();
+  it('asks for the token, refuses a wrong one and keeps a good one in memory only', async () => {
+    sessionStorage.clear();
+    localStorage.clear();
+    mount();
     expect($('form[data-form="token"]')).not.toBeNull();
+    // Its home link opens elsewhere: leaving the page would forget the token.
+    expect($('.ad-brand')?.getAttribute('target')).toBe('_blank');
+    expect($('.ad-brand')?.getAttribute('rel')).toBe('noopener');
     ($('#ad-token') as HTMLInputElement).value = 'bad';
     ($('form[data-form="token"]') as HTMLFormElement).requestSubmit();
     await flush();
     expect($('.ad-error')?.textContent).toBe(adminEn.wrongToken);
     expect($('form[data-form="token"]')).not.toBeNull();
-    expect(store.has('versus-admin')).toBe(false);
     calls.length = 0;
     ($('#ad-token') as HTMLInputElement).value = 'good';
     ($('form[data-form="token"]') as HTMLFormElement).requestSubmit();
     await flush();
-    expect(store.get('versus-admin')).toBe('good');
+    // Nowhere a script of the site could read it later.
+    expect(sessionStorage.length).toBe(0);
+    expect(localStorage.length).toBe(0);
     expect(requests('GET').length).toBeGreaterThan(1);
     expect(requests('GET').every((c) => c.auth === 'Bearer good')).toBe(true);
     expect($('.ad-error')).toBeNull();
@@ -203,7 +206,10 @@ describe('the page', () => {
     expect(title?.getAttribute('href')).toBe(`https://versus.example.com/app/b/${ALIAS}`);
     expect($('.ad-count')?.textContent).toBe('2');
     click('[data-act="logout"]');
-    expect(store.has('versus-admin')).toBe(false);
+    expect($('form[data-form="token"]')).not.toBeNull();
+    // A reload (the page mounted again) asks again.
+    mount();
+    await flush();
     expect($('form[data-form="token"]')).not.toBeNull();
   });
 

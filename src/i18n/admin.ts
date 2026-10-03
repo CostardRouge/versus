@@ -5,7 +5,7 @@
 export const adminEn = {
   title: 'Moderation',
   tokenLabel: 'Admin token',
-  tokenHint: 'The Worker’s ADMIN_TOKEN secret. Kept in this tab only.',
+  tokenHint: 'The Worker’s ADMIN_TOKEN secret. Kept on this page only: reloading it forgets the token.',
   enter: 'Enter',
   logout: 'Forget the token',
   noApi: 'This copy of Versus has no server: nothing to moderate here.',
@@ -89,7 +89,7 @@ export type AdminMessages = Record<AdminKey, string>;
 export const adminFr: AdminMessages = {
   title: 'Modération',
   tokenLabel: 'Jeton admin',
-  tokenHint: 'Le secret ADMIN_TOKEN du Worker. Gardé dans cet onglet seulement.',
+  tokenHint: 'Le secret ADMIN_TOKEN du Worker. Gardé sur cette page seulement : la recharger oublie le jeton.',
   enter: 'Entrer',
   logout: 'Oublier le jeton',
   noApi: 'Cette copie de Versus n’a pas de serveur : rien à modérer ici.',
