@@ -431,6 +431,19 @@ describe('link previews', () => {
     expect(decode(content(duel, 'og:title'))).toBe(`"><img src=x> vs Regina · ${title}`);
   });
 
+  it('writes ampersands and entities of a title back exactly', async () => {
+    const title = 'Fish & "Chips" &quot;x&amp; &lt;b&gt;';
+    const res = await api('', { method: 'POST', body: { title, items, voter: AUTHOR } });
+    const { alias } = (await res.json()) as { alias: string };
+    const named: Record<string, string> = { quot: '"', lt: '<', gt: '>', amp: '&', '#39': "'" };
+    // Decoded the way a browser does, in one pass.
+    const decode = (s = '') => s.replace(/&(quot|lt|gt|amp|#39);/g, (_, e: string) => named[e] ?? '');
+    const { html } = await page(`/app/b/${alias}`);
+    expect(decode(content(html, 'og:title'))).toBe(`${title} · Versus`);
+    expect(decode(content(html, 'twitter:title'))).toBe(`${title} · Versus`);
+    expect(decode(html.match(/<title>([^<]*)<\/title>/)?.[1])).toBe(`${title} · Versus`);
+  });
+
   it('stores the card the app drew, serves it under /og/ and puts it in the head', async () => {
     const { alias } = await publish();
     expect((await upload(alias, card, '', 'text/plain')).status).toBe(415);
@@ -894,6 +907,21 @@ describe('official templates', () => {
     const moved = await server.fetch('/t/game-consoles', { redirect: 'manual' });
     expect(moved.status).toBe(301);
     expect(moved.headers.get('Location')).toMatch(/\/t\/game-consoles\/$/);
+  });
+
+  it('writes a template page’s JSON-LD so that it parses back exactly', async () => {
+    const alias = (await (await server.fetch('/t/cameras/')).text()).match(ALIAS_IN_PAGE)?.[1] ?? '';
+    // A label no template has, written straight into the board's storage.
+    const label = 'Fish & <Chips> "</script><script>alert(1)</script>';
+    const sql = await server.getWorker().getDurableObjectStorage('BoardObject', { name: alias });
+    await sql.exec("UPDATE meta SET v = json_set(v, '$[0].label', ?) WHERE k = 'items'", label);
+    await server.getWorker().evictDurableObject('BoardObject', { name: alias });
+    const html = await (await server.fetch('/t/cameras/')).text();
+    const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? '';
+    const graph = JSON.parse(ld) as { '@graph': { '@type': string; itemListElement?: { name: string }[] }[] };
+    const list = graph['@graph'].find((node) => node['@type'] === 'ItemList');
+    expect(list?.itemListElement?.map((e) => e.name)).toContain(label);
+    expect(html).not.toContain('<script>alert(1)');
   });
 
   it('lists the templates and the featured boards as Popular, never a hidden one', async () => {

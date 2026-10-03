@@ -11,7 +11,7 @@ import {
 import type { BoardLang } from '../../src/core/types';
 import { esc } from '../../src/core/util';
 import { type UnfurlKey, unfurlPlural, unfurlText } from '../../src/i18n/unfurl';
-import { preview } from './cards';
+import { attrValue, preview } from './cards';
 import type { Env } from './env';
 import { log } from './log';
 import { newAlias, newOwnerToken } from './random';
@@ -135,7 +135,10 @@ function pageBody(t: Template, lang: BoardLang, view: BoardView, alias: string):
       </section>`;
 }
 
-/** JSON-LD for a template page: the page and its ranking as an ItemList. */
+/**
+ * JSON-LD for a template page: the page and its ranking as an ItemList. Written as the script's raw content: `<`, `>`
+ * and `&` are escaped the JSON way, so no label can close the script or read as markup.
+ */
 function graph(t: Template, lang: BoardLang, view: BoardView, pageURL: string, site: string): string {
   const labels = new Map(view.items.map((it) => [it.id, it.label]));
   const order = view.ranking?.order ?? view.items.map((it) => it.id);
@@ -158,7 +161,10 @@ function graph(t: Template, lang: BoardLang, view: BoardView, pageURL: string, s
     isPartOf: { '@id': `${site}#website` },
     mainEntity: { '@id': `${pageURL}#list` },
   };
-  return JSON.stringify({ '@context': 'https://schema.org', '@graph': [page, list] }).replace(/</g, '\\u003c');
+  return JSON.stringify({ '@context': 'https://schema.org', '@graph': [page, list] })
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
 }
 
 /** The template page named by a language and a slug; `notFound` answers for an unknown slug. */
@@ -193,7 +199,7 @@ export async function templatePage(
   const pageURL = () => `${site}${templatePath(t, lang)}`;
   const set = (attr: string, value: () => string) => ({
     element(el: Element) {
-      el.setAttribute(attr, value());
+      el.setAttribute(attr, attrValue(value()));
     },
   });
   const rewriter = new HTMLRewriter()
@@ -262,7 +268,7 @@ export async function templatePage(
     .on('meta[property="og:url"]', set('content', pageURL))
     .on('script[type="application/ld+json"]', {
       element(el) {
-        el.setInnerContent(graph(t, lang, view, pageURL(), site));
+        el.setInnerContent(graph(t, lang, view, pageURL(), site), { html: true });
       },
     })
     .on(

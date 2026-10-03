@@ -102,11 +102,17 @@ export async function preview(
   };
 }
 
+/**
+ * A value for HTMLRewriter's `setAttribute`, which escapes quotes and nothing else: an `&` goes in as `&amp;`, or a
+ * title holding `&quot;` would read back as a quote.
+ */
+export const attrValue = (s: string): string => s.replace(/&/g, '&amp;');
+
 /** Writes a preview into the app page's head: title, description, Open Graph and X tags, the page's language. */
 export function rewriteHead(page: Response, p: Preview, pageURL: string): Response {
   const set = (attr: string, value: string) => ({
     element(el: Element) {
-      el.setAttribute(attr, value);
+      el.setAttribute(attr, attrValue(value));
     },
   });
   const rewriter = new HTMLRewriter()
