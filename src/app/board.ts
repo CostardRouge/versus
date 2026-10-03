@@ -25,7 +25,7 @@ import {
   setPodiumWho,
 } from './finale';
 import { fmtCrowd } from './format';
-import { flushJoined, markGone, noteBoard } from './joined';
+import { flushJoined, joinedOf, markGone, noteBoard } from './joined';
 import { makeOwn, open } from './rankings';
 import { BoardSocket, type Connection, fetchConfig, reportBoard, setBoardStatus, withdrawBoard } from './remote';
 import { routeURL } from './router';
@@ -72,6 +72,8 @@ export interface Board {
   finaleDirty: boolean;
   /** Whether the server takes pictures for review (asked once the author is known); null until it answers. */
   pictures: boolean | null;
+  /** A connection failed: while the first state waits, the page offers to try again. */
+  failed: boolean;
 }
 
 interface Pending {
@@ -212,6 +214,7 @@ export function enterBoard(
     finale: false,
     finaleDirty: false,
     pictures: null,
+    failed: false,
   };
   B = board;
   resetFinale();
@@ -263,6 +266,11 @@ function settleCandidate(board: Board, owner: boolean): boolean {
   return true;
 }
 
+/** The Retry button of a board that can't be reached: a new connection at once. */
+export function boardRetry(): void {
+  B?.socket?.retryNow();
+}
+
 export function leaveBoard(): void {
   flushJoined();
   B?.socket?.close();
@@ -280,8 +288,16 @@ function onConnection(board: Board, c: Connection): void {
     board.view = null;
     markGone(board.alias);
   }
-  if (!board.view) renderBoard();
-  else {
+  if (c === 'lost') board.failed = true;
+  if (!board.view) {
+    // Still waiting for the first state: the message changes in place, so screen readers hear it.
+    const wait = $('#b-wait');
+    if (wait && (c === 'connecting' || c === 'lost')) {
+      wait.innerHTML = waitText(board);
+      const acts = $('#b-wait-acts');
+      if (acts) acts.hidden = !board.failed;
+    } else renderBoard();
+  } else {
     const banner = $('#b-conn');
     if (banner) banner.hidden = c !== 'lost';
   }
@@ -407,18 +423,43 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
   refocus(mark);
 }
 
+const waitText = (b: Board): string => `<h2 class="q">${b.conn === 'lost' ? t('boardOffline') : t('connecting')}</h2>`;
+
+/**
+ * The board's first state hasn't come: connecting, or offline and trying again, with a way to try at once or to
+ * leave. A board under "Your votes" shows what it was at the last visit meanwhile.
+ */
+function waitHTML(b: Board, back: string): string {
+  const j = joinedOf(b.alias);
+  const snap = j
+    ? `<p class="b-counts mono">${plural(j.votes, 'vote')} · ${plural(j.voters, 'voter')} · ${t('myVotes', { n: j.count })}</p>
+      <p class="note">${t('lastVisit')}</p>`
+    : '';
+  return `<div class="board">
+    <div class="ws-head b-head">${back}${j ? `<h1 class="b-title">${esc(j.title)}</h1>` : ''}</div>
+    ${snap}
+    <div class="empty-duel">
+      <div id="b-wait" role="status">${waitText(b)}</div>
+      <p class="b-wait-acts" id="b-wait-acts" ${b.failed ? '' : 'hidden'}>
+        <button class="btn primary" type="button" data-action="b-retry">${t('retry')}</button>
+        <button class="btn" type="button" data-action="back">${t('yourRankings')}</button>
+      </p>
+    </div>
+  </div>`;
+}
+
 function boardHTML(b: Board): string {
   const back = `<button class="back" type="button" data-action="back">${t('back')}</button>`;
   const v = b.view;
   if (!v) {
-    const final = b.conn === 'gone' || b.conn === 'unavailable';
-    const msg = b.conn === 'gone' ? t('boardGone') : b.conn === 'unavailable' ? t('boardUnavailable') : t('connecting');
-    const local = b.conn === 'gone' ? localOf(b.alias) : undefined;
+    if (b.conn === 'connecting' || b.conn === 'lost' || b.conn === 'open') return waitHTML(b, back);
+    const gone = b.conn === 'gone';
+    const local = gone ? localOf(b.alias) : undefined;
     const action = local
       ? `<button class="btn primary" type="button" data-action="b-unlink">${t('keepLocal')}</button>`
       : `<button class="btn primary" type="button" data-action="back">${t('yourRankings')}</button>`;
     return `<div class="board"><div class="ws-head">${back}</div>
-      <div class="empty-duel"><h2 class="q">${msg}</h2>${final ? action : ''}</div></div>`;
+      <div class="empty-duel"><h2 class="q">${gone ? t('boardGone') : t('boardUnavailable')}</h2>${action}</div></div>`;
   }
   const closed = v.status === 'closed';
   // Voters can start their own version from these items; the author has the ranking already.

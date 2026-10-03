@@ -163,6 +163,8 @@ export type Connection = 'connecting' | 'open' | 'lost' | 'gone';
 
 /** Close code the server uses when the board no longer exists. */
 const GONE = 4004;
+/** How long a failed connection waits for the API to say whether the board still exists before saying it's lost. */
+const LOST_AFTER_MS = 1000;
 
 /**
  * One board's WebSocket. Says hello on every connection, reconnects with a growing delay, and reports
@@ -183,9 +185,9 @@ export class BoardSocket {
     this.connect();
   }
 
-  private connect(): void {
+  private connect(state: Connection = this.tries ? 'lost' : 'connecting'): void {
     if (this.stopped) return;
-    this.onConnection(this.tries ? 'lost' : 'connecting');
+    this.onConnection(state);
     const url = new URL(`${API ?? ''}/api/boards/${this.alias}`, location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(url.href);
@@ -218,15 +220,31 @@ export class BoardSocket {
   }
 
   private async retry(): Promise<void> {
+    // A page still waiting for its first state says so soon, even when the API hangs as well.
+    const early = setTimeout(() => {
+      if (!this.stopped && !this.ws) this.onConnection('lost');
+    }, LOST_AFTER_MS);
     try {
       await fetchBoard(this.alias);
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'not_found') return this.gone();
+      if (e instanceof ApiError && e.code === 'not_found') {
+        clearTimeout(early);
+        return this.gone();
+      }
     }
-    if (this.stopped) return;
+    clearTimeout(early);
+    // Stopped, or already trying again (retryNow).
+    if (this.stopped || this.ws) return;
     this.tries++;
     this.onConnection('lost');
     this.timer = setTimeout(() => this.connect(), Math.min(15_000, 500 * 2 ** this.tries));
+  }
+
+  /** Tries again at once instead of waiting for the next attempt; nothing while a connection is being made. */
+  retryNow(): void {
+    if (this.stopped || this.ws) return;
+    clearTimeout(this.timer);
+    this.connect('connecting');
   }
 
   /** The owner token the next connections say hello with (the author made a new one). */

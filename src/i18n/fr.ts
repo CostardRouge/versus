@@ -482,6 +482,9 @@ export const fr: Messages = {
     'Cet appareil n’a plus la clé admin de ce classement. Ouvre ici ton dernier lien admin pour le gérer à nouveau.',
   publishInvalid: 'Le serveur a refusé ce classement tel quel. Vérifie ses éléments, puis réessaie.',
   publishTooLarge: 'Ce classement est trop gros pour être publié. Retire des éléments, ou publie-le sans tes votes.',
+  boardOffline: 'Hors ligne ou serveur injoignable — nouvel essai en cours',
+  retry: 'Réessayer',
+  lastVisit: 'Lors de ta dernière visite',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

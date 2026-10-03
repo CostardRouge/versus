@@ -21,6 +21,7 @@ import {
   boardRefresh,
   boardReport,
   boardReset,
+  boardRetry,
   boardShare,
   boardSkip,
   boardStatus,
@@ -277,6 +278,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-unlink':
       boardUnlink();
+      break;
+    case 'b-retry':
+      boardRetry();
       break;
     case 'b-finale':
       openFinale();

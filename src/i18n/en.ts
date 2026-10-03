@@ -472,6 +472,9 @@ export const en = {
     'This device no longer holds this ranking’s admin key. Open your latest admin link here to manage it again.',
   publishInvalid: 'The server refused this ranking as it is. Check its items, then try again.',
   publishTooLarge: 'This ranking is too big to publish. Remove some items, or publish it without your votes.',
+  boardOffline: 'Offline or the server can’t be reached — trying again',
+  retry: 'Retry',
+  lastVisit: 'As of your last visit',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

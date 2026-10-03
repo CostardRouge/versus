@@ -1304,3 +1304,45 @@ describe('pictures for review', () => {
     click('[data-action="back"]');
   });
 });
+
+describe('offline', () => {
+  const VISITED = 'Vs3dEf7hJk';
+
+  it('says when a board can’t be reached at first, shows what "Your votes" remembers, and tries again', async () => {
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    history.pushState(null, '', `/b/${VISITED}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect($('#b-wait')?.textContent).toBe('Connecting…');
+    const ws = FakeSocket.last();
+    ws.drop(1006);
+    await flush();
+    const wait = $('#b-wait');
+    expect(wait?.getAttribute('role')).toBe('status');
+    expect(wait?.textContent).toBe('Offline or the server can’t be reached — trying again');
+    // The card under "Your votes": the title and the counts of the last visit.
+    expect($('.board .b-title')?.textContent).toBe('Pizzas');
+    expect($('.board .b-counts')?.textContent).toContain('Your votes: 1');
+    // Retry connects at once; the message changes in place.
+    click('[data-action="b-retry"]');
+    const again = FakeSocket.last();
+    expect(again).not.toBe(ws);
+    expect($('#b-wait')).toBe(wait);
+    expect(wait?.textContent).toBe('Connecting…');
+    again.open();
+    again.receive(state());
+    expect($('#b-wait')).toBeNull();
+    expect($('#b-main .card-a')).not.toBeNull();
+  });
+
+  it('goes back from a board that can’t be reached', async () => {
+    history.pushState(null, '', '/b/Wa1tNgBrd2');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    FakeSocket.last().drop(1006);
+    await flush();
+    expect($('.board .b-title')).toBeNull();
+    click('#b-wait-acts [data-action="back"]');
+    expect($('h1')?.textContent).toBe('Your rankings');
+  });
+});
