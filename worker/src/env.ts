@@ -1,3 +1,4 @@
+import type { ImagePolicy } from '../../src/core/board';
 import type { BoardObject } from './board-object';
 
 export interface Env {
@@ -33,3 +34,7 @@ export interface Env {
   /** The deployed version (`version_metadata`): its id keys the edge cache. Optional in local tools. */
   VERSION?: WorkerVersionMetadata;
 }
+
+/** Whether authors may announce pictures for review: the IMAGES_UPLOAD variable, off unless `review`. Visitors never may. */
+export const imagePolicy = (env: Pick<Env, 'IMAGES_UPLOAD'>): ImagePolicy =>
+  env.IMAGES_UPLOAD === 'review' ? 'review' : 'off';

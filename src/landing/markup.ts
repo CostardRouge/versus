@@ -1,6 +1,6 @@
-import { LEGAL_PATH } from '../app/about.ts';
 import { simulate } from '../core/demos.ts';
 import { compute, nextPair, pushDuel } from '../core/scoring.ts';
+import { APP_PATH, HOME_PATH, LEGAL_PATH } from '../core/site.ts';
 import type { MethodKey } from '../core/types.ts';
 import { esc, hueOf, mulberry32 } from '../core/util.ts';
 import type { Lang } from '../i18n/index.ts';
@@ -29,9 +29,6 @@ import { type Strings, strings } from './strings.ts';
  * and for a first paint without layout shift. src/landing/main.ts then brings it to life.
  */
 
-/** Where each language's home page lives, relative to the site's root. */
-export const HOME_PATH: Record<Lang, string> = { en: '', fr: 'fr/' };
-export const APP_PATH = 'app/';
 const other = (lang: Lang): Lang => (lang === 'en' ? 'fr' : 'en');
 /** From a home page back to the site's root. */
 const rootOf = (lang: Lang): string => (HOME_PATH[lang] ? '../' : './');

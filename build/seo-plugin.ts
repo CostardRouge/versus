@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { relative } from 'node:path';
 import type { Plugin } from 'vite';
-import { LINKS } from '../src/app/about.ts';
+import { LINKS } from '../src/core/site.ts';
 import { landingBody, landingBoot } from '../src/landing/markup.ts';
 import { legalBody, legalBoot } from '../src/legal/markup.ts';
 import { type AnalyticsConfig, analyticsConfig, analyticsTag } from './analytics.ts';

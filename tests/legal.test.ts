@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { analyticsConfig, analyticsTag } from '../build/analytics';
 import { BODY_MARK, BOOT_MARK, fillPage } from '../build/seo-plugin';
 import { CONTACT, LEGALS, PAGES } from '../build/site';
-import { LEGAL_PATH } from '../src/app/about';
 import { TTL_DAYS } from '../src/core/board';
+import { LEGAL_PATH } from '../src/core/site';
 import { legalEn } from '../src/i18n/legal-en';
 import { legalFr } from '../src/i18n/legal-fr';
 import { landingBody } from '../src/landing/markup';
-import { BOARD_TTL_DAYS, legalBody } from '../src/legal/markup';
+import { legalBody } from '../src/legal/markup';
 
 const OPTS = {
   contact: CONTACT,
@@ -79,7 +79,6 @@ describe('legal pages', () => {
   });
 
   it('state the real deletion delay of published rankings', () => {
-    expect(BOARD_TTL_DAYS).toBe(TTL_DAYS);
     expect(body.en).toContain(`after ${TTL_DAYS} days without activity`);
   });
 

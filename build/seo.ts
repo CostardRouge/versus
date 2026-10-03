@@ -238,6 +238,9 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
     meta('name', 'author', AUTHOR.name),
     meta('name', 'application-name', NAME),
     meta('name', 'apple-mobile-web-app-title', NAME),
+    // The browser's bar in the page's background, per theme; the app follows a theme chosen in it (src/app/header.ts).
+    `<meta name="theme-color" content="${COLORS.bg}" media="(prefers-color-scheme: light)" />`,
+    `<meta name="theme-color" content="${COLORS.bgDark}" media="(prefers-color-scheme: dark)" />`,
     ...(VERIFICATION.google ? [meta('name', 'google-site-verification', VERIFICATION.google)] : []),
     ...(VERIFICATION.bing ? [meta('name', 'msvalidate.01', VERIFICATION.bing)] : []),
     // Icons: .ico for the probes that ignore the head, SVG for current browsers, PNG multiples of 48 for Google.
@@ -517,7 +520,7 @@ export function notFoundHtml(url: string): string {
     </script>
     <style>
       :root { color-scheme: light dark; --bg: ${COLORS.bg}; --ink: ${COLORS.ink}; --muted: ${COLORS.muted}; }
-      @media (prefers-color-scheme: dark) { :root { --bg: ${COLORS.bgDark}; --ink: #eceef3; --muted: #9298a8; } }
+      @media (prefers-color-scheme: dark) { :root { --bg: ${COLORS.bgDark}; --ink: ${COLORS.inkDark}; --muted: ${COLORS.mutedDark}; } }
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
         font: 17px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 24px; box-sizing: border-box; }
       main { max-width: 34rem; }

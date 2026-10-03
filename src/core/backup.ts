@@ -8,13 +8,13 @@ import {
   picturePath,
   TOKEN_RE,
   VOTER_RE,
-} from './board';
-import { DEMOS } from './demos';
-import { parseJoined } from './joined';
-import { LABEL_MAX } from './list';
-import { METHOD_KEYS } from './scoring';
-import type { BoardStatus, Duel, Item, Joined, MethodKey, Ranking } from './types';
-import { hueOf } from './util';
+} from './board.ts';
+import { DEMOS } from './demos.ts';
+import { parseJoined } from './joined.ts';
+import { LABEL_MAX } from './list.ts';
+import { METHOD_KEYS } from './scoring.ts';
+import type { BoardStatus, Duel, Item, Joined, MethodKey, Ranking } from './types.ts';
+import { hueOf } from './util.ts';
 
 /**
  * Export and import (docs/pwa.md): the rankings of this browser in a JSON file. A backup holds everything, to

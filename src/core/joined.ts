@@ -1,8 +1,8 @@
-import { ALIAS_RE, isOutcome, isRecord, totalPairs } from './board';
-import { mkRank } from './model';
-import type { BoardSummary, BoardView, Counts } from './protocol';
-import { agreement, ownRanking } from './published';
-import type { BoardStatus, Duel, Item, Joined, Ranking } from './types';
+import { ALIAS_RE, isOutcome, isRecord, totalPairs } from './board.ts';
+import { mkRank } from './model.ts';
+import type { BoardSummary, BoardView, Counts } from './protocol.ts';
+import { agreement, ownRanking } from './published.ts';
+import type { BoardStatus, Duel, Item, Joined, Ranking } from './types.ts';
 
 /**
  * "Your votes": the published boards a browser voted on without managing them. Each card keeps a

@@ -3,10 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { appViews, BASE_MARK, BODY_MARK, BOOT_MARK, fillPage, HEAD_MARK, pageOf } from '../build/seo-plugin';
 import { PAGES, type PageKey } from '../build/site';
+import { APP_PATH, HOME_PATH } from '../src/core/site';
 import { landingEn } from '../src/i18n/landing-en';
 import { landingFr } from '../src/i18n/landing-fr';
 import { HERO, ITEMS, PASTRIES, TOPICS } from '../src/landing/data';
-import { APP_PATH, HOME_PATH, h1Text, landingBody, landingBoot, type PageData } from '../src/landing/markup';
+import { h1Text, landingBody, landingBoot, type PageData } from '../src/landing/markup';
 import { SPRITE } from '../src/landing/sprite';
 import { strings } from '../src/landing/strings';
 

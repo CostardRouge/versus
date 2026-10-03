@@ -1,4 +1,5 @@
-import { LEGAL_PATH } from '../app/about.ts';
+import { TTL_DAYS } from '../core/board.ts';
+import { LEGAL_PATH } from '../core/site.ts';
 import { esc } from '../core/util.ts';
 import type { Lang } from '../i18n/index.ts';
 import { type LegalKey, type LegalMessages, legalEn } from '../i18n/legal-en.ts';
@@ -13,12 +14,6 @@ import { strings } from '../landing/strings.ts';
  */
 
 const TEXTS: Record<Lang, LegalMessages> = { en: legalEn, fr: legalFr };
-
-/**
- * Days without activity before a published ranking is deleted: TTL_DAYS in src/core/board.ts, which this module
- * can't import (the Vite config reaches it, D90); tests keep the two equal.
- */
-export const BOARD_TTL_DAYS = 60;
 
 export interface LegalOpts {
   /** Where questions, requests and reports go. */
@@ -54,7 +49,7 @@ export function legalBody(lang: Lang, opts: LegalOpts): string {
   const email = `<a href="mailto:${esc(opts.contact)}">${esc(opts.contact)}</a>`;
   const vars: Record<string, string> = {
     email,
-    days: String(BOARD_TTL_DAYS),
+    days: String(TTL_DAYS),
     source: esc(opts.source),
     license: esc(`${opts.source}/blob/main/LICENSE`),
   };

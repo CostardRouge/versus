@@ -13,7 +13,6 @@ import {
   DEFAULT_MODERATION,
   decidePicture,
   editItem,
-  type ImagePolicy,
   isRecord,
   itemId,
   keepsVoter,
@@ -54,6 +53,7 @@ import {
   type BoardSummary,
   boardSummary,
   boardView,
+  CLOSE_GONE,
   countsOf,
   myDuels,
   parseClientMessage,
@@ -82,16 +82,16 @@ import type {
   Vote,
 } from '../../src/core/types';
 import { deleteCards } from './cards';
-import type { Env } from './env';
+import { type Env, imagePolicy } from './env';
 import { errorText, log } from './log';
 import { deletePicture, deletePrefix } from './pictures';
+import { sha256Hex } from './random';
 import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
 import { verifyTurnstile } from './turnstile';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
 const BROADCAST_MS = 1000;
 /** Close code sent when the board no longer exists (withdrawn or expired). */
-const GONE = 4004;
 /** Up to this many voters, each new voter refreshes the registry row (then once a day). */
 const FRESH_VOTERS = 100;
 /** A connection's address tag when the platform gives no address (local tools, tests without the header). */
@@ -130,11 +130,6 @@ interface StoredMeta extends BoardMeta {
 
 type VoteRow = { voter: string; a: string; b: string; s: number; t: number; seq: number };
 type ReportRow = { voter: string; reason: ReportReason; note: string; t: number };
-
-async function sha256(s: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
 
 function send(ws: WebSocket, msg: ServerMessage | string): void {
   try {
@@ -299,11 +294,6 @@ export class BoardObject extends DurableObject<Env> {
     return (Number.isFinite(s) && s > 0 ? s : TTL_DAYS * 86_400) * 1000;
   }
 
-  /** Whether authors may announce pictures for review (the IMAGES_UPLOAD variable). Visitors never may. */
-  private imagePolicy(): ImagePolicy {
-    return this.env.IMAGES_UPLOAD === 'review' ? 'review' : 'off';
-  }
-
   /** Crowd ranking, recomputed at most once per BROADCAST_MS while votes keep coming. */
   private crowd(board: SharedBoard, fresh = false): Computed {
     const now = Date.now();
@@ -317,7 +307,7 @@ export class BoardObject extends DurableObject<Env> {
   private async isOwner(token: unknown): Promise<boolean> {
     if (typeof token !== 'string' || !TOKEN_RE.test(token) || !this.ownerHash) return false;
     const enc = new TextEncoder();
-    const a = enc.encode(await sha256(token));
+    const a = enc.encode(await sha256Hex(token));
     const b = enc.encode(this.ownerHash);
     return a.byteLength === b.byteLength && crypto.subtle.timingSafeEqual(a, b);
   }
@@ -334,7 +324,7 @@ export class BoardObject extends DurableObject<Env> {
     alias: string,
     origin: Origin = { official: false, template: '' },
   ): Promise<'ok' | 'exists'> {
-    const ownerHash = await sha256(ownerToken);
+    const ownerHash = await sha256Hex(ownerToken);
     if (this.board) return 'exists';
     const now = Date.now();
     const board = createBoard(input, now, origin);
@@ -414,7 +404,7 @@ export class BoardObject extends DurableObject<Env> {
     if (list && (!list.length || list.length > LIMITS.items)) return { ok: false, error: 'bad_request' };
     const inputs: NewItem[] = [];
     for (const x of list ?? [raw]) {
-      const input = parseNewItem(x, this.imagePolicy());
+      const input = parseNewItem(x, imagePolicy(this.env));
       if (!input.ok) return input;
       inputs.push(input.value);
     }
@@ -454,7 +444,7 @@ export class BoardObject extends DurableObject<Env> {
    */
   async rotateOwner(token: string, next: string): Promise<Result<true>> {
     if (!TOKEN_RE.test(next)) return { ok: false, error: 'bad_request' };
-    const nextHash = await sha256(next);
+    const nextHash = await sha256Hex(next);
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
     this.ownerHash = nextHash;
@@ -615,7 +605,7 @@ export class BoardObject extends DurableObject<Env> {
   private async destroy(reason: string): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {
       try {
-        ws.close(GONE, reason);
+        ws.close(CLOSE_GONE, reason);
       } catch {
         // Already closed.
       }
@@ -662,7 +652,7 @@ export class BoardObject extends DurableObject<Env> {
 
   /** A connection's address as a short hash, salted with the alias: enough to count, not to read back. */
   private async addressTag(ip: string | null): Promise<string> {
-    return ip ? (await sha256(`${this.alias}:${ip}`)).slice(0, 16) : NO_ADDRESS;
+    return ip ? (await sha256Hex(`${this.alias}:${ip}`)).slice(0, 16) : NO_ADDRESS;
   }
 
   /** Remembers a first vote from an address; addresses with nothing recent go once there are many. */
@@ -676,16 +666,21 @@ export class BoardObject extends DurableObject<Env> {
     const msg = typeof raw === 'string' ? parseClientMessage(raw) : null;
     if (!msg) return send(ws, { t: 'error', code: 'bad_request' });
     let board = this.board;
-    if (!board) return ws.close(GONE, 'not_found');
+    if (!board) return ws.close(CLOSE_GONE, 'not_found');
 
     if (msg.t === 'hello') {
       if (!protocolSupported(msg.v)) return send(ws, { t: 'error', code: 'upgrade' });
       const owner = msg.owner !== undefined && (await this.isOwner(msg.owner));
       board = this.board;
-      if (!board) return ws.close(GONE, 'not_found');
+      if (!board) return ws.close(CLOSE_GONE, 'not_found');
       const prev = ws.deserializeAttachment() as Session | null;
       if (!keepsVoter(prev, msg.voter)) return send(ws, { t: 'error', code: 'forbidden' });
-      const session = openSession(board, msg.voter, owner, this.crowd(board), Math.random, prev, msg.pair ?? null);
+      const session = openSession(board, this.crowd(board), Math.random, {
+        voter: msg.voter,
+        owner,
+        prev,
+        wanted: msg.pair ?? null,
+      });
       ws.serializeAttachment(session);
       return send(ws, this.stateFor(board, session));
     }
@@ -763,7 +758,7 @@ export class BoardObject extends DurableObject<Env> {
       }
     }
     const live = this.board;
-    if (!live) return ws.close(GONE, 'not_found');
+    if (!live) return ws.close(CLOSE_GONE, 'not_found');
     const current = (ws.deserializeAttachment() as Session | null) ?? session;
     send(ws, { t: 'pairs', pairs: current.queue, mine: voteCount(live, current.voter) });
   }

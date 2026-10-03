@@ -1,8 +1,8 @@
-import { ALIAS_RE, LIMITS, totalPairs } from './board';
-import { mkRank } from './model';
-import type { RankingView } from './protocol';
-import { compute, methodOf, pairKey, validHistory } from './scoring';
-import type { BoardLang, BoardSettings, Computed, Duel, Item, MethodKey, Ranking } from './types';
+import { ALIAS_RE, LIMITS, totalPairs } from './board.ts';
+import { mkRank } from './model.ts';
+import type { RankingView } from './protocol.ts';
+import { compute, methodOf, pairKey, validHistory } from './scoring.ts';
+import type { BoardLang, BoardSettings, Computed, Duel, Item, MethodKey, Ranking } from './types.ts';
 
 /**
  * Client-side helpers for published boards: what can be published and how, share links, and how a

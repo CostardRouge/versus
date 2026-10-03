@@ -1,4 +1,4 @@
-import { LINKS } from '../src/app/about.ts';
+import { LINKS } from '../src/core/site.ts';
 import { en } from '../src/i18n/en.ts';
 import { fr } from '../src/i18n/fr.ts';
 
@@ -129,13 +129,18 @@ export const LOCALES: Record<SiteLang, string> = { en: 'en_US', fr: 'fr_FR' };
 /** Languages the site speaks: one home page each; the app switches from the browser language or the visitor's choice. */
 export const LANGUAGES = ['en', 'fr'] as const satisfies readonly SiteLang[];
 
-/** Design tokens the icons and the manifest need (same values as styles.css). */
+/**
+ * Design tokens the icons, the manifest, the pages' theme-color and the 404 page need: the values of src/tokens.css
+ * (light, and `…Dark` for the dark theme), which tests keep equal.
+ */
 export const COLORS = {
   bg: '#ECEEF2',
   bgDark: '#0E1015',
   surface: '#FAFBFD',
   ink: '#13151B',
+  inkDark: '#ECEEF3',
   muted: '#5A6072',
+  mutedDark: '#9298A8',
   line: '#D2D6DF',
   a: '#2743F5',
   b: '#E4492A',

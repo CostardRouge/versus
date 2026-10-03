@@ -1,7 +1,7 @@
-import { fillCode, sameFill } from './colors';
-import { labelKey } from './list';
-import { mkRank } from './model';
-import { compute, pairKey } from './scoring';
+import { fillCode, sameFill } from './colors.ts';
+import { labelKey } from './list.ts';
+import { mkRank } from './model.ts';
+import { compute, pairKey } from './scoring.ts';
 import type {
   BoardLang,
   BoardMeta,
@@ -24,8 +24,8 @@ import type {
   SharedBoard,
   Visibility,
   Vote,
-} from './types';
-import { hueOf } from './util';
+} from './types.ts';
+import { hueOf } from './util.ts';
 
 /**
  * Published boards: one voice per voter and pair, server-assigned pairs, results visibility.
@@ -735,20 +735,23 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
   }
 }
 
-/**
- * A new session; `prev` is the connection's session when it says hello again: its last vote and last item added
- * carry over, so a new hello can't dodge the limits, and so does a human check it passed. `wanted` is the duel a
- * shared link asked for: it comes first when this voter can still vote on it.
- */
-export function openSession(
-  board: SharedBoard,
-  voter: string,
-  owner: boolean,
-  C: Computed,
-  rng: Rng,
-  prev: Pick<Session, 'lastActionAt' | 'lastAddAt' | 'human'> | null = null,
-  wanted: readonly [string, string] | null = null,
-): Session {
+/** Who opens a session, and what carries over (`openSession`). */
+export interface SessionStart {
+  voter: string;
+  /** The connection said hello with the owner token. */
+  owner?: boolean;
+  /**
+   * The connection's session when it says hello again: its last vote and last item added carry over, so a new hello
+   * can't dodge the limits, and so does a human check it passed.
+   */
+  prev?: Pick<Session, 'lastActionAt' | 'lastAddAt' | 'human'> | null;
+  /** The duel a shared link asked for: it comes first when this voter can still vote on it. */
+  wanted?: readonly [string, string] | null;
+}
+
+/** A new session for a connection, its queue filled. */
+export function openSession(board: SharedBoard, C: Computed, rng: Rng, start: SessionStart): Session {
+  const { voter, owner = false, prev, wanted } = start;
   const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt: prev?.lastActionAt ?? 0 };
   if (prev?.lastAddAt !== undefined) session.lastAddAt = prev.lastAddAt;
   if (prev?.human) session.human = true;
