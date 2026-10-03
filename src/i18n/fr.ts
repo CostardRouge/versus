@@ -499,6 +499,10 @@ export const fr: Messages = {
   lastVisit: 'Lors de ta dernière visite',
   publishing: 'Publication…',
   settingsNotSaved: 'Tes changements n’ont pas été enregistrés.',
+  picNotSent: 'Image non envoyée',
+  picRetryAria: 'Renvoyer l’image de {label}',
+  picturesUnsent: (v: Vars) =>
+    `${v.pictures} non envoyée${Number(v.n) > 1 ? 's' : ''}. Réessaie depuis la liste des éléments.`,
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

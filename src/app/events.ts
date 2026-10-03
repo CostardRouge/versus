@@ -8,6 +8,7 @@ import {
   authorNewAdminLink,
   authorOnScreen,
   authorRemove,
+  authorRetryPicture,
   authorSettings,
 } from './author';
 import { exportAll, exportOne, importFile, isBackupFile, pickImport } from './backup';
@@ -288,6 +289,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-retry':
       boardRetry();
+      break;
+    case 'pic-retry':
+      void authorRetryPicture(id);
       break;
     case 'b-finale':
       openFinale();

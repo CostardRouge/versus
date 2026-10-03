@@ -55,8 +55,8 @@ export interface Row {
   dim?: boolean;
   /** Places gained (positive) or lost since the last duel. */
   moved?: number;
-  /** A word under the name: a picture under review, another item of the same color. */
-  note?: { text: string; bad?: boolean };
+  /** A word under the name: a picture under review, another item of the same color; with what to do about it. */
+  note?: { text: string; bad?: boolean; action?: { name: string; label: string; aria: string } };
 }
 
 function swatchHTML(it: Item, editable: boolean): string {
@@ -68,13 +68,18 @@ const rtClass = (row: Row): string => `rt mono ${row.dim ? 'dim' : ''}`;
 const dlClass = (moved: number): string => `dl mono ${moved > 0 ? 'up' : moved < 0 ? 'down' : ''}`;
 const dlText = (moved: number): string => (moved > 0 ? `↑${moved}` : moved < 0 ? `↓${-moved}` : '');
 
+const noteActionHTML = ({ it, note }: Row): string =>
+  note?.action
+    ? ` <button class="link row-act" type="button" data-action="${note.action.name}" data-id="${esc(it.id)}" aria-label="${esc(note.action.aria)}">${esc(note.action.label)}</button>`
+    : '';
+
 function rowHTML(row: Row, editable: boolean): string {
   const { it, moved = 0 } = row;
   const name = editable
     ? `<input class="row-label" data-id="${esc(it.id)}" value="${esc(it.label)}" aria-label="${esc(t('renameAria', { label: it.label }))}" maxlength="${LABEL_MAX}">`
     : `<span class="row-text">${esc(it.label)}</span>`;
   const label = row.note
-    ? `<span class="row-main">${name}<small class="row-note ${row.note.bad ? 'bad' : ''}">${esc(row.note.text)}</small></span>`
+    ? `<span class="row-main">${name}<small class="row-note ${row.note.bad ? 'bad' : ''}">${esc(row.note.text)}${noteActionHTML(row)}</small></span>`
     : name;
   const remove = editable
     ? `<button class="rm" type="button" data-action="remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">×</button>`
@@ -106,7 +111,7 @@ const drawnOf = (row: Row, editable: boolean): Drawn => ({
   label: row.it.label,
   img: row.it.img,
   fill: row.it.fill ? `${row.it.fill.type}:${row.it.fill.colors.join(',')}` : '',
-  note: row.note ? `${row.note.bad ? '!' : ''}${row.note.text}` : '',
+  note: row.note ? `${row.note.bad ? '!' : ''}${row.note.text}${row.note.action?.name ?? ''}` : '',
   editable,
 });
 

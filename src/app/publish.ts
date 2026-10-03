@@ -11,11 +11,12 @@ import {
 } from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
 import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
+import { picturesToast, sendPicture } from './author';
 import { boardURL } from './board';
 import { $, ask, copyText, toast } from './dom';
 import { errorKey, PUBLISH_ERRORS } from './errors';
 import { openBoard } from './rankings';
-import { fetchConfig, publishBoard, putItemImage } from './remote';
+import { fetchConfig, publishBoard } from './remote';
 import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
@@ -90,21 +91,18 @@ interface Published {
 
 /**
  * Sends the pictures the published items announced, one by one, for the moderator's review. A picture that
- * fails leaves its item as text: the author panel says it waits, and nothing else breaks.
+ * fails leaves its item as text, and the author's list offers to send it again (author.ts).
  */
 async function sendPictures(r: Ranking, alias: string, owner: string): Promise<void> {
   let sent = 0;
+  let failed = 0;
   for (const it of pictureItems(r)) {
     const data = dataURLBytes(it.img);
     if (!data) continue;
-    try {
-      await putItemImage(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }));
-      sent++;
-    } catch {
-      /* this item stays as text */
-    }
+    if (await sendPicture(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
+    else failed++;
   }
-  toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+  picturesToast(sent, failed);
 }
 
 export async function publishRanking(r: Ranking | undefined): Promise<void> {

@@ -1370,9 +1370,12 @@ describe('pictures for review', () => {
   });
 
   it('announces the pictures and sends them after publishing, when the server reviews them', async () => {
+    // The picture's upload fails the first time.
+    let pictureUp = false;
     respond = (c) => {
       if (c.url === '/api/config') return { status: 200, body: { images: 'review' } };
       if (c.method === 'POST') return { status: 201, body: { alias: PICS, owner: OWNER } };
+      if (c.url.endsWith('/image') && !pictureUp) return { status: 503, body: {} };
       return { status: 201, body: { url: `http://localhost:3000/og/b/${PICS}/1.png`, ok: true } };
     };
     click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
@@ -1395,8 +1398,8 @@ describe('pictures for review', () => {
       body: { blob: 'image/jpeg' },
       auth: `Bearer ${OWNER}`,
     });
-    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
-    // The author panel says the picture waits.
+    expect($('#toast')?.textContent).toBe('1 picture not sent. Retry from the list of items.');
+    // The author panel says it wasn't sent, not that it waits for a review, and sends it again on demand.
     const ws = FakeSocket.last();
     ws.open();
     ws.receive(
@@ -1412,7 +1415,18 @@ describe('pictures for review', () => {
         true,
       ),
     );
-    expect($('#item-list li[data-id="i1"] .row-note')?.textContent).toBe('Picture awaiting review');
+    const note = () => $('#item-list li[data-id="i1"] .row-note');
+    expect(note()?.textContent).toBe('Picture not sent Retry');
+    expect(note()?.querySelector('button')?.getAttribute('aria-label')).toBe('Send the picture of Beach again');
+    pictureUp = true;
+    calls.length = 0;
+    click('#item-list [data-action="pic-retry"][data-id="i1"]');
+    await flush();
+    expect(calls.filter((c) => c.method === 'PUT')).toMatchObject([
+      { url: `/api/boards/${PICS}/items/i1/image`, auth: `Bearer ${OWNER}` },
+    ]);
+    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
+    expect(note()?.textContent).toBe('Picture awaiting review');
     // Images added later go the same way: announced, then sent.
     await flush();
     expect($('[data-action="pick-files"]')).not.toBeNull();

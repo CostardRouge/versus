@@ -489,6 +489,9 @@ export const en = {
   lastVisit: 'As of your last visit',
   publishing: 'Publishing…',
   settingsNotSaved: 'Your changes weren’t saved.',
+  picNotSent: 'Picture not sent',
+  picRetryAria: 'Send the picture of {label} again',
+  picturesUnsent: (v: Vars) => `${v.pictures} not sent. Retry from the list of items.`,
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

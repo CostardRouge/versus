@@ -118,7 +118,13 @@ function rows(b: Authored): Row[] {
     const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
     const note =
       it.pic === 'pending'
-        ? { text: t('picPending') }
+        ? unsent.has(picKey(b.alias, it.id))
+          ? {
+              text: t('picNotSent'),
+              bad: true,
+              action: { name: 'pic-retry', label: t('retry'), aria: t('picRetryAria', { label: it.label }) },
+            }
+          : { text: t('picPending') }
         : it.pic === 'refused'
           ? { text: t('picRefused'), bad: true }
           : twin
@@ -459,17 +465,68 @@ export async function authorAddFiles(files: FileList | File[]): Promise<void> {
   const added = await ownerCall((alias, token) => addBoardItems(alias, token, items));
   if (!added) return;
   let sent = 0;
+  let failed = 0;
   for (const it of added) {
     const data = dataURLBytes(read[labels.indexOf(it.label)]?.data ?? '');
     if (!data) continue;
-    try {
-      await putItemImage(b.alias, b.owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }));
-      sent++;
-    } catch {
-      /* this item stays as text */
-    }
+    if (await sendPicture(b.alias, b.owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
+    else failed++;
   }
-  toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+  picturesToast(sent, failed);
+}
+
+// ─── Pictures the server never received ─────────────────────────────────────
+
+/**
+ * Pictures whose upload failed, by board and item. The server can't tell a picture it never received from one
+ * awaiting review (both are `pending`), so this browser remembers them, in memory, for their rows to say so and offer
+ * to send them again (a reload forgets them: those rows say "awaiting review" again).
+ */
+const unsent = new Map<string, Blob>();
+const picKey = (alias: string, id: string): string => `${alias}/${id}`;
+const retrying = new Set<string>();
+
+/** Sends an item's picture for review; one that fails is kept, and its row offers to send it again. */
+export async function sendPicture(alias: string, owner: string, id: string, jpeg: Blob): Promise<boolean> {
+  try {
+    await putItemImage(alias, owner, id, jpeg);
+    unsent.delete(picKey(alias, id));
+    return true;
+  } catch {
+    unsent.set(picKey(alias, id), jpeg);
+    return false;
+  }
+}
+
+/** What sending a batch of pictures came to; the list shows which ones didn't go. */
+export function picturesToast(sent: number, failed: number): void {
+  if (failed) toast(t('picturesUnsent', { pictures: plural(failed, 'picture'), n: failed }));
+  else toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+  refreshAuthorList(false);
+}
+
+/** "Retry" on a picture that wasn't sent. */
+export async function authorRetryPicture(id: string | undefined): Promise<void> {
+  const b = authored();
+  const key = b && id ? picKey(b.alias, id) : '';
+  const jpeg = unsent.get(key);
+  if (!b || !id || !jpeg || retrying.has(key)) return;
+  retrying.add(key);
+  const btn = $<HTMLButtonElement>(`[data-action="pic-retry"][data-id="${id}"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+  }
+  try {
+    await putItemImage(b.alias, b.owner, id, jpeg);
+    unsent.delete(key);
+    toast(t('picturesSent', { pictures: plural(1, 'picture') }));
+  } catch (e) {
+    toast(t(errorKey(e, OWNER_ERRORS)));
+  } finally {
+    retrying.delete(key);
+  }
+  if (authored() === b) renderList(b, false);
 }
 
 /**
