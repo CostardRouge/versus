@@ -26,12 +26,15 @@ async function load(version: string, files: string[], stored: Map<string, FakeCa
   vi.stubGlobal('__VERSION__', version);
   vi.stubGlobal('self', {
     registration: { scope: SCOPE },
+    clients: { claim: async () => {} },
     addEventListener: (type: string, fn: (e: unknown) => void) => {
       listeners[type] = fn;
     },
   });
   vi.stubGlobal('caches', {
     keys: async () => [...stored.keys()],
+    has: async (name: string) => stored.has(name),
+    delete: async (name: string) => stored.delete(name),
     open: async (name: string) => {
       const cache = stored.get(name) ?? new FakeCache();
       stored.set(name, cache);
@@ -40,11 +43,12 @@ async function load(version: string, files: string[], stored: Map<string, FakeCa
   });
   const path = '../src/sw/sw.ts';
   await import(/* @vite-ignore */ path);
-  return async () => {
+  const run = (type: string) => async () => {
     let done: Promise<unknown> = Promise.resolve();
-    listeners.install?.({ waitUntil: (p: Promise<unknown>) => (done = p) });
+    listeners[type]?.({ waitUntil: (p: Promise<unknown>) => (done = p) });
     await done;
   };
+  return Object.assign(run('install'), { activate: run('activate') });
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -70,5 +74,28 @@ describe('service worker install', () => {
     // The font kept its hashed name: copied. The pages, the icon and the new bundle: downloaded.
     expect(fetched.sort()).toEqual(['/', '/app/', '/assets/app-2.js', '/icon-192.png']);
     expect(stored.get('versus-two')?.entries.get(`${SCOPE}assets/font-a.woff2`)).toBe('body of /assets/font-a.woff2');
+  });
+
+  it('fails an install whose cache an older version deleted meanwhile, and stores its files again on activation', async () => {
+    const stored = new Map<string, FakeCache>();
+    const files = ['./', 'app/', 'assets/app-3.js'];
+    // Reload in a tab while this version installs: the waiting older one takes over and deletes the other caches.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (req: Request) => {
+        if (new URL(req.url).pathname === '/assets/app-3.js') stored.delete('versus-three');
+        return new Response(`body of ${new URL(req.url).pathname}`);
+      }),
+    );
+    const three = await load('three', files, stored);
+    await expect(three()).rejects.toThrow('deleted');
+    // Activated anyway (another install that went through, later): its files come back before it serves.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (req: Request) => new Response(`body of ${new URL(req.url).pathname}`)),
+    );
+    stored.delete('versus-three');
+    await three.activate();
+    expect(stored.get('versus-three')?.entries.get(`${SCOPE}app/`)).toBe('body of /app/');
   });
 });

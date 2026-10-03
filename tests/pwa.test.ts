@@ -6,6 +6,9 @@ const BUILD = [
   'index.html',
   'fr/index.html',
   'app/index.html',
+  'legal/index.html',
+  'fr/mentions-legales/index.html',
+  'admin/index.html',
   'assets/main-Hp-_VIKh.js',
   'assets/main-BCOQ7pW3.css',
   'assets/index-CWzlMAkk.js',
@@ -38,6 +41,10 @@ describe('precacheList', () => {
     expect(list).toContain('./');
     expect(list).toContain('./fr/');
     expect(list).toContain('./app/');
+    // The legal notices, which the app links to, open offline too; the moderation page never does.
+    expect(list).toContain('./legal/');
+    expect(list).toContain('./fr/mentions-legales/');
+    expect(list).not.toContain('./admin/');
     for (const f of list) expect(f.endsWith('index.html'), f).toBe(false);
     expect(list).toContain('assets/main-Hp-_VIKh.js');
     expect(list).toContain('assets/index-CWzlMAkk.js');

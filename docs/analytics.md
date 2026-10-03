@@ -18,11 +18,11 @@ Last updated 2026-09-30. Ported from steevepommier.com and vanessagedeon.com (th
 | `/app/demo/<slug>`, `…/ranking`, `…/items` | A demo and its tabs (same for everyone, so kept) |
 | `/app/r/:id`, `/app/r/:id/ranking`, `/app/r/:id/items` | A ranking of this browser: its id replaced |
 | `/app/b/:alias` | A published board: its alias replaced (whoever has it can vote) |
-| `/t/<slug>/`, `/fr/t/<slug>/` | An official template's page (a fixed set of pages, D110): counted by the legal page's script, whose shell they use |
+| `/t/<slug>/`, `/fr/t/<slug>/` | An official template's page (a fixed set of pages, D110): the legal page's shell, whose measurement settings the Worker rewrites to the template's own path |
 
 The moderation page (`/admin/`, the publisher's) carries no measurement settings and never reports.
 
-Referrer: the other site the visitor came from (origin and path only), then, inside the app, the previous view, as a page load would report it. Title: the page's title, which never holds user content.
+Referrer: the other site the visitor came from (origin and path only), then, inside the app, the previous view, as a page load would report it. Title: the page's own title as the build wrote it, read once when the page loads (`src/audience.ts`): never the tab's title later, which the app sets to the ranking on screen, the visitor's own words.
 
 **Events**, anonymous facts only, never a title, a label or an address:
 
@@ -50,7 +50,7 @@ Umami adds on its own: browser, OS, device type, screen size, language, country 
 - **Automatic tracking off; every view and event sent by `src/audience.ts`** with a clean path. Left on, Umami's tracker records `pathname + hash` (the author's key included) and a raw `r/<id>` for every ranking. `data-exclude-search` and `data-exclude-hash` are set as well, for anything the tracker might send on its own.
 - **The app's views are counted where the address changes** (`syncURL()` in `src/app/router.ts`, D92): startup, links, Back and Forward, tabs. The same path twice in a row counts once.
 - **A queue until the tracker loads**, bounded (30), dropped on a load error or an opt-out.
-- **No file named "analytics".** The bundler names a shared chunk after one of its modules, and filter lists block URLs with that word: the browser module is `src/audience.ts` so the shared chunk (which also carries the fonts' CSS) is `assets/audience-*.js`. A blocked shared chunk would take the whole app down.
+- **No file named "analytics".** The bundler names a shared chunk after one of its modules, and filter lists block URLs with that word: the browser module is `src/audience.ts`, and the shared chunk that carries it is named after another module (`assets/prefs-*.js` today). A blocked shared chunk would take the whole app down.
 - **Both hosts count**: `data-domains` lists `versus.steevepommier.com` and `costardrouge.github.io` (plus the canonical host when `VITE_SITE_URL` changes it). Anything else (localhost, a preview, a fork's deploy) loads the tracker and never reports.
 - **The switch lives on the legal page**, next to the explanation (the app has no settings panel, like vanessagedeon.com): it shows what this browser does (counted, switched off, privacy signal, no measurement in this build) and sets or clears Umami's own `umami.disabled` key. Turning it back on applies from the next page.
 

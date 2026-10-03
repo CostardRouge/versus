@@ -67,6 +67,7 @@ const legalPage = (lang: 'en' | 'fr', path: string) => `<!doctype html><html lan
 <meta property="og:image:alt" content="Versus" /><meta name="twitter:title" content="Legal" /><meta name="twitter:description" content="Legal" />
 <meta name="twitter:image" content="https://versus.example.com/og.png" /><meta name="twitter:image:alt" content="Versus" />
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[]}</script>
+<script type="application/json" id="analytics">{"src":"https://insight.example.com/s.js","website":"w","page":"/${path}"}</script>
 </head><body class="lg-page"><header class="nav"><nav class="langs"><a href="../legal/" data-lang="en">EN</a><a href="../fr/mentions-legales/" data-lang="fr">FR</a></nav></header>
 <main id="main" class="wrap lg"><h1>Legal notice</h1></main><footer class="foot"><nav class="foot-langs"><a href="../legal/" data-lang="en">English</a><a href="../fr/mentions-legales/" data-lang="fr">Français</a></nav></footer></body></html>`;
 
@@ -1106,6 +1107,14 @@ describe('official templates', () => {
     const list = graph['@graph'].find((node) => node['@type'] === 'ItemList');
     expect(list?.itemListElement?.map((e) => e.name)).toContain(label);
     expect(html).not.toContain('<script>alert(1)');
+  });
+
+  it('counts a template page as itself, not as the legal page its shell comes from', async () => {
+    for (const path of ['/t/cameras/', '/fr/t/appareils-photo/']) {
+      const html = await (await server.fetch(path)).text();
+      const settings = html.match(/<script type="application\/json" id="analytics">([\s\S]*?)<\/script>/)?.[1];
+      expect(JSON.parse(settings ?? '{}'), path).toMatchObject({ page: path });
+    }
   });
 
   it('lists the templates and the featured boards as Popular, never a hidden one', async () => {

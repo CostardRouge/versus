@@ -2610,3 +2610,20 @@ html.paused .caret {
   text-decoration: none;
   font-weight: 500;
 }
+
+/* Without JavaScript the page reads in full, but its demos can't play: their controls stay out of sight rather than
+   look broken. The final question keeps its two names, without the invitation to pick one. */
+html:not(.js) .controls,
+html:not(.js) .duel-foot,
+html:not(.js) .sb-foot,
+html:not(.js) #hero-btn,
+html:not(.js) #pause,
+html:not(.js) .sb-tabs,
+html:not(.js) #final-res {
+  display: none;
+}
+/* What carries words (the duel's cards, the methods' names, the final question's two sides) stays, inert. */
+html:not(.js) main button {
+  pointer-events: none;
+  cursor: default;
+}

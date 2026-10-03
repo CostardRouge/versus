@@ -144,6 +144,9 @@ export function mountAdmin(opts: AdminOpts): void {
       if (st.open && !list.boards.some((b) => b.alias === st.open)) {
         st.open = null;
         st.detail = null;
+      } else if (st.open && !st.detail) {
+        // Details that failed to load come with the refreshed list.
+        st.detail = await call<AdminBoardView>('GET', `/boards/${st.open}`);
       }
     } catch (e) {
       fail(e);
@@ -159,6 +162,8 @@ export function mountAdmin(opts: AdminOpts): void {
     try {
       st.detail = await call<AdminBoardView>('GET', `/boards/${alias}`);
     } catch (e) {
+      // The row closes rather than load forever; the error says why.
+      if (st.open === alias) st.open = null;
       fail(e);
     }
     render();
@@ -367,7 +372,9 @@ export function mountAdmin(opts: AdminOpts): void {
     const want = refocus ?? keyOf(document.activeElement);
     refocus = null;
     draw();
-    if (want && root.querySelector(want) !== document.activeElement) {
+    // Without a token, its field is where the keyboard belongs: on opening, and after a refused one.
+    if (!st.token && opts.api !== null) focusFirst(['#ad-token']);
+    else if (want && root.querySelector(want) !== document.activeElement) {
       const row = st.open ?? near;
       focusFirst([want, row ? `[data-act="details"][data-alias="${row}"]` : null, '#ad-h']);
     }

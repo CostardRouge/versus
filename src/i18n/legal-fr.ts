@@ -28,7 +28,7 @@ export const legalFr: LegalMessages = {
   device1:
     'Tes classements, leurs éléments (images comprises), tes duels et tes préférences (langue, thème, choix d’affichage) sont gardés dans le stockage local de ton navigateur, sur cet appareil seulement. S’y trouvent aussi, si tu utilises les classements publiés, un identifiant de votant anonyme (une suite de caractères au hasard), les clés des classements que tu as publiés et les cartes de « Tes votes ».',
   device2:
-    'L’app installée garde aussi ses propres fichiers dans le cache du navigateur pour marcher hors ligne : des fichiers, jamais tes données. Rien de tout cela n’est envoyé nulle part, sauf ce que tu publies. Pour l’effacer, supprime tes classements dans l’app, ou efface les données de ce site dans les réglages de ton navigateur.',
+    'Ouvrir l’app range aussi ses propres fichiers dans le cache du navigateur, pour qu’elle marche hors ligne : des fichiers, jamais tes données. Rien de tout cela n’est envoyé nulle part, sauf ce que tu publies. Pour l’effacer, supprime tes classements dans l’app, ou efface les données de ce site dans les réglages de ton navigateur.',
 
   boardsTitle: 'Classements publiés',
   boards1:

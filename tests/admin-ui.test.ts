@@ -181,6 +181,8 @@ describe('the page', () => {
     localStorage.clear();
     mount();
     expect($('form[data-form="token"]')).not.toBeNull();
+    // The keyboard starts in the token field.
+    expect(document.activeElement).toBe($('#ad-token'));
     // Its home link opens elsewhere: leaving the page would forget the token.
     expect($('.ad-brand')?.getAttribute('target')).toBe('_blank');
     expect($('.ad-brand')?.getAttribute('rel')).toBe('noopener');
@@ -189,6 +191,8 @@ describe('the page', () => {
     await flush();
     expect($('.ad-error')?.textContent).toBe(adminEn.wrongToken);
     expect($('form[data-form="token"]')).not.toBeNull();
+    // Refused: back in the field, to type it again.
+    expect(document.activeElement).toBe($('#ad-token'));
     calls.length = 0;
     ($('#ad-token') as HTMLInputElement).value = 'good';
     ($('form[data-form="token"]') as HTMLFormElement).requestSubmit();
@@ -361,6 +365,18 @@ describe('the page', () => {
     expect(requests('POST').at(-1)?.body).toEqual({ decision: 'refused' });
     URL.createObjectURL = createObjectURL;
     URL.revokeObjectURL = revokeObjectURL;
+  });
+
+  it('closes details that failed to load, and loads them with the next refresh', async () => {
+    respond = ok;
+    mount('', 'good');
+    await flush();
+    respond = (c) => (c.url.endsWith(`/boards/${ALIAS}`) ? { status: 500, body: { error: 'oops' } } : ok(c));
+    click(`[data-act="details"][data-alias="${ALIAS}"]`);
+    await flush();
+    expect($('.ad-error')).not.toBeNull();
+    expect($(`[data-act="details"][data-alias="${ALIAS}"]`)?.getAttribute('aria-expanded')).toBe('false');
+    expect(document.body.textContent).not.toContain(adminEn.loading);
   });
 
   it('does nothing when a confirmation is refused, and says when the server is away', async () => {

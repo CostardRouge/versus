@@ -10,7 +10,7 @@ import { LEGAL_PATH } from '../src/core/site';
 import { legalEn } from '../src/i18n/legal-en';
 import { legalFr } from '../src/i18n/legal-fr';
 import { landingBody } from '../src/landing/markup';
-import { legalBody } from '../src/legal/markup';
+import { legalBody, legalBoot } from '../src/legal/markup';
 
 const OPTS = {
   contact: CONTACT,
@@ -168,5 +168,28 @@ describe('the measurement switch', () => {
     expect(state()).toBe('none');
     expect(visible()).toEqual([legalEn.countNone]);
     expect(button().hidden).toBe(true);
+  });
+});
+
+describe('first paint', () => {
+  it('applies a chosen theme to the page and to the browser’s bar', () => {
+    const bars = () =>
+      [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
+    // A page load: the head as the build writes it, then the script.
+    const run = () => {
+      document.head.innerHTML =
+        '<meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)">';
+      new Function(legalBoot().replace(/<\/?script>/g, ''))();
+    };
+    localStorage.setItem('versus-prefs', JSON.stringify({ theme: 'dark' }));
+    run();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(bars()).toEqual(['#0E1015', '#0E1015']);
+    localStorage.setItem('versus-prefs', JSON.stringify({ theme: 'light' }));
+    run();
+    expect(bars()).toEqual(['#ECEEF2', '#ECEEF2']);
+    localStorage.clear();
+    delete document.documentElement.dataset.theme;
+    document.head.innerHTML = '';
   });
 });

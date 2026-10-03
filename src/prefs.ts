@@ -24,3 +24,12 @@ export function rememberLang(lang: 'en' | 'fr', force = true): void {
     /* storage unavailable: the choice lasts for this visit only */
   }
 }
+
+/**
+ * Inline code for a page's first-paint script, run once `theme` (a variable there) holds a chosen theme: the
+ * browser's bar takes that theme's color, read from the theme-color tag of its scheme (the build writes one per
+ * scheme, build/seo.ts). The app does the same when the theme changes (src/app/header.ts).
+ */
+export const THEME_BAR_JS = `var bars = document.querySelectorAll('meta[name="theme-color"]'), own = {};
+        for (var i = 0; i < bars.length; i++) own[/dark/.test(bars[i].getAttribute('media')) ? 'dark' : 'light'] = bars[i].content;
+        for (var j = 0; j < bars.length; j++) bars[j].content = own[theme] || bars[j].content;`;

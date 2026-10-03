@@ -1,4 +1,5 @@
 import type { BoardView, Unfurl } from '../../src/core/protocol';
+import { MEASUREMENT_ID } from '../../src/core/site';
 import {
   TEMPLATE_INDEX_VOTERS,
   TEMPLATES,
@@ -232,6 +233,7 @@ export async function templatePage(
       el.setAttribute(attr, attrValue(value()));
     },
   });
+  let settings = '';
   const rewriter = new HTMLRewriter()
     .on(
       'html',
@@ -299,6 +301,22 @@ export async function templatePage(
     .on('script[type="application/ld+json"]', {
       element(el) {
         el.setInnerContent(graph(t, lang, view, pageURL(), site), { html: true });
+      },
+    })
+    // The measurement settings name the page a view is counted as (src/audience.ts): this one, not the shell's.
+    .on(`script#${MEASUREMENT_ID}`, {
+      text(chunk) {
+        settings += chunk.text;
+        if (!chunk.lastInTextNode) {
+          chunk.remove();
+          return;
+        }
+        try {
+          const page = { ...(JSON.parse(settings) as object), page: `/${templatePath(t, lang)}` };
+          chunk.replace(JSON.stringify(page).replace(/</g, '\\u003c'), { html: true });
+        } catch {
+          chunk.replace(settings, { html: true });
+        }
       },
     })
     .on(

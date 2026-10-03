@@ -22,3 +22,9 @@ export const LEGAL_PATH: Record<Lang, string> = { en: 'legal/', fr: 'fr/mentions
 
 /** The app, one for every language. */
 export const APP_PATH = 'app/';
+
+/**
+ * The id of the tag carrying the measurement settings in each page's head: written by the build
+ * (build/analytics.ts), read by the page (src/audience.ts), rewritten by the Worker on the template pages.
+ */
+export const MEASUREMENT_ID = 'analytics';

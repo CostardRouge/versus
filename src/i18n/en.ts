@@ -367,7 +367,6 @@ export const en = {
   finVoteNew: 'Vote on the new pairs',
   finSeeBoard: 'See the live ranking',
   finCta: 'Want your friends to vote?',
-  finCtaLink: 'Create your ranking',
   voteClosed: 'The vote is closed',
   voteClosedBody: 'Here is the final ranking.',
   connecting: 'Connecting…',

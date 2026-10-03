@@ -5,7 +5,7 @@ import type { MethodKey } from '../core/types.ts';
 import { esc, hueOf, mulberry32 } from '../core/util.ts';
 import type { Lang } from '../i18n/index.ts';
 import { fill, pctText } from '../i18n/text.ts';
-import { PREFS_KEY } from '../prefs.ts';
+import { PREFS_KEY, THEME_BAR_JS } from '../prefs.ts';
 import { crowd, rate, standings, vote } from './crowd.ts';
 import {
   CASES,
@@ -88,7 +88,11 @@ export function landingBoot(lang: Lang): string {
         if (!inside && (prefs.lang === 'en' || prefs.lang === 'fr') && prefs.lang !== '${lang}') {
           return leave('${root}' + (prefs.lang === 'fr' ? '${HOME_PATH.fr}' : '${HOME_PATH.en}'));
         }
-        if (prefs.theme === 'light' || prefs.theme === 'dark') d.dataset.theme = prefs.theme;
+        var theme = prefs.theme;
+        if (theme === 'light' || theme === 'dark') {
+          d.dataset.theme = theme;
+          ${THEME_BAR_JS}
+        }
       })();
     </script>`;
 }

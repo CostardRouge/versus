@@ -30,7 +30,7 @@ export const legalEn = {
   device1:
     'Your rankings, their items (images included), your duels and your preferences (language, theme, display choices) are kept in your browser’s local storage, on this device only. So are, if you use published rankings, an anonymous voter id (a random string), the keys of the rankings you published and the cards under “Your votes”.',
   device2:
-    'The installed app also keeps its own files in the browser’s cache to work offline: files, never your data. None of this is sent anywhere, except what you publish. To erase it, delete your rankings in the app, or clear this site’s data in your browser’s settings.',
+    'Opening the app also stores its own files in the browser’s cache, so that it works offline: files, never your data. None of this is sent anywhere, except what you publish. To erase it, delete your rankings in the app, or clear this site’s data in your browser’s settings.',
 
   boardsTitle: 'Published rankings',
   boards1:

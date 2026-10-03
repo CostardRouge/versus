@@ -371,7 +371,6 @@ export const fr: Messages = {
   finVoteNew: 'Voter les nouvelles paires',
   finSeeBoard: 'Voir le classement en direct',
   finCta: 'Envie de faire voter tes amis ?',
-  finCtaLink: 'Crée ton classement',
   voteClosed: 'Le vote est clos',
   voteClosedBody: 'Voici le classement final.',
   connecting: 'Connexion…',
