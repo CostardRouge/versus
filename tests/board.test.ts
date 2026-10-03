@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ACTION_INTERVAL_MS,
   ADD_INTERVAL_MS,
@@ -698,7 +698,11 @@ describe('items after publication', () => {
 });
 
 describe('sessions', () => {
-  const rng = mulberry32(7);
+  // A generator of its own for each test: a test's pairs never depend on the tests run before it.
+  let rng = mulberry32(7);
+  beforeEach(() => {
+    rng = mulberry32(7);
+  });
 
   it('opens with a full queue of distinct pairs', () => {
     const b = board(5);
@@ -838,8 +842,8 @@ describe('sessions', () => {
     expect(preferPair(b, s, 'i0', 'nope')).toBe(false);
     expect(preferPair(b, s, 'i2', 'i2')).toBe(false);
     expect(s.queue[0]).toEqual(['i4', 'i5']);
-    // Asking for a pair already queued moves it first without repeating it.
-    const second = s.queue[1] as [string, string];
+    // Asking for a pair already queued (one not voted on) moves it first without repeating it.
+    const second = s.queue.slice(1).find(([x, y]) => pairKey(x, y) !== pairKey('i0', 'i1')) as [string, string];
     expect(preferPair(b, s, second[1], second[0])).toBe(true);
     expect(pairKey(...(s.queue[0] as [string, string]))).toBe(pairKey(...second));
     expect(new Set(keys(s.queue)).size).toBe(s.queue.length);

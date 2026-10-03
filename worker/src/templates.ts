@@ -33,13 +33,13 @@ import {
  */
 
 /** Voters a template page needs before it asks to be indexed. */
-export const indexVoters = (env: Env): number => Number(env.TEMPLATE_INDEX_VOTERS) || TEMPLATE_INDEX_VOTERS;
+const indexVoters = (env: Env): number => Number(env.TEMPLATE_INDEX_VOTERS) || TEMPLATE_INDEX_VOTERS;
 
 /**
  * The board of a template in one language, published now if it wasn't yet. Its registry row is written at
  * once, so the page that asked finds it; the registry's unique index settles a race between two first visits.
  */
-export async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Promise<RegistryRow | null> {
+async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Promise<RegistryRow | null> {
   const db = env.REGISTRY;
   if (!db) return null;
   const found = await templateBoard(db, t.key, lang);

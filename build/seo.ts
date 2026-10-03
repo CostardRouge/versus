@@ -82,11 +82,11 @@ export const rootFrom = (page: PageKey): string =>
   '../'.repeat(PAGES[page].path.split('/').filter(Boolean).length) || './';
 
 /** A page's title and description: the home page's for the language, the legal notice's, or the admin page's. */
-export const titleOf = (page: PageKey): string => {
+const titleOf = (page: PageKey): string => {
   const { kind, lang } = PAGES[page];
   return kind === 'legal' ? LEGAL_TITLES[lang] : kind === 'admin' ? ADMIN_TITLE : TITLES[lang];
 };
-export const descriptionOf = (page: PageKey): string => {
+const descriptionOf = (page: PageKey): string => {
   const { kind, lang } = PAGES[page];
   return kind === 'legal' ? LEGAL_DESCRIPTIONS[lang] : kind === 'admin' ? ADMIN_DESCRIPTION : DESCRIPTIONS[lang];
 };
@@ -94,7 +94,7 @@ export const descriptionOf = (page: PageKey): string => {
 const indexed = (kind: PageKind): kind is IndexedKind => kind === 'home' || kind === 'legal';
 
 /** Max snippet and a large image preview in results; the rest states the default posture explicitly. */
-export const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
 /**
  * The app itself stays out of the index: it renders with JavaScript, switches language on one URL and would
  * compete with the home pages, which carry the text. `follow` keeps its links counting.
@@ -337,7 +337,7 @@ export function manifest(): Record<string, unknown> {
  * exists to be read. Only the published boards API and the admin page are off limits. Crawlers read robots.txt
  * at the root of a host only, so this one counts on the Worker's domain, not under github.io/versus/.
  */
-export function robotsTxt(url: string): string {
+function robotsTxt(url: string): string {
   return [
     'User-agent: *',
     'Allow: /',
@@ -355,7 +355,7 @@ export function robotsTxt(url: string): string {
  * render the file as a (nearly blank) page instead of showing the XML, for no gain. The app is left out: it is
  * `noindex`, and its views are this browser's rankings or boards shared by link.
  */
-export function sitemapXml(url: string, lastmod: string): string {
+function sitemapXml(url: string, lastmod: string): string {
   const pages = [...LANGUAGES.map((l) => HOMES[l]), ...LANGUAGES.map((l) => LEGALS[l])];
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',

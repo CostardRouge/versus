@@ -5,7 +5,6 @@ import {
   createBoard,
   DEFAULT_SETTINGS,
   decidePicture,
-  IMAGE_URL_RE,
   LIMITS,
   parseNewItem,
   parsePublish,
@@ -53,25 +52,13 @@ describe('what the server accepts', () => {
     expect(errorOf(parseNewItem({ label: 'x', img: 'data:image/jpeg;base64,' }, 'review'))).toBe('images_not_allowed');
   });
 
-  it('takes a picture address as given for the site’s own boards, when it is one', () => {
-    expect(value(parseNewItem({ label: 'x', img: 'https://example.com/a.jpg' }, 'direct')).img).toBe(
-      'https://example.com/a.jpg',
-    );
-    expect(value(parseNewItem({ label: 'x', img: '/img/b/Ab3dEf7hJk/i0.jpg' }, 'direct')).img).toBe(
-      '/img/b/Ab3dEf7hJk/i0.jpg',
-    );
-    for (const bad of [
-      'http://example.com/a.jpg',
-      'javascript:alert(1)',
-      'data:image/jpeg;base64,',
-      '/other/a.jpg',
-      'x y',
-    ]) {
-      expect(errorOf(parseNewItem({ label: 'x', img: bad }, 'direct')), bad).toBe('images_not_allowed');
-      expect(IMAGE_URL_RE.test(bad), bad).toBe(false);
+  it('never takes a picture as an address, whatever the policy', () => {
+    for (const img of ['https://example.com/a.jpg', '/img/b/Ab3dEf7hJk/i0.jpg', 'javascript:alert(1)', 'x y']) {
+      for (const policy of ['off', 'review'] as const) {
+        expect(errorOf(parseNewItem({ label: 'x', img }, policy)), img).toBe('images_not_allowed');
+      }
     }
-    // One or the other: an address and an announcement don't go together.
-    expect(errorOf(parseNewItem({ label: 'x', img: 'https://example.com/a.jpg', pic: 'pending' }, 'direct'))).toBe(
+    expect(errorOf(parseNewItem({ label: 'x', img: '/img/b/Ab3dEf7hJk/i0.jpg', pic: 'pending' }, 'review'))).toBe(
       'images_not_allowed',
     );
   });

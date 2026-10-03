@@ -99,9 +99,6 @@ export function dataURLBytes(dataURL: string): { type: string; bytes: Uint8Array
  * Links written before the app had paths (D92): the board in the fragment, `?owner=` for its author. Still read
  * (src/app/rankings.ts) and turned into `b/<alias>` addresses; new links come from src/core/route.ts.
  */
-export const boardHash = (alias: string): string => `#/b/${alias}`;
-export const adminHash = (alias: string, owner: string): string => `${boardHash(alias)}?owner=${owner}`;
-
 export function parseBoardHash(hash: string): { alias: string; owner: string | null } | null {
   const m = /^#\/b\/([^/?]+)(?:\?owner=([0-9a-f]{64}))?$/.exec(hash);
   const alias = m?.[1];

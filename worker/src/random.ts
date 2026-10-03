@@ -4,7 +4,7 @@ import { makeAlias } from '../../src/core/board';
 
 export const randomBytes = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
 
-export const toHex = (bytes: Uint8Array): string => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+const toHex = (bytes: Uint8Array): string => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 
 /** A board's public alias (10 base58 characters). */
 export const newAlias = (): string => makeAlias(randomBytes);

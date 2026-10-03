@@ -126,8 +126,6 @@ export const METHODS = [
 ] as const;
 
 export const LOCALES: Record<SiteLang, string> = { en: 'en_US', fr: 'fr_FR' };
-export const LOCALE = LOCALES.en;
-export const ALTERNATE_LOCALES = ['fr_FR'] as const;
 /** Languages the site speaks: one home page each; the app switches from the browser language or the visitor's choice. */
 export const LANGUAGES = ['en', 'fr'] as const satisfies readonly SiteLang[];
 

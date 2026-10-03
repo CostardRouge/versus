@@ -21,8 +21,8 @@ import { CONTACT, PAGES, type PageKey } from './site.ts';
 
 /** Placeholders in the pages, replaced at dev and build time. */
 export const HEAD_MARK = '<!-- seo:head -->';
-export const NOSCRIPT_MARK = '<!-- seo:noscript -->';
-export const ABOUT_MARK = '<!-- seo:about -->';
+const NOSCRIPT_MARK = '<!-- seo:noscript -->';
+const ABOUT_MARK = '<!-- seo:about -->';
 /**
  * Home and legal pages: the script run before the first paint, and the page itself (src/landing/markup.ts,
  * src/legal/markup.ts).
