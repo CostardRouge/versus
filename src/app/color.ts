@@ -109,6 +109,12 @@ export function openColor(id: string, anchor: HTMLElement): void {
   boardEdit = null;
   show(it, anchor);
 }
+/** A local color item's swatch: opens the editor on it, or closes the editor already open on it. */
+export function toggleColor(id: string, anchor: HTMLElement): void {
+  const pop = $('#cpop');
+  if (cp.id === id && pop && !pop.hidden) closeColor();
+  else openColor(id, anchor);
+}
 /** Recolors an item of a published board: nothing changes until `commit` is called with the validated fill. */
 export function openBoardColor(
   it: Item,

@@ -3,7 +3,7 @@ import { LABEL_MAX, parseList } from '../core/list';
 import type { Fill, Item } from '../core/types';
 import { esc } from '../core/util';
 import { plural, t } from '../i18n';
-import { $, $$, ask, doc, imgSvg, reduced, thumbHTML } from './dom';
+import { $, $$, ask, doc, imgSvg, reduced, thumbHTML, toast } from './dom';
 
 /**
  * The item editor every ranking shares (D116): the add field (a name, a pasted list, a #hex code), images and
@@ -11,6 +11,40 @@ import { $, $$, ask, doc, imgSvg, reduced, thumbHTML } from './dom';
  * same pane (`items.ts`, `author.ts`); a visitor suggesting an item gets the same field. Only what each may do,
  * and what a change costs (votes on a published board), differ.
  */
+
+/**
+ * Who fills the pane on screen and takes its edits: a local ranking (`localHost`, items.ts), where they apply at
+ * once, or a published board's author (`authorHost`, author.ts), where they go through the server. The workspace
+ * picks one (`itemsHost`, workspace.ts); the delegated listeners (events.ts) hand every edit to it.
+ */
+export interface ItemsHost {
+  /** What was sent from the add field: one item, or every new label of a list. */
+  add(input: HTMLInputElement): void;
+  /** A list pasted or dropped in the add field; false when the text isn't one, for the field to take it. */
+  addList(text: string): boolean;
+  /** The color picked beside the add field. */
+  addColor(): void;
+  /** Images dropped, pasted or chosen. */
+  addFiles(files: File[]): void;
+  remove(id: string | undefined): void;
+  /** A name edited in the list. */
+  rename(input: HTMLInputElement): void;
+  /** A color item's swatch: opens the color editor on it, or closes it. */
+  recolor(id: string | undefined, anchor: HTMLElement): void;
+  /** A scoring method picked in the score menu. */
+  setMethod(k: string | undefined): void;
+  /** Draws the main pane for the tab on screen: the duel or the results. */
+  renderMain(): void;
+}
+
+/** What adding a list came to, with a way to undo it: "N items added", and the duplicates left out. */
+export function addedToast(n: number, dupes: number, undo: () => void): void {
+  const items = plural(n, 'item');
+  const msg = dupes
+    ? t('itemsAddedDupes', { items, n, dupes: plural(dupes, 'duplicate'), d: dupes })
+    : t('itemsAdded', { items, n });
+  toast(msg, { label: t('undoToast'), run: undo });
+}
 
 /** The add field: a name, a list (typed, pasted or dropped) or a #hex code. One per page. */
 export const addFormHTML = (placeholder: string, label: string, disabled = false): string =>

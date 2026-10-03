@@ -3,12 +3,12 @@ import { METHOD_KEYS, methodOf } from '../core/scoring';
 import type { MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, t } from '../i18n';
-import { authorSetMethod, renderAuthorMain } from './author';
+import { authorHost, authorOnScreen } from './author';
 import { $, $$, castSvg, doc, keepFocus, narrow, toast } from './dom';
 import { bindStage, duelHTML } from './duel';
-import { paneHTML } from './editor';
+import { type ItemsHost, paneHTML } from './editor';
 import { clearEnding, mountEnding } from './ending';
-import { markPair, renderList } from './items';
+import { localHost, markPair, renderList } from './items';
 import { online } from './remote';
 import { resultsHTML } from './results';
 import { syncURL } from './router';
@@ -130,9 +130,17 @@ export function setTab(tab: Tab): void {
     b.tabIndex = b.dataset.tab === sel ? 0 : -1;
   }
   $('#main')?.setAttribute('aria-labelledby', `tab-${sel === 'items' ? 'duel' : sel}`);
+  itemsHost()?.renderMain();
+}
+
+/**
+ * Who fills the workspace on screen (ItemsHost, editor.ts): a local ranking, or a published board shown to its
+ * author. None elsewhere: the gallery, a board shown to a visitor or its end-of-vote page.
+ */
+export function itemsHost(): ItemsHost | null {
+  if (S.route.view === 'board') return authorOnScreen() ? authorHost : null;
   const r = cur();
-  if (r) renderMain(r);
-  else renderAuthorMain();
+  return r ? localHost(r) : null;
 }
 export function toggleMethodMenu(force?: boolean): void {
   const pop = $('#method-pop');
@@ -163,13 +171,11 @@ export function menuKeydown(e: KeyboardEvent): void {
   e.preventDefault();
   opts[(k + opts.length) % opts.length]?.focus();
 }
-export function setMethod(k: string | undefined): void {
-  if (S.route.view === 'board') {
-    void authorSetMethod(k);
-    return;
-  }
-  const r = cur();
-  if (!r || !METHOD_KEYS.includes(k as MethodKey)) return;
+export const setMethod = (k: string | undefined): void => itemsHost()?.setMethod(k);
+
+/** A local ranking's method: everything is recomputed from the same duels, at once. */
+export function setRankMethod(r: Ranking, k: string | undefined): void {
+  if (!METHOD_KEYS.includes(k as MethodKey)) return;
   const key = k as MethodKey;
   toggleMethodMenu(false);
   if (methodOf(r) === key) return;

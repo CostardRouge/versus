@@ -462,6 +462,10 @@ describe('voting', () => {
     const ws = FakeSocket.last();
     ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
     expect($('.b-suggest #add-input')).not.toBeNull();
+    // A visitor has no items pane: a pasted list goes into the field as text, to be sent as one suggestion.
+    const [sent, asked] = [ws.sent.length, calls.length];
+    expect(paste('- Quattro\n- Napoli')).toBe(false);
+    expect([ws.sent.length, calls.length]).toEqual([sent, asked]);
     submit('#ff8800');
     expect(ws.sent.at(-1)).toEqual({
       t: 'add',

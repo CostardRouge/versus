@@ -9,7 +9,7 @@ import { pairKey } from '../core/scoring';
 import type { BoardStatus, Duel, ErrorCode, Item, Ranking, ReportReason } from '../core/types';
 import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
-import { authorAdd, authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
+import { authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
 import { closeColor, cp } from './color';
 import { $, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML, controlsHTML, duelKeys, outcomeOf, playPick } from './duel';
@@ -905,16 +905,12 @@ export function boardChange(tg: HTMLInputElement): boolean {
 // ─── Items ──────────────────────────────────────────────────────────────────
 
 /**
- * What was sent from the add field: the author's items (a list too) through the API, a visitor's suggestion over
- * the socket. Everyone then gets the new state.
+ * A visitor's suggestion from the add field, over the socket; everyone then gets the new state. The author's own
+ * add field is the items pane's (author.ts).
  */
-export async function boardAdd(text: string): Promise<void> {
+export function boardSuggest(text: string): void {
   const b = B;
-  if (!b?.view) return;
-  if (b.isOwner) {
-    await authorAdd(text);
-    return;
-  }
+  if (!b?.view || b.isOwner) return;
   const item = typed(text);
   if (!item.label || suggesting(b)) return;
   if (!b.socket?.send({ t: 'add', item })) {
