@@ -452,6 +452,8 @@ export const en = {
   m_sort_tech: 'Insertion sort',
   m_sort_col: 'Status',
   m_sort_desc: 'Places each item by binary search: the fewest duels possible and a guaranteed end. No ties or skips.',
+  // Accessibility: names, announcements and hints for keyboards and screen readers
+  tabsAria: 'Ranking views',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

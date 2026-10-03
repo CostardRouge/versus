@@ -69,7 +69,7 @@ import {
 } from './share';
 import { drawSlopes } from './slope';
 import { cur, S, save, saveSoon } from './state';
-import { setMethod, setTab, toggleMethodMenu } from './workspace';
+import { menuKeydown, setMethod, setTab, tabKeydown, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */
 
@@ -373,12 +373,10 @@ function onKeydown(e: KeyboardEvent): void {
   }
   const mpop = $('#method-pop');
   if (mpop && !mpop.hidden) {
-    if (e.key === 'Escape') {
-      toggleMethodMenu(false);
-      $('#method-btn')?.focus();
-    }
+    menuKeydown(e);
     return;
   }
+  if (tg.closest('.tabs [role="tab"]') && tabKeydown(e, tg)) return;
   if (tg.id === 'rank-title' && e.key === 'Enter') {
     e.preventDefault();
     // Leaving the field commits a published board's title.
@@ -464,6 +462,10 @@ export function bindEvents(): void {
   doc.addEventListener('focusout', (e) => {
     const tg = e.target as HTMLInputElement;
     if (tg.id === 'rank-title' && !tg.value.trim()) tg.value = t('untitled');
+    // Focus gone elsewhere closes the method menu. Without a new owner (a click on nothing focusable, Safari's
+    // buttons), the click itself decides.
+    const to = (e as FocusEvent).relatedTarget as Element | null;
+    if (tg.closest?.('#method-pop') && to && !to.closest('.method-wrap')) toggleMethodMenu(false);
   });
   let dragDepth = 0;
   doc.addEventListener('dragenter', (e) => {
