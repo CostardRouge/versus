@@ -14,7 +14,8 @@ import { adminEn, adminFr, adminText } from '../src/i18n/admin';
 const ALIAS = 'Ab3dEf7hJk';
 type Call = { method: string; url: string; body: unknown; auth: string | null };
 const calls: Call[] = [];
-let respond: (c: Call) => { status: number; body: unknown } = () => ({ status: 404, body: { error: 'not_found' } });
+type Answer = { status: number; body: unknown; headers?: Record<string, string> };
+let respond: (c: Call) => Answer = () => ({ status: 404, body: { error: 'not_found' } });
 
 const items = ['Margherita', 'Regina', 'Calzone'].map((label, i) => ({
   id: `p${i}`,
@@ -101,7 +102,7 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
   };
   calls.push(call);
   const r = respond(call);
-  return new Response(JSON.stringify(r.body), { status: r.status });
+  return new Response(JSON.stringify(r.body), { status: r.status, headers: r.headers });
 });
 
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel);
@@ -271,8 +272,11 @@ describe('the page', () => {
     expect($('.ad-panel')).toBeNull();
   });
 
-  it('lists the pictures to review and sends each decision', async () => {
+  it('lists the pictures to review and sends each decision, an approval with the picture it saw', async () => {
     const withPic = detail({ items: [{ ...(items[0] as (typeof items)[number]), pic: 'pending' }, ...items.slice(1)] });
+    const image = `/api/admin/boards/${ALIAS}/items/p0/image`;
+    let etag = '"e1"';
+    let approve: Answer = { status: 200, body: true };
     respond = (c) => {
       if (c.auth !== 'Bearer good') return ok(c);
       if (/\/boards\?/.test(c.url)) {
@@ -282,8 +286,13 @@ describe('the page', () => {
         };
       }
       if (c.method === 'GET' && c.url === `/api/admin/boards/${ALIAS}`) return { status: 200, body: withPic };
+      if (c.url === image) return { status: 200, body: 'jpeg', headers: { ETag: etag } };
+      if (c.url.endsWith('/picture')) return approve;
       return ok(c);
     };
+    const { createObjectURL, revokeObjectURL } = URL;
+    URL.createObjectURL = () => 'blob:picture';
+    URL.revokeObjectURL = () => {};
     mount('', 'good');
     await flush();
     expect($('.ad-flags')?.textContent).toContain('Pictures to review: 1');
@@ -291,16 +300,27 @@ describe('the page', () => {
     click(`[data-act="inspect"][data-alias="${ALIAS}"]`);
     await flush();
     expect($('.ad-pics li')?.textContent).toContain('Margherita');
-    expect($('img[data-pic="p0"]')).not.toBeNull();
+    expect($('img[data-pic="p0"]')?.getAttribute('src')).toBe('blob:picture');
+    // The author sent another picture meanwhile: the server says so, and the page shows the new one.
+    approve = { status: 409, body: { error: 'changed' } };
+    etag = '"e2"';
     click('[data-act="approve-pic"][data-id="p0"]');
     await flush();
     expect(requests('POST').at(-1)).toMatchObject({
       url: `/api/admin/boards/${ALIAS}/items/p0/picture`,
-      body: { decision: 'ok' },
+      body: { decision: 'ok', etag: '"e1"' },
     });
+    expect($('.ad-error')?.textContent).toBe(adminEn.picChanged);
+    expect(calls.filter((c) => c.url === image).length).toBeGreaterThan(1);
+    approve = { status: 200, body: true };
+    click('[data-act="approve-pic"][data-id="p0"]');
+    await flush();
+    expect(requests('POST').at(-1)?.body).toEqual({ decision: 'ok', etag: '"e2"' });
     click('[data-act="refuse-pic"][data-id="p0"]');
     await flush();
     expect(requests('POST').at(-1)?.body).toEqual({ decision: 'refused' });
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
   });
 
   it('does nothing when a confirmation is refused, and says when the server is away', async () => {

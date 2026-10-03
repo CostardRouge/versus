@@ -1129,8 +1129,13 @@ describe('pictures for review', () => {
     expect(res.status).toBe(201);
     return (await res.json()) as { alias: string; owner: string };
   };
-  const decide = (alias: string, id: string, decision: string) =>
-    adminApi(`/boards/${alias}/items/${id}/picture`, { method: 'POST', body: { decision } });
+  const decide = (alias: string, id: string, decision: string, etag?: string) =>
+    adminApi(`/boards/${alias}/items/${id}/picture`, { method: 'POST', body: { decision, etag } });
+  /** The picture as the admin sees it, and the ETag an approval sends back. */
+  const look = async (alias: string, id: string) => {
+    const res = await adminApi(`/boards/${alias}/items/${id}/image`);
+    return { status: res.status, etag: res.headers.get('ETag') ?? '', bytes: new Uint8Array(await res.arrayBuffer()) };
+  };
 
   it('refuses announced pictures while they are off, and says so in its config', async () => {
     expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'off' });
@@ -1162,6 +1167,8 @@ describe('pictures for review', () => {
     const mine = await adminApi(`/boards/${alias}/items/p0/image`);
     expect(mine.status).toBe(200);
     expect(mine.headers.get('Content-Type')).toBe('image/jpeg');
+    const etag = mine.headers.get('ETag') ?? '';
+    expect(etag).not.toBe('');
     expect((await adminApi(`/boards/${alias}/items/p0/image`, { token: 'wrong' })).status).toBe(403);
     expect((await adminApi(`/boards/${alias}/items/p0/other`)).status).toBe(404);
     await vi.waitFor(
@@ -1176,7 +1183,7 @@ describe('pictures for review', () => {
     const voter = await Client.open(alias, 'voter-pic-1');
     await voter.next('state');
     expect((await decide(alias, 'p0', 'maybe')).status).toBe(400);
-    const ok = await decide(alias, 'p0', 'ok');
+    const ok = await decide(alias, 'p0', 'ok', etag);
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ id: 'p0', img: `/img/b/${alias}/p0.jpg` });
     const pushed = await voter.next('state');
@@ -1187,7 +1194,8 @@ describe('pictures for review', () => {
     expect(shown.status).toBe(200);
     expect(shown.headers.get('Content-Type')).toBe('image/jpeg');
     // Decided once; the board leaves the list of pictures to review.
-    expect((await decide(alias, 'p0', 'ok')).status).toBe(400);
+    expect((await decide(alias, 'p0', 'ok', etag)).status).toBe(400);
+    expect((await server.fetch(`/img/b/${alias}/p0.jpg`)).status).toBe(200);
     await vi.waitFor(
       async () => {
         const list = (await (await adminApi('/boards?filter=pictures')).json()) as AdminList;
@@ -1215,6 +1223,28 @@ describe('pictures for review', () => {
     expect((await sendPicture(alias, dunes?.id ?? '', fakeJpeg(), owner)).status).toBe(201);
     expect((await sendPicture(alias, cliffs?.id ?? '', fakeJpeg(), owner)).status).toBe(404);
     expect((await adminApi(`/boards/${alias}/items/${dunes?.id}/image`)).status).toBe(200);
+  });
+
+  it('approves the picture the admin saw, not one sent since', async () => {
+    const { alias, owner } = await publishPics(announced('p0'));
+    const seen = fakeJpeg(1024);
+    const sentSince = fakeJpeg(2048);
+    expect((await sendPicture(alias, 'p0', seen, owner)).status).toBe(201);
+    const first = await look(alias, 'p0');
+    expect(first.bytes).toEqual(seen);
+    expect((await sendPicture(alias, 'p0', sentSince, owner)).status).toBe(201);
+    const stale = await decide(alias, 'p0', 'ok', first.etag);
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({ error: 'changed' });
+    expect((await decide(alias, 'p0', 'ok')).status).toBe(409);
+    expect((await server.fetch(`/img/b/${alias}/p0.jpg`)).status).toBe(404);
+    expect((await view(alias)).body.items[0]).toMatchObject({ id: 'p0', pic: 'pending' });
+    // Looked at again: that one is approved, and it is what everyone sees.
+    const second = await look(alias, 'p0');
+    expect(second.etag).not.toBe(first.etag);
+    expect((await decide(alias, 'p0', 'ok', second.etag)).status).toBe(200);
+    const shown = await server.fetch(`/img/b/${alias}/p0.jpg`);
+    expect(new Uint8Array(await shown.arrayBuffer())).toEqual(sentSince);
   });
 
   it('deletes a refused picture, needs one to approve, and drops them all with the board', async () => {

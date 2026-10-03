@@ -35,8 +35,8 @@ export async function storePicture(bucket: R2Bucket, alias: string, id: string, 
 }
 
 /**
- * The picture of an item: for visitors only once approved, for the moderator whatever its state (to review it).
- * Null when there is none to show.
+ * The picture of an item: for visitors only once approved, for the moderator whatever its state (to review it), with
+ * its ETag, which the moderator's decision sends back (`approvePicture`). Null when there is none to show.
  */
 export async function readPicture(
   bucket: R2Bucket | undefined,
@@ -52,21 +52,33 @@ export async function readPicture(
     headers: {
       'Content-Type': 'image/jpeg',
       'Cache-Control': admin ? 'no-store' : 'public, max-age=86400',
+      ETag: object.httpEtag,
       'X-Content-Type-Options': 'nosniff',
     },
   });
 }
 
-/** Marks a stored picture approved (R2 rewrites the object to change its metadata). False when there is none. */
-export async function approvePicture(bucket: R2Bucket, alias: string, id: string): Promise<boolean> {
+/**
+ * Marks a stored picture approved (R2 rewrites the object to change its metadata), provided it is still the one the
+ * moderator looked at: `etag` is the ETag they were served. `changed` when the author sent another one since,
+ * `not_found` when there is none.
+ */
+export async function approvePicture(
+  bucket: R2Bucket,
+  alias: string,
+  id: string,
+  etag: string,
+): Promise<'ok' | 'not_found' | 'changed'> {
   const key = pictureKey(alias, id);
   const object = await bucket.get(key);
-  if (!object) return false;
+  if (!object) return 'not_found';
+  if (etag !== object.httpEtag && etag !== object.etag) return 'changed';
+  // The bytes written back are the ones just compared: whatever arrives meanwhile, what is approved is what was seen.
   await bucket.put(key, object.body, {
     httpMetadata: { contentType: 'image/jpeg' },
     customMetadata: { state: 'ok' },
   });
-  return true;
+  return 'ok';
 }
 
 export const deletePicture = (bucket: R2Bucket, alias: string, id: string): Promise<void> =>

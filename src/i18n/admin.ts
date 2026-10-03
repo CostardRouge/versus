@@ -77,6 +77,7 @@ export const adminEn = {
   picturesTitle: 'Pictures to review',
   approve: 'Approve',
   refuse: 'Refuse',
+  picChanged: 'The author sent another picture since you looked: here it is, look again before deciding.',
   deleteCards: 'Delete link previews',
   confirmDeleteCards:
     'Delete the images the links of “{title}” unfurl with? They show the site’s card until someone shares again.',
@@ -160,6 +161,7 @@ export const adminFr: AdminMessages = {
   picturesTitle: 'Images à valider',
   approve: 'Valider',
   refuse: 'Refuser',
+  picChanged: 'L’auteur a envoyé une autre image depuis : la voici, regarde-la avant de décider.',
   deleteCards: 'Supprimer les aperçus de liens',
   confirmDeleteCards:
     'Supprimer les images d’aperçu des liens de « {title} » ? Ils montreront la carte du site jusqu’au prochain partage.',

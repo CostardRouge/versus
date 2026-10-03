@@ -207,6 +207,8 @@ export type ErrorCode =
   | 'captcha'
   | 'rate_limited'
   /** The app speaks a protocol the server no longer serves: a new version of the app is needed. */
-  | 'upgrade';
+  | 'upgrade'
+  /** What the request was about changed since it was read (a picture the author sent again before its review). */
+  | 'changed';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: ErrorCode };

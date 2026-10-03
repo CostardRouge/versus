@@ -130,7 +130,12 @@ export function mountAdmin(opts: AdminOpts): void {
   /** A refused token goes back to the form, forgotten; anything else keeps the page and says so. */
   const fail = (e: unknown): void => {
     const code = e instanceof AdminError ? e.code : 'network';
-    st.error = code === 'forbidden' ? 'wrongToken' : code === 'network' ? 'offline' : 'failed';
+    const errors: Partial<Record<ErrorCode | 'network', AdminKey>> = {
+      forbidden: 'wrongToken',
+      network: 'offline',
+      changed: 'picChanged',
+    };
+    st.error = errors[code] ?? 'failed';
     if (code === 'forbidden') {
       st.token = '';
       write('');
@@ -177,11 +182,15 @@ export function mountAdmin(opts: AdminOpts): void {
     render();
   }
 
-  /** An admin action on the open board, then its details and the list again (the row changed). */
+  /**
+   * An admin action on the open board, then its details and the list again (the row changed). What went wrong stays
+   * on screen once the list is read again.
+   */
   async function act(run: () => Promise<unknown>, then: 'detail' | 'list' = 'detail'): Promise<void> {
     const alias = st.open;
     st.busy = true;
     render();
+    let failed: AdminKey | null = null;
     try {
       await run();
       if (then === 'list' || !alias) {
@@ -190,9 +199,14 @@ export function mountAdmin(opts: AdminOpts): void {
       } else st.detail = await call<AdminBoardView>('GET', `/boards/${alias}`);
     } catch (e) {
       fail(e);
+      failed = st.error;
     }
     st.busy = false;
     await load();
+    if (failed && !st.error) {
+      st.error = failed;
+      render();
+    }
   }
 
   // ─── Rendering ────────────────────────────────────────────────────────────
@@ -354,10 +368,15 @@ export function mountAdmin(opts: AdminOpts): void {
     void loadPictures();
   }
 
-  /** The pictures to review are behind the token: fetched here and shown from object URLs (freed on the next render). */
+  /**
+   * The pictures to review are behind the token: fetched here and shown from object URLs (freed on the next render).
+   * Each one's ETag goes back with an approval, so the server approves the picture shown here and no other.
+   */
   const shown: string[] = [];
+  const etags = new Map<string, string>();
   async function loadPictures(): Promise<void> {
     if (typeof URL.revokeObjectURL === 'function') for (const url of shown.splice(0)) URL.revokeObjectURL(url);
+    etags.clear();
     const alias = st.open;
     if (!alias || typeof URL.createObjectURL !== 'function') return;
     for (const img of root.querySelectorAll<HTMLImageElement>('img[data-pic]')) {
@@ -371,6 +390,7 @@ export function mountAdmin(opts: AdminOpts): void {
         const url = URL.createObjectURL(await res.blob());
         shown.push(url);
         img.src = url;
+        etags.set(id, res.headers.get('ETag') ?? '');
       } catch {
         /* the picture stays blank; the label and the buttons are there */
       }
@@ -451,7 +471,8 @@ export function mountAdmin(opts: AdminOpts): void {
         const id = el.dataset.id;
         const decision = el.dataset.act === 'approve-pic' ? 'ok' : 'refused';
         if (alias && id) {
-          void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, { decision }));
+          const body = decision === 'ok' ? { decision, etag: etags.get(id) ?? '' } : { decision };
+          void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, body));
         }
         break;
       }

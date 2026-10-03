@@ -57,8 +57,9 @@ export { BoardObject } from './board-object';
  *   PATCH  /api/admin/boards/:alias             { hidden?, featured? }: moderation flags
  *   POST   /api/admin/boards/:alias/close | reopen
  *   DELETE /api/admin/boards/:alias/items/:id   remove an item (moderation)
- *   GET    /api/admin/boards/:alias/items/:id/image    a picture awaiting review, to look at it
- *   POST   /api/admin/boards/:alias/items/:id/picture  { decision: 'ok' | 'refused' }
+ *   GET    /api/admin/boards/:alias/items/:id/image    a picture awaiting review, to look at it (with its ETag)
+ *   POST   /api/admin/boards/:alias/items/:id/picture  { decision: 'ok' | 'refused', etag }: `etag` (approval
+ *                                               only) is the ETag the admin saw; 409 `changed` when it differs
  *   DELETE /api/admin/boards/:alias/reports     the reports were reviewed
  *   DELETE /api/admin/boards/:alias/cards       delete its link preview cards → how many went
  *   DELETE /api/admin/boards/:alias             take the board down
@@ -74,6 +75,7 @@ const STATUS: Record<string, number> = {
   not_found: 404,
   forbidden: 403,
   captcha: 403,
+  changed: 409,
   exists: 409,
   closed: 409,
   full: 409,
@@ -353,8 +355,9 @@ async function admin(req: Request, env: Env, parts: string[]): Promise<Response>
 }
 
 /**
- * The admin's decision on a picture: approved, the stored picture becomes public and the item shows it;
- * refused, the picture is deleted and the item stays as text.
+ * The admin's decision on a picture: approved, the stored picture becomes public and the item shows it, provided it
+ * is the one the admin looked at (`etag`, the ETag the picture was served with; `changed` otherwise); refused, the
+ * picture is deleted and the item stays as text.
  */
 async function decidePictureRoute(req: Request, env: Env, alias: string, id: string): Promise<Response> {
   const bucket = env.IMAGES;
@@ -364,7 +367,11 @@ async function decidePictureRoute(req: Request, env: Env, alias: string, id: str
   const decision = isRecord(body) ? body.decision : undefined;
   if (decision !== 'ok' && decision !== 'refused') return error('bad_request');
   const stub = env.BOARDS.getByName(alias);
-  if (decision === 'ok' && !(await approvePicture(bucket, alias, id))) return error('not_found');
+  if (decision === 'ok') {
+    const etag = isRecord(body) && typeof body.etag === 'string' ? body.etag : '';
+    const approved = await approvePicture(bucket, alias, id, etag);
+    if (approved !== 'ok') return error(approved);
+  }
   const r = await stub.adminPicture(id, decision);
   if (r.ok && decision === 'refused') await deletePicture(bucket, alias, id);
   return reply(r);
