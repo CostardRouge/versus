@@ -144,8 +144,6 @@ export const en = {
   endStableTitle: 'Ranking stable!',
   endSortBody: 'Every item found its place.',
   endStableBody: 'More duels will still refine it, but the order shouldn’t move much now.',
-  endCountdown: 'Ranking in {n} s…',
-  endStay: 'Stay here',
   endContinue: 'Keep dueling',
   rankViews: 'Ranking view',
   rankPodium: 'Podium',
@@ -454,6 +452,8 @@ export const en = {
   m_sort_desc: 'Places each item by binary search: the fewest duels possible and a guaranteed end. No ties or skips.',
   // Accessibility: names, announcements and hints for keyboards and screen readers
   tabsAria: 'Ranking views',
+  endSortLive: 'Sort complete: every item found its place, in {duels}.',
+  endStableLive: 'Ranking stable after {duels}: see it, or keep dueling.',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

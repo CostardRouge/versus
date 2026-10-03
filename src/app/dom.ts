@@ -65,6 +65,12 @@ export function announce(msg: string): void {
   const el = $('#live');
   if (el) el.textContent = msg;
 }
+/** Moves the focus to what isn't a control (a view's heading), without putting it in the Tab order. */
+export function focusOn(el: HTMLElement | null): void {
+  if (!el) return;
+  if (!el.hasAttribute('tabindex')) el.tabIndex = -1;
+  el.focus({ preventScroll: true });
+}
 /**
  * Confirm modal. `html` replaces the text body with markup the caller reads back after OK (a small
  * form); `cancel: false` makes it a plain notice.

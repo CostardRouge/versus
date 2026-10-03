@@ -3410,7 +3410,7 @@ svg[data-slope-svg] path {
   color: var(--muted);
 }
 
-/* End of a local ranking: the announcement in the duel pane, then the Ranking tab by itself */
+/* End of a local ranking: the announcement in the duel pane, and the way to the Ranking tab */
 .end {
   position: relative;
   overflow: hidden;
@@ -3457,33 +3457,6 @@ svg[data-slope-svg] path {
   max-width: 44ch;
   color: var(--muted);
 }
-.end-count {
-  width: min(360px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.end-count b {
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.end-bar {
-  height: 6px;
-  border-radius: 99px;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-.end-bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--a), var(--b));
-  transform-origin: right;
-  animation: end-drain linear forwards;
-}
 .end-acts {
   display: flex;
   flex-wrap: wrap;
@@ -3522,7 +3495,6 @@ svg[data-slope-svg] path {
 }
 .end-h,
 .end-body,
-.end-count,
 .end-acts {
   animation: end-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -3532,22 +3504,11 @@ svg[data-slope-svg] path {
 .end-body {
   animation-delay: 0.25s;
 }
-.end-count {
-  animation-delay: 0.35s;
-}
 .end-acts {
   animation-delay: 0.45s;
 }
 .res-enter {
   animation: end-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes end-drain {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
-  }
 }
 @keyframes end-burst {
   0% {

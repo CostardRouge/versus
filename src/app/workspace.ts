@@ -5,9 +5,9 @@ import { esc } from '../core/util';
 import { methodText as M, t } from '../i18n';
 import { authorSetMethod, renderAuthorMain } from './author';
 import { $, $$, castSvg, doc, narrow, toast } from './dom';
-import { bindStage, duelHTML, endSee } from './duel';
+import { bindStage, duelHTML } from './duel';
 import { paneHTML } from './editor';
-import { clearEnding, mountEnding, stopEnding } from './ending';
+import { clearEnding, mountEnding } from './ending';
 import { markPair, renderList } from './items';
 import { online } from './remote';
 import { resultsHTML } from './results';
@@ -191,11 +191,7 @@ export function renderMain(r: Ranking): void {
   main.innerHTML = tab === 'results' ? resultsHTML(r) : duelHTML(r);
   if (tab === 'duel') {
     bindStage();
-    mountEnding(endSee);
-  } else {
-    // Leaving the announcement keeps it, without its countdown.
-    stopEnding();
-    mountSlopes(main);
-  }
+    mountEnding();
+  } else mountSlopes(main);
   markPair(r);
 }

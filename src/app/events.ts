@@ -34,7 +34,7 @@ import {
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
 import { $, closeModal, doc, narrow, toastAct, trapTab } from './dom';
-import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
+import { choose, duelKeydown, endContinue, endSee, skip, undoLast } from './duel';
 import { changeTheme } from './header';
 import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
 import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
@@ -204,9 +204,6 @@ function onClick(e: MouseEvent): void {
       break;
     case 'end-see':
       endSee();
-      break;
-    case 'end-stay':
-      endStay();
       break;
     case 'end-continue':
       endContinue();

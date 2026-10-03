@@ -144,8 +144,6 @@ export const fr: Messages = {
   endStableTitle: 'Classement stable !',
   endSortBody: 'Chaque élément a trouvé sa place.',
   endStableBody: 'D’autres duels l’affineront encore, mais l’ordre ne devrait plus beaucoup bouger.',
-  endCountdown: 'Classement dans {n} s…',
-  endStay: 'Rester ici',
   endContinue: 'Continuer les duels',
   rankViews: 'Affichage du classement',
   rankPodium: 'Podium',
@@ -463,6 +461,8 @@ export const fr: Messages = {
     'Place chaque élément par dichotomie : le moins de duels possible et une fin garantie. Pas d’égalité ni de « passer ».',
   // Accessibilité : noms, annonces et aides pour le clavier et les lecteurs d’écran
   tabsAria: 'Vues du classement',
+  endSortLive: 'Tri terminé : chaque élément a trouvé sa place, en {duels}.',
+  endStableLive: 'Classement stable après {duels} : regarde-le, ou continue les duels.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

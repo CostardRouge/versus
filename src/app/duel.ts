@@ -15,8 +15,8 @@ import {
 import type { Computed, Item, Outcome, Ranking } from '../core/types';
 import { esc, sizeClass } from '../core/util';
 import { methodText as M, pct, plural, t } from '../i18n';
-import { $, announce, doc, reduced, toast } from './dom';
-import { clearEnding, endingHTML, endingOf, startEnding, stopEnding } from './ending';
+import { $, announce, doc, focusOn, reduced, toast } from './dom';
+import { clearEnding, endingHTML, endingOf, startEnding } from './ending';
 import { deltaInfo } from './format';
 import { renderList } from './items';
 import { cur, save, stat } from './state';
@@ -211,22 +211,18 @@ export function undoLast(): void {
   }
 }
 
-/** The announcement's buttons: go to the ranking now, stay on the announcement, or keep dueling. */
+/** The announcement's buttons: go to the ranking, or keep dueling. The focus follows to the new view. */
 export function endSee(): void {
   clearEnding();
   setTab('results');
   $('.results')?.classList.add('res-enter');
-}
-export function endStay(): void {
-  const r = cur();
-  stopEnding();
-  if (r) renderMain(r);
-  $<HTMLElement>('[data-action="end-see"]')?.focus();
+  $('#tab-results')?.focus();
 }
 export function endContinue(): void {
   const r = cur();
   clearEnding();
   if (r) renderMain(r);
+  focusOn($('.duel .q'));
 }
 
 /** Duel shortcuts: ← and → pick, ↓ or = ties, S skips, ⌘/Ctrl+Z undoes. */

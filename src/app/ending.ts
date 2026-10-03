@@ -2,36 +2,27 @@ import { trackEvent } from '../audience';
 import { methodOf } from '../core/scoring';
 import type { Ranking } from '../core/types';
 import { plural, t } from '../i18n';
-import { $, reduced } from './dom';
+import { $, announce, reduced } from './dom';
 
 /**
  * End of a local ranking: when a duel completes the exact sort, or brings a rating method to full
- * stability for the first time, the duel pane announces it (confetti, a bar that empties) and then
- * moves to the Ranking tab by itself. "Stay here" stops the countdown; without motion there is none.
+ * stability for the first time, the duel pane announces it (confetti) and offers the Ranking tab. It never
+ * moves there by itself (WCAG 2.2.1): the focus goes to "See the ranking", and one sentence is announced.
  */
 
 export type EndKind = 'sort' | 'stable';
 
-const COUNT_S = 4;
-
-let ending: { id: string; kind: EndKind; stopped: boolean } | null = null;
-let timer: ReturnType<typeof setInterval> | undefined;
+/** `fresh` until the announcement is first on screen: then it is read out and takes the focus, once. */
+let ending: { id: string; kind: EndKind; fresh: boolean } | null = null;
 
 export const endingOf = (r: Ranking): EndKind | null => (ending?.id === r.id ? ending.kind : null);
 
 export function startEnding(r: Ranking, kind: EndKind): void {
-  ending = { id: r.id, kind, stopped: reduced };
+  ending = { id: r.id, kind, fresh: true };
   trackEvent('ranking-finished', { method: methodOf(r), end: kind, demo: Boolean(r.demo), items: r.items.length });
 }
 
-/** Stops the countdown; the announcement stays. */
-export function stopEnding(): void {
-  clearInterval(timer);
-  if (ending) ending.stopped = true;
-}
-
 export function clearEnding(): void {
-  clearInterval(timer);
   ending = null;
 }
 
@@ -54,38 +45,28 @@ function confettiHTML(): string {
 export function endingHTML(r: Ranking, duels: number): string {
   if (!ending || ending.id !== r.id) return '';
   const sort = ending.kind === 'sort';
-  const counting = !ending.stopped;
   const facts = sort
     ? t('endSortFacts', { items: plural(r.items.length, 'item'), duels: plural(duels, 'duel') })
     : t('endStableFacts', { duels: plural(duels, 'duel') });
-  const second = counting
-    ? `<button class="btn ghost" type="button" data-action="end-stay">${t('endStay')}</button>`
-    : sort
-      ? ''
-      : `<button class="btn ghost" type="button" data-action="end-continue">${t('endContinue')}</button>`;
-  return `<div class="end ${counting ? 'end-run' : ''}" role="status">
-    ${reduced ? '' : confettiHTML()}
+  const more = sort
+    ? ''
+    : `<button class="btn ghost" type="button" data-action="end-continue">${t('endContinue')}</button>`;
+  return `<div class="end" data-duels="${duels}">
+    ${reduced || !ending.fresh ? '' : confettiHTML()}
     <span class="end-badge">${checkSvg}</span>
     <p class="end-facts mono">${facts}</p>
     <h2 class="end-h">${sort ? t('endSortTitle') : t('endStableTitle')}</h2>
     <p class="end-body">${sort ? t('endSortBody') : t('endStableBody')}</p>
-    ${counting ? `<div class="end-count"><span class="end-bar"><i style="animation-duration:${COUNT_S}s"></i></span><span>${t('endCountdown', { n: `<b id="end-secs">${COUNT_S}</b>` })}</span></div>` : ''}
-    <div class="end-acts"><button class="btn primary" type="button" data-action="end-see">${t('seeRanking')}</button>${second}</div>
+    <div class="end-acts"><button class="btn primary" type="button" data-action="end-see">${t('seeRanking')}</button>${more}</div>
   </div>`;
 }
 
-/** After endingHTML is in the page: runs the countdown, then calls `done`. */
-export function mountEnding(done: () => void): void {
-  clearInterval(timer);
-  if (!ending || ending.stopped || !$('.end-run')) return;
-  let left = COUNT_S;
-  timer = setInterval(() => {
-    left -= 1;
-    const secs = $('#end-secs');
-    if (secs) secs.textContent = String(Math.max(0, left));
-    if (left <= 0) {
-      clearInterval(timer);
-      done();
-    }
-  }, 1000);
+/** After endingHTML is in the page: the first time, the news is announced and "See the ranking" takes the focus. */
+export function mountEnding(): void {
+  const end = $('.end');
+  if (!ending?.fresh || !end) return;
+  ending.fresh = false;
+  const duels = plural(Number(end.dataset.duels), 'duel');
+  announce(ending.kind === 'sort' ? t('endSortLive', { duels }) : t('endStableLive', { duels }));
+  $('[data-action="end-see"]', end)?.focus();
 }
