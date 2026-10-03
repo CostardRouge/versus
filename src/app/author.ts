@@ -3,12 +3,13 @@ import { colorTwin, sameFill } from '../core/colors';
 import { freshLabels, labelKey } from '../core/list';
 import type { BoardView } from '../core/protocol';
 import { dataURLBytes } from '../core/published';
+import { ownerFragment } from '../core/route';
 import type { Fill, Item, MethodKey } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
-import { type Board, boardState, countsText, itemOf, ownerCall, renderDuel, renderRanking } from './board';
+import { type Board, boardState, boardURL, countsText, itemOf, ownerCall, renderDuel, renderRanking } from './board';
 import { closeColor, cp, openBoardColor } from './color';
-import { $, $$, ask, castSvg, doc, toast } from './dom';
+import { $, $$, ask, castSvg, copyText, doc, toast } from './dom';
 import {
   askVotes,
   fileToThumb,
@@ -31,8 +32,10 @@ import {
   patchBoard,
   putItemImage,
   removeBoardItem,
+  rotateOwner,
 } from './remote';
 import { S } from './state';
+import { saveOwner } from './storage';
 import { effTab, setTab, shellHTML, toggleMethodMenu } from './workspace';
 
 /**
@@ -257,6 +260,7 @@ export function authorSettings(): void {
       <button class="btn sm primary" type="button" data-action="share-board">${t('share')}</button>
       <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
       <button class="btn sm ghost" type="button" data-action="b-admin-link">${t('copyAdminLink')}</button>
+      <button class="btn sm ghost" type="button" data-action="b-new-admin-link">${t('newAdminLink')}</button>
     </div>
     ${visibilityHTML('b', v.settings)}
     <fieldset class="set"><legend>${t('moreOptions')}</legend>${optionsHTML('b', v.settings)}</fieldset>
@@ -266,6 +270,28 @@ export function authorSettings(): void {
     </div>
   </div>`;
   void ask({ title: t('boardSettings'), html, ok: t('done'), cancel: false });
+}
+
+/**
+ * A new admin link, when the one in use leaked or sits on a lost device: the old one stops working everywhere, this
+ * browser keeps managing the board with the new one, which is copied (or shown when the clipboard can't take it).
+ */
+export async function authorNewAdminLink(): Promise<void> {
+  const b = authored();
+  if (!b) return;
+  const ok = await ask({ title: t('newAdminLinkTitle'), body: t('newAdminLinkBody'), ok: t('newAdminLinkOk') });
+  if (!ok || authored() !== b) return;
+  const next = await ownerCall(rotateOwner);
+  if (!next) return;
+  saveOwner(b.alias, next.owner);
+  b.owner = next.owner;
+  b.socket?.setOwner(next.owner);
+  const url = `${boardURL(b.alias)}${ownerFragment(next.owner)}`;
+  if (await copyText(url)) toast(t('newAdminLinkCopied'));
+  else {
+    const html = `<p>${t('newAdminLinkShow')}</p><input class="b-admin-url mono" type="text" readonly value="${esc(url)}">`;
+    void ask({ title: t('newAdminLink'), html, ok: t('done'), cancel: false });
+  }
 }
 
 /** The author's fields: title, items, files, settings. True when the change was theirs. */

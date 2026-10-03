@@ -689,6 +689,35 @@ describe('author controls', () => {
     voter.close();
   });
 
+  it('gives the author a new token, and the old one stops working', async () => {
+    const { alias, owner } = await publish();
+    const author = await Client.open(alias, AUTHOR, owner);
+    expect((await author.next('state')).owner).toBe(true);
+    expect((await api(`/${alias}/owner`, { method: 'POST' })).status).toBe(403);
+    expect((await api(`/${alias}/owner`, { method: 'POST', token: 'f'.repeat(64) })).status).toBe(403);
+    const res = await api(`/${alias}/owner`, { method: 'POST', token: owner });
+    expect(res.status).toBe(200);
+    const next = ((await res.json()) as { owner: string }).owner;
+    expect(next).toMatch(/^[0-9a-f]{64}$/);
+    expect(next).not.toBe(owner);
+    expect((await api(`/${alias}`, { method: 'PATCH', token: owner, body: { allowChange: false } })).status).toBe(403);
+    expect((await api(`/${alias}`, { method: 'PATCH', token: next, body: { allowChange: false } })).status).toBe(200);
+    // The author's open connection keeps its session; a new one says hello with the new token.
+    expect((await author.next('state')).owner).toBe(true);
+    author.close();
+    const old = await Client.open(alias, AUTHOR, owner);
+    expect((await old.next('state')).owner).toBe(false);
+    old.close();
+    const fresh = await Client.open(alias, AUTHOR, next);
+    expect((await fresh.next('state')).owner).toBe(true);
+    fresh.close();
+    // It holds after the board sleeps.
+    await server.getWorker().evictDurableObject('BoardObject', { name: alias });
+    expect((await api(`/${alias}/close`, { method: 'POST', token: next })).status).toBe(200);
+    expect((await api(`/${alias}/owner`, { method: 'POST', token: owner })).status).toBe(403);
+    expect((await api('/1111111119/owner', { method: 'POST', token: next })).status).toBe(404);
+  });
+
   it('withdraws a board and hands the author a local copy', async () => {
     const { alias, owner } = await publish({}, [{ a: 'p0', b: 'p1', s: 1 }]);
     const voter = await Client.open(alias, 'voter-one-1');

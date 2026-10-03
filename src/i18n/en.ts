@@ -454,6 +454,13 @@ export const en = {
   checkOk: 'Continue',
   checkMissing: 'Complete the check to vote.',
   reportNeedsVote: 'Vote at least once to report this ranking.',
+  newAdminLink: 'New admin link',
+  newAdminLinkTitle: 'Make a new admin link?',
+  newAdminLinkBody:
+    'The current admin link stops working, on every device that has it. This browser keeps managing the ranking with the new one.',
+  newAdminLinkOk: 'Make a new link',
+  newAdminLinkCopied: 'New admin link copied. The old one no longer works.',
+  newAdminLinkShow: 'Here is the new admin link. Keep it private: the old one no longer works.',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

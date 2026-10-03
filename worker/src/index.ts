@@ -29,6 +29,7 @@ export { BoardObject } from './board-object';
  *                                               unless `reset` (D116) → votes dropped            (owner)
  *   DELETE /api/boards/:alias/items/:id         remove an item and its votes     (owner)
  *   DELETE /api/boards/:alias                   withdraw; returns the local copy (owner)
+ *   POST   /api/boards/:alias/owner             a new owner token → { owner }; the old one stops working (owner)
  *   PUT    /api/boards/:alias/card[?duel=a.b]   the card the board's link (or one duel's) unfurls with: a
  *                                               1200×630 PNG drawn by the app → { url }. The board's card from
  *                                               its author (owner); a duel's from anyone while it has none, then
@@ -273,6 +274,10 @@ async function board(req: Request, env: Env, alias: string, rest: string[]): Pro
     if (m === 'DELETE') return reply(await stub.withdraw(bearer(req)));
   } else if (m === 'POST' && id === undefined && (action === 'close' || action === 'reopen')) {
     return reply(await stub.setStatus(bearer(req), action === 'close' ? 'closed' : 'open'));
+  } else if (m === 'POST' && id === undefined && action === 'owner') {
+    const owner = newOwnerToken();
+    const r = await stub.rotateOwner(bearer(req), owner);
+    return r.ok ? json({ owner }) : error(r.error);
   } else if (action === 'items') {
     if (m === 'POST' && id === undefined) {
       const item = await readJson(req);

@@ -447,6 +447,20 @@ export class BoardObject extends DurableObject<Env> {
     return { ok: true, value: r.value.removed.length };
   }
 
+  /**
+   * Gives the board a new owner token (the old one leaked, a device was lost): the old token stops working at once;
+   * connections already opened as the author keep their session.
+   */
+  async rotateOwner(token: string, next: string): Promise<Result<true>> {
+    if (!TOKEN_RE.test(next)) return { ok: false, error: 'bad_request' };
+    const nextHash = await sha256(next);
+    const board = await this.ownedBoard(token);
+    if (!board.ok) return board;
+    this.ownerHash = nextHash;
+    this.saveMeta(board.value);
+    return { ok: true, value: true };
+  }
+
   /** Deletes the board and returns the author's local copy with the crowd's result. */
   async withdraw(token: string): Promise<Result<Ranking>> {
     const board = await this.ownedBoard(token);

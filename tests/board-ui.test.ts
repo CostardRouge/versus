@@ -685,6 +685,41 @@ describe('author', () => {
     expect($('.results')).not.toBeNull();
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
   });
+
+  it('makes a new admin link: the old one stops working, this browser keeps managing the board', async () => {
+    const MINE = 'Nw4dmnLnk7';
+    const NEXT = 'c'.repeat(64);
+    history.pushState(null, '', `/b/${MINE}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({}, true));
+    respond = (c) =>
+      c.url.endsWith('/owner') ? { status: 200, body: { owner: NEXT } } : { status: 200, body: view() };
+    click('[data-action="b-settings"]');
+    click('#b-settings [data-action="b-new-admin-link"]');
+    expect($('#m-title')?.textContent).toBe('Make a new admin link?');
+    calls.length = 0;
+    click('#m-ok');
+    await flush();
+    expect(calls[0]).toMatchObject({ method: 'POST', url: `/api/boards/${MINE}/owner`, auth: `Bearer ${OWNER}` });
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[MINE]).toBe(NEXT);
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`http://localhost:3000/b/${MINE}#owner=${NEXT}`);
+    expect($('#toast')?.textContent).toBe('New admin link copied. The old one no longer works.');
+    // What follows uses the new token: the author's calls, and the next connection's hello.
+    click('[data-action="b-settings"]');
+    click('#b-settings [data-action="b-close"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ url: `/api/boards/${MINE}/close`, auth: `Bearer ${NEXT}` });
+    ws.drop(1006);
+    await vi.advanceTimersByTimeAsync(1500);
+    const again = FakeSocket.last();
+    expect(again).not.toBe(ws);
+    again.open();
+    expect(again.sent[0]).toMatchObject({ t: 'hello', owner: NEXT });
+    again.receive(state({}, true));
+    click('[data-action="back"]');
+  });
 });
 
 describe('links', () => {

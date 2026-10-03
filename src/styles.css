@@ -2376,6 +2376,11 @@ body.dropping .drop-overlay {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* A new admin link, shown when the clipboard can't take it. */
+.b-admin-url {
+  width: 100%;
+  margin-top: 10px;
+}
 /* What an edit does to an item's votes (D116): keep them or start again from zero. */
 .votes-set {
   margin: 14px 0 0;

@@ -464,6 +464,13 @@ export const fr: Messages = {
   checkOk: 'Continuer',
   checkMissing: 'Fais la vérification pour voter.',
   reportNeedsVote: 'Vote au moins une fois pour signaler ce classement.',
+  newAdminLink: 'Nouveau lien admin',
+  newAdminLinkTitle: 'Créer un nouveau lien admin ?',
+  newAdminLinkBody:
+    'Le lien admin actuel ne marchera plus, sur tous les appareils qui l’ont. Ce navigateur continue de gérer le classement avec le nouveau.',
+  newAdminLinkOk: 'Créer un nouveau lien',
+  newAdminLinkCopied: 'Nouveau lien admin copié. L’ancien ne marche plus.',
+  newAdminLinkShow: 'Voici le nouveau lien admin. Garde-le pour toi : l’ancien ne marche plus.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

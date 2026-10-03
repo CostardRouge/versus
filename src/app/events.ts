@@ -5,6 +5,7 @@ import {
   authorAddColor,
   authorAddFiles,
   authorEditColor,
+  authorNewAdminLink,
   authorOnScreen,
   authorRemove,
   authorSettings,
@@ -258,6 +259,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-admin-link':
       void boardAdminLink();
+      break;
+    case 'b-new-admin-link':
+      void authorNewAdminLink();
       break;
     case 'b-settings':
       authorSettings();
