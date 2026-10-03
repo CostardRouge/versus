@@ -364,6 +364,52 @@ describe('voting', () => {
     expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').live).toBe(true);
   });
 
+  it('keeps the focus where it was through live updates: the Live switch, a suggestion being typed', () => {
+    const ws = FakeSocket.last();
+    const suggest = { settings: { ...view().settings, visitorsAddItems: true } };
+    ws.receive(state(suggest));
+    // A new crowd order replaces the rows only: the switch that pauses the updates stays under the focus.
+    const box = $('#b-live') as HTMLInputElement;
+    box.focus();
+    ws.receive({ t: 'ranking', counts: { votes: 6, voters: 2, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    expect($('#b-rank .rlabel')?.textContent).toBe('Calzone');
+    expect($('#b-live')).toBe(box);
+    expect(document.activeElement).toBe(box);
+    // A new state draws the page again: the suggestion keeps its text, the focus and the caret.
+    const input = $('#add-input') as HTMLInputElement;
+    input.focus();
+    input.value = 'Quattro formaggi';
+    input.setSelectionRange(3, 5);
+    ws.receive(state({ ...suggest, counts: { votes: 7, voters: 3, online: 2 } }));
+    const again = $('#add-input') as HTMLInputElement;
+    expect(again).not.toBe(input);
+    expect(again.value).toBe('Quattro formaggi');
+    expect(document.activeElement).toBe(again);
+    expect([again.selectionStart, again.selectionEnd]).toEqual([3, 5]);
+    // Any other control too.
+    $('[data-action="b-report"]')?.focus();
+    ws.receive(state(suggest));
+    expect(document.activeElement).toBe($('[data-action="b-report"]'));
+    again.value = '';
+    ($('#add-input') as HTMLInputElement).value = '';
+    ws.receive(state());
+  });
+
+  it('names the neck-and-neck marker and the report reasons for screen readers', async () => {
+    const ws = FakeSocket.last();
+    const close = ranking(['p0', 'p1', 'p2']);
+    for (const s of Object.values(close.stats)) s.se = 80;
+    ws.receive({ t: 'ranking', counts: { votes: 7, voters: 3, online: 2 }, ranking: close });
+    const neck = $('#b-rank .neck');
+    expect(neck?.getAttribute('role')).toBe('img');
+    expect(neck?.getAttribute('aria-label')).toBe('Neck and neck with the one above');
+    click('[data-action="b-report"]');
+    expect($('#m-body fieldset legend')?.textContent).toBe('Reason');
+    click('#m-cancel');
+    await flush();
+    ws.receive(state());
+  });
+
   it('says how many votes reveal the ranking', () => {
     const ws = FakeSocket.last();
     ws.receive({

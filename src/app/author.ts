@@ -7,7 +7,19 @@ import { ownerFragment } from '../core/route';
 import type { Fill, Item, MethodKey } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
-import { type Board, boardState, boardURL, countsText, itemOf, ownerCall, renderDuel, renderRanking } from './board';
+import {
+  type Board,
+  boardState,
+  boardURL,
+  countsText,
+  type FocusMark,
+  focusMark,
+  itemOf,
+  ownerCall,
+  refocus,
+  renderDuel,
+  renderRanking,
+} from './board';
 import { closeColor, cp, openBoardColor } from './color';
 import { $, $$, ask, castSvg, copyText, doc, toast } from './dom';
 import {
@@ -136,29 +148,17 @@ export function refreshAuthorList(animate: boolean): void {
   renderList(b, animate);
 }
 
-/** What the author was typing, and where, so that a new state from the server doesn't lose it. */
+/** What the author was typing, and where the focus was, so that a new state from the server doesn't lose them. */
 interface Typing {
   draft: string;
-  title: string | null;
-  focus: { sel: string; value: string; start: number | null; end: number | null } | null;
+  focus: FocusMark | null;
   scroll: number;
 }
 
 function keepTyping(): Typing {
-  const active = doc.activeElement as HTMLInputElement | null;
-  const field = active?.matches?.('#add-input, #rank-title, #item-list .row-label') ? active : null;
-  const title = $<HTMLInputElement>('#rank-title');
   return {
     draft: $<HTMLInputElement>('#add-input')?.value ?? '',
-    title: title && title === field ? title.value : null,
-    focus: field
-      ? {
-          sel: field.id ? `#${field.id}` : `#item-list .row-label[data-id="${field.dataset.id ?? ''}"]`,
-          value: field.value,
-          start: field.selectionStart,
-          end: field.selectionEnd,
-        }
-      : null,
+    focus: focusMark(),
     scroll: $('#item-list')?.scrollTop ?? 0,
   };
 }
@@ -170,16 +170,10 @@ function restoreTyping(k: Typing, b: Authored): void {
   b.sentLabel = null;
   const list = $('#item-list');
   if (list) list.scrollTop = k.scroll;
-  if (!k.focus) return;
-  const el = $<HTMLInputElement>(k.focus.sel);
-  if (!el || el.disabled) return;
-  if (el.id !== 'add-input') el.value = k.focus.value;
-  el.focus();
-  try {
-    el.setSelectionRange(k.focus.start, k.focus.end);
-  } catch {
-    /* not a text field */
-  }
+  // A title or a name being edited keeps what was typed in it.
+  const el = k.focus ? $<HTMLInputElement>(k.focus.sel) : null;
+  if (el && k.focus?.value != null && el.id !== 'add-input') el.value = k.focus.value;
+  refocus(k.focus);
 }
 
 /** The whole workspace, from the board's state. */
@@ -190,7 +184,6 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
   const typing = keepTyping();
   view.innerHTML = shell(a);
   renderList(a, false);
-  restoreTyping(typing, a);
   // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
   if (cp.id) {
     const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
@@ -198,6 +191,8 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
     else closeColor();
   }
   setTab(S.route.tab);
+  // Once the main pane is drawn too: the focus may have been in the duel.
+  restoreTyping(typing, a);
 }
 
 /** The main pane: the duel (server-assigned pairs, like any voter), or the crowd's ranking with the ways to share. */

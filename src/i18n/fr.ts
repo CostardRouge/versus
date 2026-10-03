@@ -475,6 +475,8 @@ export const fr: Messages = {
   newAdminLinkOk: 'Créer un nouveau lien',
   newAdminLinkCopied: 'Nouveau lien admin copié. L’ancien ne marche plus.',
   newAdminLinkShow: 'Voici le nouveau lien admin. Garde-le pour toi : l’ancien ne marche plus.',
+  // Published boards: errors, waiting and busy states, screen reader texts
+  reportReason: 'Motif',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

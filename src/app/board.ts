@@ -10,7 +10,7 @@ import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { authorAdd, authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
 import { closeColor, cp } from './color';
-import { $, announce, ask, copyText, reduced, thumbHTML, toast } from './dom';
+import { $, announce, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML } from './duel';
 import { addFormHTML, typed } from './editor';
 import {
@@ -125,6 +125,64 @@ const ownerErrors: Partial<Record<string, MsgKey>> = {
 
 /** A board's own address (b/<alias> under the app's folder), the link to share. */
 export const boardURL = (alias: string): string => routeURL({ view: 'board', alias });
+
+// ─── Focus across re-renders ────────────────────────────────────────────────
+
+/** The focused control, as a selector that finds it again once its part of the page is drawn anew. */
+export interface FocusMark {
+  sel: string;
+  /** A text field's value and caret; null for any other control. */
+  value: string | null;
+  start: number | null;
+  end: number | null;
+}
+
+/** The data attributes that tell one control from its siblings, after its data-action. */
+const MARK_KEYS = ['action', 'id', 'side', 'view', 'who', 'tab', 'm', 'alias'] as const;
+const attr = (k: string, v: string): string => `[data-${k}="${v.replace(/["\\]/g, '\\$&')}"]`;
+
+function markOf(el: HTMLElement): string | null {
+  if (el.id) return `#${el.id}`;
+  const d = el.dataset;
+  if (d.action) return MARK_KEYS.map((k) => (d[k] === undefined ? '' : attr(k, d[k]))).join('');
+  if (el.classList.contains('row-label') && d.id) return `#item-list .row-label${attr('id', d.id)}`;
+  if (el.classList.contains('card') && d.side) return `.card${attr('side', d.side)}`;
+  return null;
+}
+
+/**
+ * Where the focus is, when it is inside `root` (the part about to be redrawn): a live update must never send a
+ * keyboard or screen reader user back to the top of the page.
+ */
+export function focusMark(root: Element | null = $('#view')): FocusMark | null {
+  const el = doc.activeElement as HTMLInputElement | null;
+  const sel = el && root?.contains(el) && el !== root ? markOf(el) : null;
+  if (!el || !sel) return null;
+  let start: number | null = null;
+  let end: number | null = null;
+  try {
+    start = el.selectionStart ?? null;
+    end = el.selectionEnd ?? null;
+  } catch {
+    /* a field without a caret (a number) */
+  }
+  const text = (el.tagName === 'INPUT' && start !== null) || el.tagName === 'TEXTAREA';
+  return { sel, value: text ? el.value : null, start, end };
+}
+
+/** Puts the focus (and a text field's caret) back on the control `mark` names, if it is still there. */
+export function refocus(mark: FocusMark | null): void {
+  if (!mark) return;
+  const el = $<HTMLInputElement>(mark.sel);
+  if (!el || el === doc.activeElement || el.disabled) return;
+  el.focus({ preventScroll: true });
+  if (mark.start === null) return;
+  try {
+    el.setSelectionRange(mark.start, mark.end);
+  } catch {
+    /* not a text field anymore */
+  }
+}
 
 const live = (): boolean => S.prefs.live !== false;
 export const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
@@ -348,8 +406,10 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
     renderAuthor(b);
     return;
   }
-  // Keep what someone is typing when another change re-renders the page, unless it was just added.
+  // Keep what someone is typing when another change re-renders the page, unless it was just added, and where the
+  // focus was (the caret too).
   const draft = ($('#add-input') as HTMLInputElement | null)?.value ?? '';
+  const mark = focusMark(view);
   view.innerHTML = boardHTML(b);
   const input = $('#add-input') as HTMLInputElement | null;
   if (input && draft && draft !== b.sentLabel) input.value = draft;
@@ -359,6 +419,7 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
     renderDuel();
     renderRanking();
   }
+  refocus(mark);
 }
 
 function boardHTML(b: Board): string {
@@ -446,26 +507,30 @@ export function renderDuel(): void {
   const main = $('#b-main');
   const b = B;
   if (!main || !b?.view) return;
+  const mark = focusMark(main);
   main.innerHTML = duelHTML(b, b.view);
   main.dataset.duel = duelKey(b);
   bindStage(boardPick, () => B?.busy ?? true);
   if (authoring(b)) markAuthorPair();
+  refocus(mark);
 }
 
+const rankHeadHTML = (): string => `<div class="b-rank-head"><h2>${t('crowdTitle')}</h2>
+    <label class="live-toggle"><input type="checkbox" id="b-live" ${live() ? 'checked' : ''}> ${t('live')}</label></div>`;
+
+/** The crowd ranking under its heading: the rows, the refresh button, the agreement, the reset link. */
 function rankingHTML(b: Board, v: BoardView): string {
   const s = v.settings;
-  const head = `<div class="b-rank-head"><h2>${t('crowdTitle')}</h2>
-    <label class="live-toggle"><input type="checkbox" id="b-live" ${live() ? 'checked' : ''}> ${t('live')}</label></div>`;
   const reset =
     s.allowChange && v.status === 'open' && b.count
       ? `<p class="b-foot"><button class="link" type="button" data-action="b-reset">${t('resetMyVotes')}</button></p>`
       : '';
   const shown = b.shown;
   if (!shown) {
-    if (s.visibility !== 'after') return `${head}<p class="note">${t('hiddenBlind')}</p>${reset}`;
+    if (s.visibility !== 'after') return `<p class="note">${t('hiddenBlind')}</p>${reset}`;
     const need = revealAt(s.revealAfter, v.items.length);
     const k = Math.min(b.count, need);
-    return `${head}<p class="note">${t('hiddenAfter', { n: need, k })}</p>
+    return `<p class="note">${t('hiddenAfter', { n: need, k })}</p>
       <span class="bar b-progress"><i style="width:${Math.round((100 * k) / need)}%"></i></span>${reset}`;
   }
   const newer = b.latestVotes - b.shownVotes;
@@ -479,18 +544,34 @@ function rankingHTML(b: Board, v: BoardView): string {
       const it = itemOf(id);
       const x = shown.stats[id];
       if (!it || !x) return '';
-      const neck = close.has(id) ? `<span class="neck" title="${t('neck')}" aria-label="${t('neck')}">≈</span>` : '';
+      // A text for screen readers: an aria-label on a plain span is ignored.
+      const neck = close.has(id)
+        ? `<span class="neck" role="img" title="${t('neck')}" aria-label="${t('neck')}">≈</span>`
+        : '';
       return `<li><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="rlabel">${esc(it.label)}</span>${neck}<span class="num mono">${fmtCrowd(shown.method, x)}</span></li>`;
     })
     .join('');
   const ag = agreement(b.mine, shown);
   const agree = ag === null ? '' : `<p class="b-agree">${t('agreement', { pct: pct(Math.round(ag * 100)) })}</p>`;
-  return `${head}${refresh}<ol class="b-rows">${rows}</ol>${agree}${reset}`;
+  return `${refresh}<ol class="b-rows">${rows}</ol>${agree}${reset}`;
 }
 
+/**
+ * Draws the crowd ranking. Its heading and the Live switch are drawn once: a live update replaces the rows only,
+ * so whoever is on the switch (the way to pause the updates) keeps it.
+ */
 export function renderRanking(): void {
   const el = $('#b-rank');
-  if (el && B?.view) el.innerHTML = rankingHTML(B, B.view);
+  if (!el || !B?.view) return;
+  let body = $('#b-rank-body', el);
+  if (!body) {
+    el.innerHTML = `${rankHeadHTML()}<div id="b-rank-body"></div>`;
+    body = $('#b-rank-body', el);
+  }
+  if (!body) return;
+  const mark = focusMark(body);
+  body.innerHTML = rankingHTML(B, B.view);
+  refocus(mark);
 }
 
 // ─── Voting ─────────────────────────────────────────────────────────────────
@@ -846,7 +927,7 @@ export async function boardReport(): Promise<void> {
       `<label class="opt"><input type="radio" name="report-reason" value="${r}" ${i === 0 ? 'checked' : ''}> ${t(REASON_KEYS[r])}</label>`,
   ).join('');
   const html = `<p class="muted">${t('reportBody')}</p>
-    <fieldset class="set">${options}</fieldset>
+    <fieldset class="set"><legend class="sr-only">${t('reportReason')}</legend>${options}</fieldset>
     <label class="report-note"><span class="muted">${t('reportNote')}</span>
       <textarea id="report-note" rows="3" maxlength="${LIMITS.note}"></textarea></label>`;
   const ok = await ask({ title: t('reportTitle'), html, ok: t('reportSend'), danger: true });

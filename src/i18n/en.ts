@@ -465,6 +465,8 @@ export const en = {
   newAdminLinkOk: 'Make a new link',
   newAdminLinkCopied: 'New admin link copied. The old one no longer works.',
   newAdminLinkShow: 'Here is the new admin link. Keep it private: the old one no longer works.',
+  // Published boards: errors, waiting and busy states, screen reader texts
+  reportReason: 'Reason',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;
