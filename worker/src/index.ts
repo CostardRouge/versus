@@ -373,7 +373,12 @@ async function decidePictureRoute(req: Request, env: Env, alias: string, id: str
     if (approved !== 'ok') return error(approved);
   }
   const r = await stub.adminPicture(id, decision);
-  if (r.ok && decision === 'refused') await deletePicture(bucket, alias, id);
+  // Refused, or approved for an item that no longer waits for it (removed meanwhile): nothing may stay public
+  // without an item showing it.
+  if (decision === 'refused' ? r.ok : !r.ok) {
+    await deletePicture(bucket, alias, id);
+    if (!r.ok) log('picture_unreferenced', { alias, item: id, error: r.error });
+  }
   return reply(r);
 }
 

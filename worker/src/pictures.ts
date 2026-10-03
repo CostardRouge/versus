@@ -61,17 +61,18 @@ export async function readPicture(
 /**
  * Marks a stored picture approved (R2 rewrites the object to change its metadata), provided it is still the one the
  * moderator looked at: `etag` is the ETag they were served. `changed` when the author sent another one since,
- * `not_found` when there is none.
+ * `not_found` when there is none, `bad_request` when it was approved already.
  */
 export async function approvePicture(
   bucket: R2Bucket,
   alias: string,
   id: string,
   etag: string,
-): Promise<'ok' | 'not_found' | 'changed'> {
+): Promise<'ok' | 'not_found' | 'changed' | 'bad_request'> {
   const key = pictureKey(alias, id);
   const object = await bucket.get(key);
   if (!object) return 'not_found';
+  if (object.customMetadata?.state === 'ok') return 'bad_request';
   if (etag !== object.httpEtag && etag !== object.etag) return 'changed';
   // The bytes written back are the ones just compared: whatever arrives meanwhile, what is approved is what was seen.
   await bucket.put(key, object.body, {

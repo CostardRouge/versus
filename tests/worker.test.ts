@@ -1247,6 +1247,22 @@ describe('pictures for review', () => {
     expect(new Uint8Array(await shown.arrayBuffer())).toEqual(sentSince);
   });
 
+  it('leaves nothing public when the board no longer waits for the picture approved', async () => {
+    const { alias } = await publishPics(announced('p0'));
+    // A picture stored for an item that awaits none (as after the item went meanwhile), straight into R2.
+    const env = await server
+      .getWorker<{ IMAGES: { put(key: string, value: Uint8Array, options: unknown): Promise<unknown> } }>()
+      .getEnv();
+    await env.IMAGES.put(`img/${alias}/p1.jpg`, fakeJpeg(), {
+      httpMetadata: { contentType: 'image/jpeg' },
+      customMetadata: { state: 'pending' },
+    });
+    const { etag } = await look(alias, 'p1');
+    expect((await decide(alias, 'p1', 'ok', etag)).status).toBe(400);
+    expect((await server.fetch(`/img/b/${alias}/p1.jpg`)).status).toBe(404);
+    expect((await look(alias, 'p1')).status).toBe(404);
+  });
+
   it('deletes a refused picture, needs one to approve, and drops them all with the board', async () => {
     const { alias, owner } = await publishPics(announced('p1', 'p2', 'p3'));
     expect((await sendPicture(alias, 'p1', fakeJpeg(), owner)).status).toBe(201);
