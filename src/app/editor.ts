@@ -1,5 +1,6 @@
 import { fillCode, fillCSS, hslToHex, isHex, normHex } from '../core/colors';
-import { LABEL_MAX, parseList } from '../core/list';
+import { parseList } from '../core/list';
+import { LABEL_MAX } from '../core/model';
 import type { Fill, Item } from '../core/types';
 import { esc } from '../core/util';
 import { plural, t } from '../i18n';

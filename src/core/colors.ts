@@ -122,6 +122,9 @@ export function fillText(f: Fill): string {
 
 export const fillCode = (f: Fill): string => f.colors.map((c) => cssHex(c).toUpperCase()).join(' → ');
 
+/** Whether a color item is named after its code: its name then follows its color. */
+export const namedByCode = (label: string, f: Fill): boolean => label.toUpperCase() === fillCode(f);
+
 export const sameFill = (a: Fill, b: Fill): boolean => fillCode(a) === fillCode(b);
 
 /** Another item with exactly this fill: two identical colors can't be told apart in a duel. */

@@ -1,6 +1,16 @@
 import type { Fill, Item, MethodKey, Ranking } from './types.ts';
 import { hueOf, uid } from './util.ts';
 
+/**
+ * What the app lets someone write in a ranking of this browser: the longest title and label (the fields' maxlength,
+ * a pasted list's labels, an imported file's), and how many items a list or a drop of images adds at once. A
+ * published board's own limits are the server's, longer (LIMITS in board.ts).
+ */
+export const TITLE_MAX = 80;
+export const LABEL_MAX = 120;
+export const ADD_MAX = 200;
+export const IMAGES_MAX = 60;
+
 export function mkItem(label: string, img: string | null = null, fill: Fill | null = null): Item {
   return { id: uid(), label, img, fill, h: hueOf(label) };
 }

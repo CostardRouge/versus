@@ -9,6 +9,7 @@ import {
   hexToHsl,
   hslToHex,
   isHex,
+  namedByCode,
   normHex,
   PRESETS,
 } from '../core/colors';
@@ -94,7 +95,7 @@ function show(it: Item, anchor: HTMLElement): void {
   toggleMethodMenu(false);
   cp.id = it.id;
   cp.active = 0;
-  cp.follow = it.label.toUpperCase() === fillCode(it.fill);
+  cp.follow = namedByCode(it.label, it.fill);
   cp.anchor = anchor;
   pop.innerHTML = cpHTML(it, it.fill);
   pop.hidden = false;

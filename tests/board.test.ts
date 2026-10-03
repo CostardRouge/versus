@@ -18,6 +18,7 @@ import {
   DEFAULT_MODERATION,
   DEFAULT_SETTINGS,
   editItem,
+  hiddenUntil,
   itemId,
   keepsVoter,
   LIMITS,
@@ -54,6 +55,8 @@ import {
   toRanking,
   UNDO_GRACE_MS,
   updateSettings,
+  VISIBILITIES,
+  validSettings,
   voteCount,
   votesOf,
 } from '../src/core/board';
@@ -310,6 +313,18 @@ describe('patchSettings', () => {
     expect(patchSettings(next, 'nope')).toEqual(next);
     expect(patchSettings(next, 'nope')).not.toBe(next);
   });
+
+  it('reads only the valid fields a form holds', () => {
+    expect(validSettings({ visibility: 'after', revealAfter: Number(''), allowChange: undefined })).toEqual({
+      visibility: 'after',
+    });
+    expect(validSettings({ method: 'sort', revealAfter: 7, visitorsAddItems: false })).toEqual({
+      revealAfter: 7,
+      visitorsAddItems: false,
+    });
+    expect(validSettings(null)).toEqual({});
+    expect(VISIBILITIES).toEqual(['always', 'after', 'blind']);
+  });
 });
 
 describe('board state', () => {
@@ -444,6 +459,11 @@ describe('visibility', () => {
     expect(revealAt(10, 4)).toBe(6);
     expect(revealAt(3, 4)).toBe(3);
     expect(revealAt(10, 0)).toBe(1);
+    // What the voter is told meanwhile: their votes so far, out of the ones that reveal it.
+    const after = { visibility: 'after' as const, revealAfter: 10 };
+    expect(hiddenUntil(after, 4, 2)).toEqual({ until: 'votes', need: 6, done: 2 });
+    expect(hiddenUntil(after, 4, 9)).toEqual({ until: 'votes', need: 6, done: 6 });
+    expect(hiddenUntil({ visibility: 'blind', revealAfter: 10 }, 4, 9)).toEqual({ until: 'closed' });
     const b = board(3);
     updateSettings(b, { visibility: 'after', revealAfter: 10 }, T0);
     value(castVote(b, V2, 'i0', 'i1', 1, T0));

@@ -1,4 +1,4 @@
-import { fillCode, fillCSS, fillText } from '../core/colors';
+import { fillCode, fillCSS, fillText, namedByCode } from '../core/colors';
 import { getItem, hueValue, imageSrc } from '../core/model';
 import {
   compute,
@@ -31,8 +31,8 @@ export function cardHTML(it: Item, side: 'a' | 'b'): string {
   const label = esc(it.label);
   let inner: string;
   if (it.fill) {
-    const code = fillCode(it.fill);
-    inner = `<span class="fillbg" style="background:${fillCSS(it.fill)}"></span><span class="cap" style="${fillText(it.fill)}">${label}${it.label.toUpperCase() !== code ? `<small>${code}</small>` : ''}</span>`;
+    const code = namedByCode(it.label, it.fill) ? '' : `<small>${fillCode(it.fill)}</small>`;
+    inner = `<span class="fillbg" style="background:${fillCSS(it.fill)}"></span><span class="cap" style="${fillText(it.fill)}">${label}${code}</span>`;
   } else if (imageSrc(it))
     inner = `<img src="${esc(imageSrc(it))}" alt="" draggable="false"><span class="shade"></span><span class="cap">${label}</span>`;
   else inner = `<span class="txt ${sizeClass(it.label)}">${label}</span>`;

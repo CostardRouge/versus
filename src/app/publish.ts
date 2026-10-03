@@ -1,5 +1,5 @@
 import { trackEvent } from '../audience';
-import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS } from '../core/board';
+import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS, VISIBILITIES, validSettings } from '../core/board';
 import {
   dataURLBytes,
   lastDuelPerPair,
@@ -22,8 +22,6 @@ import { saveOwner } from './storage';
 import { turnstileKey, turnstileWidget } from './turnstile';
 
 /** Publishing a local ranking, and the settings form shared by the publish modal and the board's settings. */
-
-const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
 
 const radio = (prefix: string, name: string, value: string, checked: boolean): string =>
   `<input type="radio" name="${prefix}-${name}" value="${value}" ${checked ? 'checked' : ''}>`;
@@ -55,21 +53,16 @@ export const optionsHTML = (prefix: string, s: BoardSettings): string =>
   `<label class="opt"><input type="checkbox" id="${prefix}-change" ${s.allowChange ? 'checked' : ''}> ${t('allowChange')}</label>
   <label class="opt"><input type="checkbox" id="${prefix}-visitors" ${s.visitorsAddItems ? 'checked' : ''}> ${t('visitorsAdd')}</label>`;
 
-/** The settings a form holds; the server validates them again. */
+/** The valid settings a form holds (the fields it has); the server validates them again. */
 export function readSettings(root: ParentNode, prefix: string): Partial<BoardSettings> {
   const input = (sel: string) => root.querySelector<HTMLInputElement>(sel);
-  const out: Partial<BoardSettings> = {};
-  const vis = input(`input[name="${prefix}-vis"]:checked`)?.value;
-  if (VISIBILITIES.includes(vis as Visibility)) out.visibility = vis as Visibility;
-  const n = Number(input(`#${prefix}-n`)?.value);
-  if (Number.isInteger(n) && n >= 1 && n <= LIMITS.revealAfter) out.revealAfter = n;
-  const m = input(`input[name="${prefix}-m"]:checked`)?.value;
-  if (CROWD_METHODS.includes(m as MethodKey)) out.method = m as MethodKey;
-  const change = input(`#${prefix}-change`);
-  if (change) out.allowChange = change.checked;
-  const visitors = input(`#${prefix}-visitors`);
-  if (visitors) out.visitorsAddItems = visitors.checked;
-  return out;
+  return validSettings({
+    method: input(`input[name="${prefix}-m"]:checked`)?.value,
+    visibility: input(`input[name="${prefix}-vis"]:checked`)?.value,
+    revealAfter: Number(input(`#${prefix}-n`)?.value),
+    allowChange: input(`#${prefix}-change`)?.checked,
+    visitorsAddItems: input(`#${prefix}-visitors`)?.checked,
+  });
 }
 
 const BLOCKS: Record<PublishBlock, MsgKey> = {

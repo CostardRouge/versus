@@ -12,6 +12,7 @@ import {
   hslToHex,
   isHex,
   luminance,
+  namedByCode,
   normHex,
   sameFill,
 } from '../src/core/colors';
@@ -106,6 +107,14 @@ describe('fills', () => {
 
   it('describes a fill by its codes', () => {
     expect(fillCode({ type: 'gradient', colors: ['#abc', '#2743f5'] })).toBe('#AABBCC → #2743F5');
+  });
+
+  it('tells a color item named after its code, whatever the case', () => {
+    const blue: Fill = { type: 'solid', colors: ['#2743f5'] };
+    expect(namedByCode('#2743F5', blue)).toBe(true);
+    expect(namedByCode('#2743f5', blue)).toBe(true);
+    expect(namedByCode('Cobalt', blue)).toBe(false);
+    expect(namedByCode('#2743F5 → #E4492A', { type: 'gradient', colors: ['#2743f5', '#e4492a'] })).toBe(true);
   });
 
   it('finds another item with the same fill', () => {

@@ -1,4 +1,5 @@
 import { CROWD_METHODS } from '../core/board';
+import { TITLE_MAX } from '../core/model';
 import { METHOD_KEYS, methodOf } from '../core/scoring';
 import type { MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
@@ -58,7 +59,7 @@ export function shellHTML(s: Shell): string {
   return `<div class="ws" ${s.alias ? `data-alias="${esc(s.alias)}"` : ''}>
     <div class="ws-head">
       <button class="back" type="button" data-action="back">${t('back')}</button>
-      <h1 class="ws-title"><input id="rank-title" class="title-input" value="${esc(s.title)}" aria-label="${t('rankNameAria')}" maxlength="80" autocomplete="off"></h1>${s.chip}
+      <h1 class="ws-title"><input id="rank-title" class="title-input" value="${esc(s.title)}" aria-label="${t('rankNameAria')}" maxlength="${TITLE_MAX}" autocomplete="off"></h1>${s.chip}
       ${s.action ? '<span class="ws-break" aria-hidden="true"></span>' : ''}
       ${methodMenuHTML(s.method, s.crowd)}
       ${s.action}

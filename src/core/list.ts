@@ -1,13 +1,11 @@
 import { isHex, normHex } from './colors.ts';
+import { LABEL_MAX } from './model.ts';
 
 /**
  * Reads what is typed or pasted into the add field as item labels: one per line (real line breaks or the
  * `\n` escapes of text copied from code), bulleted, numbered and Markdown lists, a spreadsheet row (tabs),
  * or a JSON array of strings.
  */
-
-/** Longest item label, like the add field. */
-export const LABEL_MAX = 120;
 
 /** Line breaks, and their escapes. */
 const BREAKS = /\r\n|[\n\r\u2028\u2029\u0085]|\\r\\n|\\n/;

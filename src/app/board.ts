@@ -1,5 +1,5 @@
 import { trackEvent } from '../audience';
-import { LIMITS, REPORT_REASONS, revealAt } from '../core/board';
+import { hiddenUntil, LIMITS, REPORT_REASONS } from '../core/board';
 import { imageSrc } from '../core/model';
 import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
 import { PROTOCOL_VERSION } from '../core/protocol';
@@ -510,11 +510,11 @@ function rankingHTML(b: Board, v: BoardView): string {
       : '';
   const shown = b.shown;
   if (!shown) {
-    if (s.visibility !== 'after') return `<p class="note">${t('hiddenBlind')}</p>${reset}`;
-    const need = revealAt(s.revealAfter, v.items.length);
-    const k = Math.min(b.count, need);
-    return `<p class="note">${t('hiddenAfter', { n: need, k })}</p>
-      <span class="bar b-progress"><i style="width:${Math.round((100 * k) / need)}%"></i></span>${reset}`;
+    const hidden = hiddenUntil(s, v.items.length, b.count);
+    if (hidden.until === 'closed') return `<p class="note">${t('hiddenBlind')}</p>${reset}`;
+    const { need, done } = hidden;
+    return `<p class="note">${t('hiddenAfter', { n: need, k: done })}</p>
+      <span class="bar b-progress"><i style="width:${Math.round((100 * done) / need)}%"></i></span>${reset}`;
   }
   const newer = b.latestVotes - b.shownVotes;
   const refresh =

@@ -1,5 +1,5 @@
 import { freshLabels, labelKey, parseList } from '../core/list';
-import { getItem, mkItem } from '../core/model';
+import { ADD_MAX, getItem, IMAGES_MAX, mkItem } from '../core/model';
 import { compute, methodOf } from '../core/scoring';
 import type { Item, Ranking } from '../core/types';
 import { methodText as M, plural, t } from '../i18n';
@@ -55,7 +55,7 @@ function afterItemsChange(r: Ranking, prevCount: number): void {
   if (effTab() === 'results' || prevCount < 2 || !r.pair || methodOf(r) === 'sort') renderMain(r);
 }
 function addItems(r: Ranking, items: Typed[]): Item[] {
-  const clean = items.filter((x) => x.label || x.fill).slice(0, 200);
+  const clean = items.filter((x) => x.label || x.fill).slice(0, ADD_MAX);
   if (!clean.length) return [];
   const prev = r.items.length;
   const added = clean.map((x) => mkItem(x.label, null, x.fill));
@@ -100,7 +100,7 @@ export async function addFiles(r: Ranking, files: FileList | File[]): Promise<vo
   }
   const prev = r.items.length;
   let n = 0;
-  for (const f of imgs.slice(0, 60)) {
+  for (const f of imgs.slice(0, IMAGES_MAX)) {
     try {
       r.items.push(mkItem(imageName(f), await fileToThumb(f)));
       n++;
