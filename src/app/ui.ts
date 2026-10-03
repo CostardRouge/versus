@@ -4,8 +4,9 @@ import { detectLang, type Lang, setLang as setI18nLang, t } from '../i18n';
 import { initDom, toast } from './dom';
 import { bindEvents, loadSharing } from './events';
 import { applyStatic } from './header';
+import { setRender } from './nav';
 import { initPwa } from './pwa';
-import { routeFromURL } from './rankings';
+import { render, routeFromURL } from './rankings';
 import { S, save } from './state';
 import { loadJoined, loadLegacyRanks, loadPrefs, loadRanks, loadVoter } from './storage';
 
@@ -19,6 +20,7 @@ import { loadJoined, loadLegacyRanks, loadPrefs, loadRanks, loadVoter } from './
 /** Loads saved data (or migrates prototype data), adds the demos and renders the gallery or the linked board. */
 export function mount(d: Document): void {
   initDom(d);
+  setRender(render);
   S.prefs = loadPrefs();
   S.voter = loadVoter(() => voterId(crypto.getRandomValues(new Uint8Array(22))));
   const lang: Lang = detectLang(S.prefs.lang, navigator.language);

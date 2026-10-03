@@ -5,11 +5,29 @@ import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } fro
 import { PROTOCOL_VERSION } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
-import { pairKey } from '../core/scoring';
 import type { BoardStatus, Duel, ErrorCode, Item, Ranking, ReportReason } from '../core/types';
 import { esc, uid } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { authorChange, markAuthorPair, refreshAuthorList, renderAuthor } from './author';
+import {
+  answered,
+  authoring,
+  type Board,
+  boardState,
+  canVote,
+  castCheck,
+  castReset,
+  castSkip,
+  castSuggest,
+  castUndo,
+  castVote,
+  itemOf,
+  newBoard,
+  type Pending,
+  refused,
+  setBoardState,
+  suggesting,
+} from './board-state';
 import { closeColor, cp } from './color';
 import { $, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML, controlsHTML, duelKeys, outcomeOf, playPick } from './duel';
@@ -39,57 +57,6 @@ import { effTab } from './workspace';
  * Board page of a published ranking: duels come from the server queue, the crowd ranking updates live
  * (or waits for a refresh). Its author sees it in the workspace of a local ranking instead (author.ts, D116).
  */
-
-export interface Board {
-  alias: string;
-  owner: string | null;
-  /** A token from an admin link, sent but not yet confirmed by the server: it is stored only once it is. */
-  candidate: string | null;
-  socket: BoardSocket | null;
-  conn: Connection | 'unavailable';
-  view: BoardView | null;
-  isOwner: boolean;
-  /** My votes in order, updated optimistically. */
-  mine: Duel[];
-  /** My vote count as the server last reported it. */
-  count: number;
-  pairs: [string, string][];
-  counts: Counts;
-  /** Ranking on screen, and the newest one received (they differ while live updates are off). */
-  shown: RankingView | null;
-  shownVotes: number;
-  latest: RankingView | null;
-  latestVotes: number;
-  /** One entry per message awaiting its "pairs" answer, with how to undo its optimistic change if refused. */
-  pending: Pending[];
-  /** Label of the item just sent, so the field empties once it shows up. */
-  sentLabel: string | null;
-  busy: boolean;
-  /** Set while withdrawing, so the closing socket doesn't read as an expired board. */
-  leaving: boolean;
-  /** The end-of-vote page is showing instead of the board. */
-  finale: boolean;
-  /** Something changed during the reveal: render again once it ends. */
-  finaleDirty: boolean;
-  /** Whether the server takes pictures for review (asked once the author is known); null until it answers. */
-  pictures: boolean | null;
-  /** A connection failed: while the first state waits, the page offers to try again. */
-  failed: boolean;
-  /** Opened on the end-of-vote page's history entry: the first state shows that page again, if it can. */
-  reopen: boolean;
-}
-
-interface Pending {
-  kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add' | 'check';
-  revert?: () => void;
-  /** Refused already: only the queue that follows is awaited. */
-  refused?: boolean;
-}
-
-let B: Board | null = null;
-
-/** The board on screen, if any. */
-export const boardState = (): Board | null => B;
 
 /**
  * What to tell the user when the server refuses an action; the queue it sends next puts the duel and the vote count
@@ -177,10 +144,7 @@ export function refocus(mark: FocusMark | null): void {
 }
 
 const live = (): boolean => S.prefs.live !== false;
-export const itemOf = (id: string): Item | undefined => B?.view?.items.find((i) => i.id === id);
 const localOf = (alias: string): Ranking | undefined => S.ranks.find((r) => r.pub?.alias === alias);
-/** The author's page is the workspace (author.ts); the board's own page is for visitors. */
-const authoring = (b: Board | null): b is Board & { view: BoardView } => !!b?.view && b.isOwner && !!b.owner;
 
 /**
  * Connects to a board (or keeps the current connection when it is the same one). `wanted` is the duel a shared
@@ -193,36 +157,11 @@ export function enterBoard(
   wanted: [string, string] | null = null,
   candidate: string | null = null,
 ): void {
-  if (B?.alias === alias) return;
+  if (boardState()?.alias === alias) return;
   leaveBoard();
   const owner = candidate ?? loadOwners()[alias] ?? null;
-  const board: Board = {
-    alias,
-    owner,
-    candidate,
-    socket: null,
-    conn: available ? 'connecting' : 'unavailable',
-    view: null,
-    isOwner: false,
-    mine: [],
-    count: 0,
-    pairs: [],
-    counts: { votes: 0, voters: 0, online: 0 },
-    shown: null,
-    shownVotes: 0,
-    latest: null,
-    latestVotes: 0,
-    pending: [],
-    sentLabel: null,
-    busy: false,
-    leaving: false,
-    finale: false,
-    finaleDirty: false,
-    pictures: null,
-    failed: false,
-    reopen: currentLayer() === 'finale',
-  };
-  B = board;
+  const board = newBoard({ alias, owner, candidate, available, reopen: currentLayer() === 'finale' });
+  setBoardState(board);
   resetFinale();
   if (available) connect(board, wanted);
 }
@@ -283,20 +222,20 @@ function settleCandidate(board: Board, owner: boolean): boolean {
 
 /** The Retry button of a board that can't be reached: a new connection at once. */
 export function boardRetry(): void {
-  B?.socket?.retryNow();
+  boardState()?.socket?.retryNow();
 }
 
 export function leaveBoard(): void {
   flushJoined();
-  B?.socket?.close();
-  B = null;
+  boardState()?.socket?.close();
+  setBoardState(null);
   resetFinale();
 }
 
 // ─── Server messages ────────────────────────────────────────────────────────
 
 function onConnection(board: Board, c: Connection): void {
-  if (B !== board) return;
+  if (boardState() !== board) return;
   board.conn = c;
   // Nothing is deleted here: the author decides, from the page, to take back the local version.
   if (c === 'gone' && !board.leaving) {
@@ -319,7 +258,7 @@ function onConnection(board: Board, c: Connection): void {
 }
 
 function onMessage(board: Board, m: ServerMessage): void {
-  if (B !== board) return;
+  if (boardState() !== board) return;
   if (m.t === 'state') {
     if (settleCandidate(board, m.owner)) return;
     board.view = m.board;
@@ -342,16 +281,14 @@ function onMessage(board: Board, m: ServerMessage): void {
       board.pictures = false;
       void fetchConfig().then((c) => {
         board.pictures = c.images === 'review';
-        if (B === board && board.pictures) renderBoard();
+        if (boardState() === board && board.pictures) renderBoard();
       });
     }
     note(board);
     reopenFinale(board, m.board);
     renderBoard();
   } else if (m.t === 'pairs') {
-    const head = board.pending.shift();
-    board.pairs = m.pairs;
-    board.count = m.mine;
+    const head = answered(board, m.pairs, m.mine);
     note(board, head?.kind === 'vote');
     // Mostly the server confirming a skip, a vote or an undo already on screen: drawing the same duel again would
     // replay the cards' entrance, halfway through it on a slow (mobile) connection.
@@ -375,19 +312,11 @@ function onMessage(board: Board, m: ServerMessage): void {
     renderRanking();
     if (authoring(board)) refreshAuthorList(true);
   } else {
-    const head = board.pending[0];
-    if (head?.revert) {
-      head.revert();
-      head.revert = undefined;
-      renderRanking();
-    }
-    if (head?.kind === 'add') {
-      board.sentLabel = null;
-      head.refused = true;
-      addBusy(suggesting(board));
-    }
-    if (m.code === 'captcha' && head?.kind === 'vote') void humanCheck(board);
-    const key = errorText(m.code, head?.kind);
+    const { kind, reverted } = refused(board);
+    if (reverted) renderRanking();
+    if (kind === 'add') addBusy(suggesting(board));
+    if (m.code === 'captcha' && kind === 'vote') void humanCheck(board);
+    const key = errorText(m.code, kind);
     if (key) toast(t(key));
   }
 }
@@ -418,7 +347,7 @@ export const countsText = (c: Counts): string =>
 
 export function renderBoard(mode: FinaleMode = 'none'): void {
   const view = $('#view');
-  const b = B;
+  const b = boardState();
   if (!view || !b) return;
   if (b.finale && b.view) {
     renderFinale(b, b.view, mode);
@@ -456,9 +385,6 @@ export function addBusy(busy: boolean): void {
   if (busy) btn.setAttribute('aria-busy', 'true');
   else btn.removeAttribute('aria-busy');
 }
-
-/** A visitor's suggestion was sent and the server hasn't answered yet. */
-const suggesting = (b: Board): boolean => b.pending.some((p) => p.kind === 'add' && !p.refused);
 
 const waitText = (b: Board): string => `<h2 class="q">${b.conn === 'lost' ? t('boardOffline') : t('connecting')}</h2>`;
 
@@ -562,12 +488,12 @@ function duelHTML(b: Board, v: BoardView): string {
 
 export function renderDuel(): void {
   const main = $('#b-main');
-  const b = B;
+  const b = boardState();
   if (!main || !b?.view) return;
   const mark = focusMark(main);
   main.innerHTML = duelHTML(b, b.view);
   main.dataset.duel = duelKey(b);
-  bindStage(boardPick, () => B?.busy ?? true);
+  bindStage(boardPick, () => boardState()?.busy ?? true);
   if (authoring(b)) markAuthorPair();
   refocus(mark);
 }
@@ -619,7 +545,8 @@ function rankingHTML(b: Board, v: BoardView): string {
  */
 export function renderRanking(): void {
   const el = $('#b-rank');
-  if (!el || !B?.view) return;
+  const b = boardState();
+  if (!el || !b?.view) return;
   let body = $('#b-rank-body', el);
   if (!body) {
     el.innerHTML = `${rankHeadHTML()}<div id="b-rank-body"></div>`;
@@ -627,14 +554,11 @@ export function renderRanking(): void {
   }
   if (!body) return;
   const mark = focusMark(body);
-  body.innerHTML = rankingHTML(B, B.view);
+  body.innerHTML = rankingHTML(b, b.view);
   refocus(mark);
 }
 
 // ─── Voting ─────────────────────────────────────────────────────────────────
-
-const canVote = (b: Board | null): b is Board & { view: BoardView } =>
-  !!b?.view && !b.busy && b.view.status === 'open' && !b.pending.some((p) => p.kind === 'check');
 
 let checking = false;
 
@@ -658,14 +582,14 @@ async function humanCheck(b: Board): Promise<void> {
   const ok = await asked;
   const token = widget.take();
   checking = false;
-  if (!ok || B !== b) return;
+  if (!ok || boardState() !== b) return;
   if (!token) toast(t('checkMissing'));
   else if (!b.socket?.send({ t: 'check', token })) toast(t('notSent'));
-  else b.pending.push({ kind: 'check' });
+  else castCheck(b);
 }
 
 export function boardPick(side: string | undefined): void {
-  const b = B;
+  const b = boardState();
   if (!canVote(b)) return;
   const pair = b.pairs[0];
   const A = pair ? itemOf(pair[0]) : undefined;
@@ -677,23 +601,14 @@ export function boardPick(side: string | undefined): void {
     renderDuel();
     return;
   }
-  const duel: Duel = { a: A.id, b: C.id, s };
-  b.mine.push(duel);
-  b.pending.push({
-    kind: 'vote',
-    revert: () => {
-      b.mine = b.mine.filter((d) => d !== duel);
-    },
-  });
-  b.pairs.shift();
-  b.count++;
+  castVote(b, { a: A.id, b: C.id, s });
   b.busy = true;
   playPick(side, A, C);
   // At least the server's minimum delay between two votes, even with reduced motion.
   setTimeout(
     () => {
       b.busy = false;
-      if (B !== b) return;
+      if (boardState() !== b) return;
       // The last pair: the result gets a page of its own.
       if (b.view?.status === 'open' && b.count >= totalPairs(b.view.items.length)) {
         trackEvent('board-finished', { items: b.view.items.length });
@@ -705,7 +620,7 @@ export function boardPick(side: string | undefined): void {
 }
 
 export function boardSkip(): void {
-  const b = B;
+  const b = boardState();
   if (!canVote(b)) return;
   const pair = b.pairs[0];
   if (!pair) return;
@@ -713,14 +628,13 @@ export function boardSkip(): void {
     toast(t('notSent'));
     return;
   }
-  b.pending.push({ kind: 'skip' });
-  b.pairs.shift();
+  castSkip(b);
   renderDuel();
 }
 
 /** Deletes my last vote; the server puts its pair back first in my queue. */
 export function boardUndo(): void {
-  const b = B;
+  const b = boardState();
   if (!canVote(b)) return;
   const last = b.mine[b.mine.length - 1];
   if (!last) return;
@@ -728,23 +642,13 @@ export function boardUndo(): void {
     toast(t('notSent'));
     return;
   }
-  const at = b.mine.length - 1;
-  b.mine.pop();
-  b.pending.push({
-    kind: 'undo',
-    revert: () => {
-      b.mine.splice(at, 0, last);
-    },
-  });
-  const k = pairKey(last.a, last.b);
-  b.pairs = [[last.a, last.b], ...b.pairs.filter(([x, y]) => pairKey(x, y) !== k)];
-  b.count = Math.max(0, b.count - 1);
+  castUndo(b, last);
   renderDuel();
   toast(t('voteUndone'));
 }
 
 export async function boardReset(): Promise<void> {
-  const b = B;
+  const b = boardState();
   if (!b?.view) return;
   const ok = await ask({
     title: t('resetMyVotesTitle'),
@@ -752,20 +656,12 @@ export async function boardReset(): Promise<void> {
     ok: t('resetMyVotes'),
     danger: true,
   });
-  if (!ok || B !== b) return;
+  if (!ok || boardState() !== b) return;
   if (!b.socket?.send({ t: 'reset' })) {
     toast(t('notSent'));
     return;
   }
-  const prev = b.mine;
-  b.mine = [];
-  b.count = 0;
-  b.pending.push({
-    kind: 'reset',
-    revert: () => {
-      b.mine = prev;
-    },
-  });
+  castReset(b);
   renderDuel();
   renderRanking();
   toast(t('votesCleared'));
@@ -774,7 +670,8 @@ export async function boardReset(): Promise<void> {
 /** The duel's keys on a board, as on a local ranking (duel.ts). */
 export function boardKeydown(e: KeyboardEvent, tg: HTMLElement): void {
   // The author votes from the Duel tab only.
-  if (!B?.view || B.finale || (B.isOwner && effTab() !== 'duel')) return;
+  const b = boardState();
+  if (!b?.view || b.finale || (b.isOwner && effTab() !== 'duel')) return;
   duelKeys(e, tg, { pick: boardPick, skip: boardSkip, undo: boardUndo });
 }
 
@@ -808,13 +705,13 @@ function renderFinale(b: Board, v: BoardView, mode: FinaleMode): void {
   if (cp.id) closeColor();
   view.innerHTML = finaleHTML(finaleData(b, v));
   mountFinale(mode, () => {
-    if (B === b && b.finale && b.finaleDirty) renderBoard();
+    if (boardState() === b && b.finale && b.finaleDirty) renderBoard();
   });
 }
 
 /** Shows the end-of-vote page, with its reveal, in a history entry of its own: Back closes it. */
 export function openFinale(): void {
-  const b = B;
+  const b = boardState();
   if (!b?.view) return;
   b.finale = true;
   pushLayer('finale');
@@ -827,7 +724,7 @@ let closing = false;
 
 /** Back to the board from the end-of-vote page's own button: its history entry goes too. */
 export function closeFinale(): void {
-  if (!B?.finale) return;
+  if (!boardState()?.finale) return;
   hideFinale();
   if (closing || currentLayer() !== 'finale') return;
   closing = true;
@@ -835,7 +732,7 @@ export function closeFinale(): void {
 }
 
 function hideFinale(): void {
-  const b = B;
+  const b = boardState();
   if (!b?.finale) return;
   b.finale = false;
   resetFinale();
@@ -848,7 +745,7 @@ const votedAll = (b: Board, v: BoardView): boolean => b.count > 0 && b.count >= 
 
 /** Back or Forward between the board and its end-of-vote page, at the same address. */
 export function followLayer(): void {
-  const b = B;
+  const b = boardState();
   if (closing) {
     closing = false;
     return;
@@ -865,7 +762,7 @@ export function followLayer(): void {
 
 /** Podium or face-à-face; remembered in this browser. */
 export function setFinaleView(v: string | undefined): void {
-  if (!B?.finale || (v !== 'podium' && v !== 'duo') || v === resultView()) return;
+  if (!boardState()?.finale || (v !== 'podium' && v !== 'duo') || v === resultView()) return;
   S.prefs.resultView = v;
   savePrefs(S.prefs);
   renderBoard('swap');
@@ -874,7 +771,7 @@ export function setFinaleView(v: string | undefined): void {
 
 /** Which ranking the podium shows: the crowd's or the voter's own. */
 export function setFinaleWho(w: string | undefined): void {
-  if (!B?.finale) return;
+  if (!boardState()?.finale) return;
   setPodiumWho(w);
   renderBoard('swap');
   $(`[data-action="b-finale-who"][data-who="${w === 'me' ? 'me' : 'crowd'}"]`)?.focus();
@@ -883,11 +780,12 @@ export function setFinaleWho(w: string | undefined): void {
 // ─── Live updates and sharing ───────────────────────────────────────────────
 
 export function boardRefresh(): void {
-  if (!B) return;
-  B.shown = B.latest;
-  B.shownVotes = B.latestVotes;
+  const b = boardState();
+  if (!b) return;
+  b.shown = b.latest;
+  b.shownVotes = b.latestVotes;
   renderRanking();
-  if (authoring(B)) refreshAuthorList(true);
+  if (authoring(b)) refreshAuthorList(true);
 }
 
 /** Handles the board's form fields; returns true when the change belonged to the board page. */
@@ -909,7 +807,7 @@ export function boardChange(tg: HTMLInputElement): boolean {
  * add field is the items pane's (author.ts).
  */
 export function boardSuggest(text: string): void {
-  const b = B;
+  const b = boardState();
   if (!b?.view || b.isOwner) return;
   const item = typed(text);
   if (!item.label || suggesting(b)) return;
@@ -917,8 +815,7 @@ export function boardSuggest(text: string): void {
     toast(t('notSent'));
     return;
   }
-  b.sentLabel = text;
-  b.pending.push({ kind: 'add' });
+  castSuggest(b, text);
   addBusy(true);
 }
 
@@ -930,8 +827,8 @@ export async function copyBoardLink(alias: string | undefined, admin = false): P
   toast((await copyText(url)) ? t(token ? 'adminCopied' : 'linkCopied') : t('copyNA'));
 }
 
-export const boardShare = (): Promise<void> => copyBoardLink(B?.alias);
-export const boardAdminLink = (): Promise<void> => copyBoardLink(B?.alias, true);
+export const boardShare = (): Promise<void> => copyBoardLink(boardState()?.alias);
+export const boardAdminLink = (): Promise<void> => copyBoardLink(boardState()?.alias, true);
 
 /** What sharing the board as an image needs: the board on screen, the crowd as this viewer sees it, the duel up. */
 export interface BoardShare {
@@ -945,7 +842,7 @@ export interface BoardShare {
 }
 
 export function boardShareData(): BoardShare | null {
-  const b = B;
+  const b = boardState();
   if (!b?.view) return null;
   const pair = b.pairs[0];
   const A = pair ? itemOf(pair[0]) : undefined;
@@ -963,7 +860,7 @@ export function boardShareData(): BoardShare | null {
 
 /** A ranking of this browser with the board's items, for a voter who wants their own version. */
 export function boardMakeMine(): void {
-  const v = B?.view;
+  const v = boardState()?.view;
   if (v) makeOwn(v.title, v.items, 'board');
 }
 
@@ -976,7 +873,7 @@ const REASON_KEYS: Record<ReportReason, MsgKey> = {
 
 /** Reports the board to the moderator: a reason from the list and a few words, sent with the anonymous voter id. */
 export async function boardReport(): Promise<void> {
-  const b = B;
+  const b = boardState();
   if (!b?.view) return;
   const options = REPORT_REASONS.map(
     (r, i) =>
@@ -987,7 +884,7 @@ export async function boardReport(): Promise<void> {
     <label class="report-note"><span class="muted">${t('reportNote')}</span>
       <textarea id="report-note" rows="3" maxlength="${LIMITS.note}"></textarea></label>`;
   const ok = await ask({ title: t('reportTitle'), html, ok: t('reportSend'), danger: true });
-  if (!ok || B !== b) return;
+  if (!ok || boardState() !== b) return;
   const picked = ($('input[name="report-reason"]:checked') as HTMLInputElement | null)?.value;
   const reason = REPORT_REASONS.includes(picked as ReportReason) ? (picked as ReportReason) : 'other';
   const note = ($('#report-note') as HTMLTextAreaElement | null)?.value.trim() ?? '';
@@ -1004,7 +901,7 @@ export async function boardReport(): Promise<void> {
 
 /** Calls an owner route; the server then pushes the new state to every connection, this one included. */
 export async function ownerCall<T>(fn: (alias: string, token: string) => Promise<T>): Promise<T | null> {
-  const b = B;
+  const b = boardState();
   if (!b?.owner) return null;
   try {
     return await fn(b.alias, b.owner);
@@ -1049,10 +946,10 @@ async function picturesOf(items: readonly Item[], local: Ranking | undefined): P
 
 /** Deletes the board and brings the crowd's result back as a local ranking, its pictures kept. */
 export async function boardWithdraw(): Promise<void> {
-  const b = B;
+  const b = boardState();
   if (!b?.owner) return;
   const ok = await ask({ title: t('withdrawTitle'), body: t('withdrawBody'), ok: t('withdraw'), danger: true });
-  if (!ok || B !== b) return;
+  if (!ok || boardState() !== b) return;
   b.leaving = true;
   // The board's pictures go with it: read them first, so the copy keeps them.
   const pictures = await picturesOf(b.view?.items ?? [], localOf(b.alias));
@@ -1087,7 +984,7 @@ export async function boardWithdraw(): Promise<void> {
 
 /** After a board is gone: the author's ranking becomes a plain local ranking again, as it was before publishing. */
 export function boardUnlink(): void {
-  const b = B;
+  const b = boardState();
   const local = b ? localOf(b.alias) : undefined;
   if (!b || !local) return;
   delete local.pub;

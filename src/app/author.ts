@@ -9,18 +9,16 @@ import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
 import {
   addBusy,
-  type Board,
-  boardState,
   boardURL,
   countsText,
   type FocusMark,
   focusMark,
-  itemOf,
   ownerCall,
   refocus,
   renderDuel,
   renderRanking,
 } from './board';
+import { type Board, boardState, itemOf } from './board-state';
 import { closeColor, cp, openBoardColor } from './color';
 import { $, $$, ask, castSvg, copyText, doc, toast } from './dom';
 import {

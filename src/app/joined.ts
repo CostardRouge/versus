@@ -1,10 +1,10 @@
 import { trackEvent } from '../audience';
 import { LIMITS } from '../core/board';
 import { applySummary, type BoardSnapshot, joinedCopy, seeBoard, sortJoined, upsertJoined } from '../core/joined';
-import type { Joined } from '../core/types';
+import type { Joined, Ranking } from '../core/types';
 import { t } from '../i18n';
 import { $$, toast } from './dom';
-import { makeOwn, open, render } from './rankings';
+import { render } from './nav';
 import { fetchSummaries, online } from './remote';
 import { S, save } from './state';
 import { saveJoined, savePrefs } from './storage';
@@ -115,21 +115,14 @@ export function forgetJoined(alias: string | undefined): void {
   });
 }
 
-/** "Make my own" from a card: a ranking of this browser with the board's items, without the votes. */
-export function makeMineFromCard(alias: string | undefined): void {
+/** A board that is gone becomes a ranking of the voter's own, with its items and their votes; its card goes. */
+export function joinedToRanking(alias: string | undefined): Ranking | null {
   const j = alias ? joinedOf(alias) : undefined;
-  if (j) makeOwn(j.title, j.items, 'card');
-}
-
-/** A board that is gone becomes a ranking of the voter's own, with its items and their votes. */
-export function keepJoinedCopy(alias: string | undefined): void {
-  const j = alias ? joinedOf(alias) : undefined;
-  if (!j) return;
+  if (!j) return null;
   const r = joinedCopy(j);
   S.ranks.push(r);
   save();
   S.joined = S.joined.filter((x) => x !== j);
   persist();
-  open(r.id, 'results');
-  toast(t('copyKept'));
+  return r;
 }

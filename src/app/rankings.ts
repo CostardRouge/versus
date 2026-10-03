@@ -15,8 +15,8 @@ import { clearEnding } from './ending';
 import { galleryHTML, setNotice } from './gallery';
 import { applyStatic, viewTitle } from './header';
 import { renderList } from './items';
-import { refreshJoined } from './joined';
-import { refreshPopular } from './popular';
+import { joinedOf, joinedToRanking, refreshJoined } from './joined';
+import { readPopular, refreshPopular } from './popular';
 import { online } from './remote';
 import { backIsGallery, currentPath, routeURL, stashedURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
@@ -161,6 +161,23 @@ export function makeOwn(title: string, items: readonly Item[], from: 'board' | '
   open(r.id, 'duel');
   toast(t('madeMine'));
   return r;
+}
+/** "Make my own" from a card under "Your votes": the board's items, without the votes. */
+export function makeMineFromCard(alias: string | undefined): void {
+  const j = alias ? joinedOf(alias) : undefined;
+  if (j) makeOwn(j.title, j.items, 'card');
+}
+/** "Make my own" from a popular board: its items, read from the server, without the votes. */
+export async function makeMineFromPopular(alias: string | undefined): Promise<void> {
+  const view = await readPopular(alias);
+  if (view) makeOwn(view.title, view.items, 'template');
+}
+/** "Keep a copy" of a board that is gone: its items and votes as a ranking of this browser, on its result. */
+export function keepJoinedCopy(alias: string | undefined): void {
+  const r = joinedToRanking(alias);
+  if (!r) return;
+  open(r.id, 'results');
+  toast(t('copyKept'));
 }
 export function toggleDemos(): void {
   S.prefs.hideDemos = !S.prefs.hideDemos;

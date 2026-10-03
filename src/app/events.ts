@@ -29,8 +29,7 @@ import { $, closeModal, doc, narrow, toastAct, toastHasAct, trapTab } from './do
 import { choose, duelKeydown, endContinue, endSee, skip, undoLast } from './duel';
 import { changeTheme, viewTitle } from './header';
 import { addFiles } from './items';
-import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
-import { makeMineFromPopular } from './popular';
+import { forgetJoined } from './joined';
 import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
@@ -39,6 +38,9 @@ import {
   deleteRank,
   duplicateRank,
   goBack,
+  keepJoinedCopy,
+  makeMineFromCard,
+  makeMineFromPopular,
   newRank,
   open,
   openBoard,
