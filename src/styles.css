@@ -1,4 +1,5 @@
 @import "./tokens.css";
+@import "./stage.css";
 
 /* Base reset (the prototype got these from its host page) */
 html {
@@ -114,7 +115,7 @@ input {
   gap: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 10px 16px;
   font-weight: 600;
   font-size: 14px;
@@ -196,14 +197,14 @@ kbd {
   letter-spacing: 0.07em;
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 2px 8px;
   white-space: nowrap;
 }
 .bar {
   flex: 1;
   height: 6px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
   min-width: 60px;
@@ -394,7 +395,7 @@ kbd {
   letter-spacing: 0.07em;
   background: var(--surface);
   color: var(--ink);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 3px 8px;
 }
 .rcard.fresh {
@@ -597,7 +598,7 @@ kbd {
 .tabs {
   display: inline-flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 4px;
   gap: 2px;
 }
@@ -609,7 +610,7 @@ kbd {
   border: 0;
   background: transparent;
   padding: 0 16px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-weight: 600;
   font-size: 14px;
   color: var(--muted);
@@ -953,28 +954,6 @@ kbd {
     opacity 0.4s,
     box-shadow 0.25s;
 }
-.card-a {
-  justify-self: end;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pa, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pa, 0) * 6px) var(--a),
-    var(--shadow);
-  opacity: calc(1 - var(--pb, 0) * 0.4);
-}
-.card-b {
-  justify-self: start;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pb, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pb, 0) * 6px) var(--b),
-    var(--shadow);
-  opacity: calc(1 - var(--pa, 0) * 0.4);
-}
-.stage.dragging .card {
-  transition: none;
-  cursor: grabbing;
-}
 .card img {
   position: absolute;
   inset: 0;
@@ -1011,12 +990,6 @@ kbd {
   font: 800 13px var(--f-display);
   color: var(--on-accent);
 }
-.card-a .side-tag {
-  background: var(--a);
-}
-.card-b .side-tag {
-  background: var(--b-ink);
-}
 .txt {
   padding: 22px 22px 26px;
   font-family: var(--f-display);
@@ -1043,13 +1016,6 @@ kbd {
   letter-spacing: -0.01em;
   font-weight: 600;
 }
-.vs {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  transition: opacity 0.2s;
-}
 .vs-dot {
   width: 50px;
   height: 50px;
@@ -1063,12 +1029,6 @@ kbd {
 }
 .p {
   font-size: 15px;
-}
-.pa {
-  color: var(--a);
-}
-.pb {
-  color: var(--b-ink);
 }
 .vs-lbl {
   font-size: 10px;
@@ -1094,64 +1054,14 @@ kbd {
   right: 25%;
   transform: translateX(50%);
 }
-.float.up {
-  color: var(--good);
-}
-.float.down {
-  color: var(--bad);
-}
-.float.eq {
-  color: var(--muted);
-}
 .stage.picked .float {
   animation: rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-.stage.picked .vs {
-  opacity: 0;
-}
-.stage.pick-a .card-a {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--a),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-a .card-b {
-  transform: translateX(35%) rotate(8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-b .card-b {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--b),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-b .card-a {
-  transform: translateX(-35%) rotate(-8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-draw .card {
-  transform: scale(0.94);
-  opacity: 0.5;
 }
 .stage.enter .card-a {
   animation: inA 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .stage.enter .card-b {
   animation: inB 0.5s 0.06s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes inA {
-  from {
-    opacity: 0;
-    translate: -26px 12px;
-  }
-}
-@keyframes inB {
-  from {
-    opacity: 0;
-    translate: 26px 12px;
-  }
 }
 @keyframes rise {
   0% {
@@ -1166,12 +1076,6 @@ kbd {
     translate: 0 -44px;
   }
 }
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
 .ctl {
   display: inline-flex;
   align-items: center;
@@ -1179,7 +1083,7 @@ kbd {
   gap: 8px;
   padding: 12px 18px;
   min-height: 48px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
   font-weight: 600;
@@ -1211,14 +1115,6 @@ kbd {
   color: inherit;
   border-color: currentColor;
 }
-.duel-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px 16px;
-  font-size: 13px;
-}
 .empty-duel {
   display: grid;
   justify-items: center;
@@ -1243,7 +1139,7 @@ kbd {
 .ghost-card {
   width: 84px;
   aspect-ratio: 4 / 5;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   display: grid;
   place-items: center;
   font: 800 22px var(--f-display);
@@ -1405,7 +1301,7 @@ kbd {
 .rbar {
   display: block;
   height: 8px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
 }
@@ -1442,7 +1338,7 @@ kbd {
   height: 44px;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 0 14px;
   font-size: 14px;
   white-space: nowrap;
@@ -1690,7 +1586,7 @@ kbd {
   height: 44px;
   padding: 0 20px 0 16px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--on-accent);
   font-weight: 700;
   font-size: 14px;
@@ -1789,7 +1685,7 @@ kbd {
   min-width: 0;
   display: inline-flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
@@ -1799,7 +1695,7 @@ kbd {
   min-height: 24px;
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 5px 10px;
   font: 500 12px / 1 var(--f-mono);
   color: var(--muted);
@@ -1869,7 +1765,7 @@ kbd {
 .cp-seg {
   display: flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
@@ -1877,7 +1773,7 @@ kbd {
   flex: 1;
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 6px 10px;
   font-weight: 600;
   font-size: 13px;
@@ -2012,7 +1908,7 @@ body.dropping .drop-overlay {
   background: var(--ink);
   color: var(--bg);
   padding: 10px 18px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-weight: 600;
   font-size: 14px;
   max-width: calc(100% - 32px);
@@ -2256,7 +2152,7 @@ body.dropping .drop-overlay {
   align-items: center;
   gap: 6px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   color: var(--ink);
   padding: 7px 12px 7px 10px;
@@ -2279,7 +2175,7 @@ body.dropping .drop-overlay {
   gap: 8px;
   margin-top: 12px;
   padding: 6px 6px 6px 16px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   box-shadow: var(--shadow);
   font-size: 14px;
@@ -2567,7 +2463,7 @@ body.dropping .drop-overlay {
 .share-fmts {
   display: flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
@@ -2575,7 +2471,7 @@ body.dropping .drop-overlay {
   flex: 1;
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 6px 10px;
   font-weight: 600;
   font-size: 13px;
@@ -2698,7 +2594,7 @@ body.dropping .drop-overlay {
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: color-mix(in oklab, var(--surface) 60%, transparent);
 }
 .fin-views button,
@@ -2708,7 +2604,7 @@ body.dropping .drop-overlay {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--muted);
   transition:
@@ -2728,7 +2624,7 @@ body.dropping .drop-overlay {
 .fin-bar {
   display: block;
   height: 8px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
 }
@@ -2879,14 +2775,14 @@ body.dropping .drop-overlay {
 .fin-who {
   display: inline-flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
 .fin-who button {
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 5px 12px;
   font-weight: 600;
   font-size: 13px;
@@ -3205,7 +3101,7 @@ svg[data-slope-svg] path {
 }
 .fin-ph-bar {
   height: 12px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, transparent 6px 10px);
 }
@@ -3283,7 +3179,7 @@ svg[data-slope-svg] path {
   }
   .fin-tile {
     padding: 8px;
-    border-radius: 14px;
+    border-radius: var(--r-md);
   }
   .fin-duo {
     padding: 12px 10px 8px;
@@ -3639,13 +3535,13 @@ svg[data-slope-svg] path {
   flex-wrap: wrap;
   gap: 2px;
   padding: 2px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
 }
 .slope-picks button {
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 4px 10px;
   font-weight: 600;
   font-size: 12.5px;

@@ -25,6 +25,8 @@
   --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --r-lg: 20px;
   --r-md: 14px;
+  /* Fully round ends, whatever the height (a pill, a bar, a dot). */
+  --r-pill: 999px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {

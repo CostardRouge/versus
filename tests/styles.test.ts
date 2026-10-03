@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest';
 
 /** What the app's styles promise beyond colors: target sizes, safe areas, visible states (src/styles.css). */
 
-const css = readFileSync(resolve(process.cwd(), 'src/styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const read = (path: string): string =>
+  readFileSync(resolve(process.cwd(), path), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+/** The duel stage both pages share (src/stage.css), imported before each page's own rules. */
+const stage = read('src/stage.css');
+const own = read('src/styles.css');
+const css = `${stage}\n${own}`;
 
 /** The text between the braces of the block that `head` opens (an at-rule), nested blocks included. */
 function at(head: string): string {
@@ -73,10 +78,7 @@ describe('app styles', () => {
 });
 
 describe('home page styles', () => {
-  const landing = readFileSync(resolve(process.cwd(), 'src/landing/landing.css'), 'utf8').replace(
-    /\/\*[\s\S]*?\*\//g,
-    '',
-  );
+  const landing = `${stage}\n${read('src/landing/landing.css')}`;
 
   it('fades the side or card not picked without fading its words', () => {
     for (const sel of ['.final.va .hb', '.final.vb .ha']) {
@@ -90,5 +92,29 @@ describe('home page styles', () => {
 
   it('writes coral and green words in their text variants', () => {
     for (const sel of ['.vsx .xb', '.pb', '.ctl-b']) expect(rule(sel, landing), sel).toContain('color: var(--b-ink);');
+  });
+});
+
+describe('shared styles', () => {
+  const landing = read('src/landing/landing.css');
+  /** Top-level rules, as written: selector and declarations. */
+  const rules = (text: string): string[] =>
+    [...text.replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '').matchAll(/[^{}]+\{[^{}]*\}/g)].map((m) =>
+      m[0].trim(),
+    );
+
+  it('imports the duel stage first in the app and on the home page, and writes it once', () => {
+    expect(own.trimStart().startsWith('@import "./tokens.css";\n@import "./stage.css";')).toBe(true);
+    expect(landing.trimStart().startsWith('@import "../tokens.css";\n@import "../stage.css";')).toBe(true);
+    const shared = rules(stage);
+    expect(shared.length).toBeGreaterThan(10);
+    for (const page of [rules(own), rules(landing)]) expect(shared.filter((r) => page.includes(r))).toEqual([]);
+  });
+
+  it('rounds pills with --r-pill and the token radii with their tokens', () => {
+    for (const text of [stage, own, landing]) {
+      expect(text).not.toMatch(/border-radius: (?:999|99|14|20)px;/);
+    }
+    expect(read('src/tokens.css')).toContain('--r-pill: 999px;');
   });
 });
