@@ -1,5 +1,6 @@
 import { trackEvent } from '../audience';
 import { LIMITS, REPORT_REASONS, revealAt } from '../core/board';
+import { imageSrc } from '../core/model';
 import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
 import { PROTOCOL_VERSION } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
@@ -1070,11 +1071,13 @@ async function jpegURL(res: Response): Promise<string> {
 async function picturesOf(items: readonly Item[], local: Ranking | undefined): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (const it of items) {
-    const mine = local?.items.find((i) => i.id === it.id)?.img;
+    const own = local?.items.find((i) => i.id === it.id);
+    const mine = own ? imageSrc(own) : null;
+    const theirs = imageSrc(it);
     if (mine?.startsWith('data:')) out.set(it.id, mine);
-    else if (it.img?.startsWith('/img/')) {
+    else if (theirs?.startsWith('/img/')) {
       try {
-        const res = await fetch(it.img);
+        const res = await fetch(theirs);
         if (res.ok) out.set(it.id, await jpegURL(res));
       } catch {
         /* the item stays as text */
