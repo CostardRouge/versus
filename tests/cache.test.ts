@@ -4,14 +4,21 @@ import { cacheKey, cacheSeconds } from '../worker/src/cache-rules';
 const version = (id: string) => ({ VERSION: { id } });
 
 describe('the edge cache', () => {
-  it('keys a response by its URL and the deployed version', () => {
-    const url = 'https://versus.example.com/app/b/Ab3dEf7hJk?duel=a.b';
+  it('keys a response by its address, the parameters it depends on and the deployed version', () => {
+    const url = 'https://versus.example.com/app/b/Ab3dEf7hJk?duel=a.b&from=chat';
+    const key = (env: Parameters<typeof cacheKey>[1], params: string[] = ['duel']) => cacheKey(url, env, params);
     // A page cached before a deploy names the old build's files: the next version never reads it.
-    expect(cacheKey(url, version('one'))).not.toBe(cacheKey(url, version('two')));
-    expect(cacheKey(url, version('one'))).toBe(cacheKey(url, version('one')));
-    expect(new URL(cacheKey(url, version('one'))).searchParams.get('duel')).toBe('a.b');
-    // Local tools without the binding: the URL alone.
-    expect(cacheKey(url, {})).toBe(url);
+    expect(key(version('one'))).not.toBe(key(version('two')));
+    expect(key(version('one'))).toBe(key(version('one')));
+    // Only the parameters the response depends on: any other one can't make a new copy at will.
+    expect(new URL(key(version('one'))).searchParams.get('duel')).toBe('a.b');
+    expect(key(version('one'))).not.toContain('from=');
+    expect(cacheKey('https://versus.example.com/app/b/Ab3dEf7hJk?from=x', {}, ['duel'])).toBe(
+      cacheKey('https://versus.example.com/app/b/Ab3dEf7hJk?from=y', {}, ['duel']),
+    );
+    // Local tools without the binding: the address and its parameters alone.
+    expect(key({})).toBe('https://versus.example.com/app/b/Ab3dEf7hJk?duel=a.b');
+    expect(cacheKey(url, {})).toBe('https://versus.example.com/app/b/Ab3dEf7hJk');
   });
 
   it('keeps a response its own time, capped by CACHE_SECONDS, off at 0', () => {

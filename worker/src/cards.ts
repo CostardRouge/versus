@@ -138,5 +138,10 @@ export function rewriteHead(page: Response, p: Preview, pageURL: string): Respon
       .on('meta[property="og:image:height"]', set('content', '630'))
       .on('meta[property="og:image:type"]', set('content', 'image/png'));
   }
-  return rewriter.transform(page);
+  // The shell's validators describe the shell: a revalidation must get the rewritten page again.
+  const out = rewriter.transform(page);
+  const headers = new Headers(out.headers);
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
+  return new Response(out.body, { status: out.status, headers });
 }

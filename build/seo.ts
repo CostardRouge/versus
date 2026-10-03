@@ -462,6 +462,8 @@ export function headersFile(policy?: string): string {
     '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
     '  X-Content-Type-Options: nosniff',
     '  Referrer-Policy: strict-origin-when-cross-origin',
+    // Nothing frames the site; a reported-only policy's frame-ancestors protects nothing yet.
+    '  X-Frame-Options: DENY',
     ...(policy ? [`  Content-Security-Policy-Report-Only: ${policy}`] : []),
     '',
     ...[...Object.values(PAGES).flatMap((p) => [`/${p.path}`, `/${p.file}`]), '/404', '/404.html'].flatMap((path) => [

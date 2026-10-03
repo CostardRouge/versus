@@ -4,24 +4,26 @@ import { errorText, log } from './log';
 
 /**
  * The edge cache (the colo's `caches.default`) for what the public reads most: the Popular list, the template pages,
- * the sitemap and a shared board's page. A Worker's response is not cached by its Cache-Control alone: this keeps a
- * copy keyed by the URL (query included), so a burst of visits costs one build, one registry query, one board woken.
+ * the sitemap, a shared board's page, the cards and pictures from the bucket. A Worker's response is not cached by its
+ * Cache-Control alone: this keeps a copy keyed by the address (`cacheKey`), so a burst of visits costs one build, one
+ * registry query, one board woken.
  */
 
 /**
  * The response for a GET from the cache when it holds one, else built, and kept `seconds` when it is a 200 (the
- * copy says so in its Cache-Control, which the cache reads). Anything else is built every time.
+ * copy says so in its Cache-Control, which the cache reads). Anything else is built every time. `params`: the query
+ * parameters the response depends on.
  */
 export async function cached(
   req: Request,
   env: Env,
   ctx: ExecutionContext,
-  seconds: number,
+  opts: { seconds: number; params?: readonly string[] },
   build: () => Promise<Response>,
 ): Promise<Response> {
-  const ttl = cacheSeconds(env, seconds);
+  const ttl = cacheSeconds(env, opts.seconds);
   if (!ttl || req.method !== 'GET') return build();
-  const key = new Request(cacheKey(req.url, env));
+  const key = new Request(cacheKey(req.url, env, opts.params));
   const cache = caches.default;
   const hit = await cache.match(key);
   if (hit) return hit;

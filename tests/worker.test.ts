@@ -162,11 +162,13 @@ class Client {
     owner?: string,
     pair?: [string, string],
     ip?: string,
+    headers: Record<string, string> = {},
   ): Promise<Client> {
     const url = new URL(`/api/boards/${alias}`, base);
     called.push(`GET ${url.pathname}`);
     url.protocol = 'ws:';
-    const init = ip ? { headers: { 'CF-Connecting-IP': ip } } : undefined;
+    const all = { ...(ip ? { 'CF-Connecting-IP': ip } : {}), ...headers };
+    const init = Object.keys(all).length ? { headers: all } : undefined;
     const ws = new WebSocket(url, init as unknown as string[]);
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve);
@@ -712,7 +714,13 @@ describe('author controls', () => {
     expect(next).not.toBe(owner);
     expect((await api(`/${alias}`, { method: 'PATCH', token: owner, body: { allowChange: false } })).status).toBe(403);
     expect((await api(`/${alias}`, { method: 'PATCH', token: next, body: { allowChange: false } })).status).toBe(200);
-    // The author's open connection keeps its session; a new one says hello with the new token.
+    // A connection opened with the old token is the author's no more: whoever used a leaked link loses the author's
+    // rights at once. Saying hello again with the new token, as the author's app does, gives them back.
+    expect((await author.next('state')).owner).toBe(false);
+    author.send({ t: 'add', item: { label: 'Sneaked in', fill: null, img: null } });
+    expect((await author.next('error')).code).toBe('forbidden');
+    await sleep(ACTION_INTERVAL_MS + 20);
+    author.send({ t: 'hello', voter: AUTHOR, owner: next });
     expect((await author.next('state')).owner).toBe(true);
     author.close();
     const old = await Client.open(alias, AUTHOR, owner);
@@ -873,7 +881,8 @@ describe('one voter per connection', () => {
     await voter.next('pairs');
     voter.send({ t: 'hello', voter: 'someone-else-2' });
     expect((await voter.next('error')).code).toBe('forbidden');
-    // The connection keeps its voter: its next vote is still theirs.
+    // The connection keeps its voter: its next vote is still theirs. A new hello draws new pairs: an action later.
+    await sleep(ACTION_INTERVAL_MS + 20);
     voter.send({ t: 'hello', voter: 'voter-one-1' });
     const { pairs, mine } = await voter.next('state');
     expect(mine).toHaveLength(1);
@@ -1481,6 +1490,122 @@ describe('human checks', () => {
   });
 });
 
+describe('abuse limits', () => {
+  beforeAll(() => configure());
+
+  /** A new voter from `ip` casts their first vote: what the server answers. */
+  const firstVote = async (alias: string, voter: string, ip: string) => {
+    const c = await Client.open(alias, voter, undefined, undefined, ip);
+    const [a, b] = (await c.next('state')).pairs[0] as [string, string];
+    c.send({ t: 'vote', a, b, s: 1 });
+    const answer = await Promise.race([c.next('pairs'), c.next('error')]);
+    c.close();
+    return answer;
+  };
+
+  it('counts an IPv6 address by its /64, and still after the board sleeps', async () => {
+    const { alias } = await publish();
+    for (let i = 0; i < NEW_VOTERS_PER_ADDRESS; i++) {
+      expect(await firstVote(alias, `v6-voter-${i}`, `2001:db8:7:9::${(i + 1).toString(16)}`)).toMatchObject({
+        mine: 1,
+      });
+    }
+    await server.getWorker().evictDurableObject('BoardObject', { name: alias, webSockets: 'hibernate' });
+    // Another address of the same /64, after the board slept: still the same household.
+    expect(await firstVote(alias, 'v6-voter-x', '2001:db8:7:9:ffff:1:2:3')).toMatchObject({ code: 'rate_limited' });
+    expect(await firstVote(alias, 'v6-voter-y', '2001:db8:7:a::1')).toMatchObject({ mine: 1 });
+    // Publishing too: five a minute per /64, not per address.
+    const statuses: number[] = [];
+    for (let i = 1; i <= 6; i++) {
+      const body = { title: 'Pizzas', items, voter: AUTHOR, duels: [] };
+      statuses.push((await api('', { method: 'POST', body, ip: `2001:db8:5:5::${i}` })).status);
+    }
+    expect(statuses).toEqual([201, 201, 201, 201, 201, 429]);
+  });
+
+  it('takes ten suggestions per address on a board open to them; its author adds freely', async () => {
+    const { alias, owner } = await publish({ visitorsAddItems: true });
+    const suggest = async (voter: string, label: string) => {
+      const c = await Client.open(alias, voter, undefined, undefined, '203.0.113.44');
+      await c.next('state');
+      c.send({ t: 'add', item: { label, fill: null, img: null } });
+      const answer = await Promise.race([c.next('state'), c.next('error')]);
+      c.close();
+      return answer.t;
+    };
+    for (let i = 0; i < 10; i++) expect(await suggest(`suggester-${i}`, `Idea ${i}`)).toBe('state');
+    expect(await suggest('suggester-x', 'One idea too many')).toBe('error');
+    const author = await Client.open(alias, AUTHOR, owner, undefined, '203.0.113.44');
+    await author.next('state');
+    author.send({ t: 'add', item: { label: 'From the author', fill: null, img: null } });
+    expect((await author.next('state')).board.items.map((it) => it.label)).toContain('From the author');
+    author.close();
+  });
+
+  it('refuses a socket from another site’s page, and a body not sent as JSON', async () => {
+    const { alias } = await publish();
+    await expect(
+      Client.open(alias, 'framed-voter', undefined, undefined, undefined, { Origin: 'https://evil.example' }),
+    ).rejects.toBeTruthy();
+    const own = await Client.open(alias, 'own-voter', undefined, undefined, undefined, { Origin: base.origin });
+    expect((await own.next('state')).owner).toBe(false);
+    own.close();
+    const plain = await server.fetch(`/api/boards/${alias}/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'CF-Connecting-IP': nextIp() },
+      body: JSON.stringify({ voter: 'own-voter', reason: 'spam' }),
+    });
+    expect(plain.status).toBe(400);
+  });
+
+  it('counts as online only the connections that said hello', async () => {
+    const { alias } = await publish();
+    const url = new URL(`/api/boards/${alias}`, base);
+    url.protocol = 'ws:';
+    const idle = await Promise.all(
+      [1, 2, 3].map(
+        () =>
+          new Promise<WebSocket>((resolve, reject) => {
+            const ws = new WebSocket(url);
+            ws.addEventListener('open', () => resolve(ws));
+            ws.addEventListener('error', reject);
+          }),
+      ),
+    );
+    const voter = await Client.open(alias, 'online-voter');
+    expect((await voter.next('state')).board.counts.online).toBe(1);
+    for (const ws of idle) ws.close();
+    voter.close();
+  });
+
+  it('serves rewritten pages without the shell’s validators, whatever the visitor holds', async () => {
+    const { alias } = await publish();
+    for (const path of [`/app/b/${alias}`, '/t/pizzas/']) {
+      const first = await server.fetch(path);
+      expect(first.headers.get('ETag'), path).toBeNull();
+      const legal = (await server.fetch('/legal/')).headers.get('ETag') ?? '"x"';
+      const again = await server.fetch(path, { headers: { 'If-None-Match': legal } });
+      expect(again.status, path).toBe(200);
+      expect(await again.text(), path).toContain('<html');
+    }
+  });
+
+  it('keeps a hidden ranking’s podium out of Popular until the vote closes', async () => {
+    const { alias, owner } = await publish({ visibility: 'blind' }, [
+      { a: 'p0', b: 'p1', s: 1 },
+      { a: 'p0', b: 'p2', s: 1 },
+    ]);
+    expect((await adminApi(`/boards/${alias}`, { method: 'PATCH', body: { featured: true } })).status).toBe(200);
+    const entry = async () =>
+      ((await (await server.fetch('/api/popular?lang=en')).json()) as { boards: PopularBoard[] }).boards.find(
+        (b) => b.alias === alias,
+      );
+    await vi.waitFor(async () => expect((await entry())?.top).toEqual([]), { timeout: 5000 });
+    expect((await api(`/${alias}/close`, { method: 'POST', token: owner })).status).toBe(200);
+    await vi.waitFor(async () => expect((await entry())?.top?.[0]).toBe('Margherita'), { timeout: 5000 });
+  });
+});
+
 describe('content security policy reports', () => {
   it('takes a browser’s report with nothing to say back, and nothing else at that address', async () => {
     const report = {
@@ -1514,9 +1639,11 @@ describe('edge cache', () => {
     voter.send({ t: 'vote', a, b, s: 1 });
     expect((await voter.next('pairs')).mine).toBe(1);
     voter.close();
-    // The same link a moment later: the copy kept (one board woken, not two); another link is its own.
+    // The same link a moment later: the copy kept (one board woken, not two), whatever other parameter it carries
+    // (they can't make copies at will); a duel's link is its own.
     expect(await text(`/app/b/${alias}`)).toBe(page);
-    expect(await text(`/app/b/${alias}?from=chat`)).toContain('1 vote');
+    expect(await text(`/app/b/${alias}?from=chat`)).toBe(page);
+    expect(await text(`/app/b/${alias}?duel=${a}.${b}`)).not.toBe(page);
     // The Popular list doesn't see a board featured meanwhile, nor does a template page see a new vote.
     const popular = await text('/api/popular?lang=en');
     const template = await text('/t/pizzas/');

@@ -8,7 +8,7 @@ export const legalEn = {
   title: 'Legal notice and privacy',
   intro:
     'Who publishes Versus, who hosts it, and what it knows about you: very little. Your rankings never leave your browser unless you publish one.',
-  updated: 'Last updated on 30 September 2026.',
+  updated: 'Last updated on 3 October 2026.',
   tocAria: 'On this page',
 
   pubTitle: 'Publisher',
@@ -62,7 +62,7 @@ export const legalEn = {
 
   logsTitle: 'Hosting and abuse',
   logs1:
-    'Like any host, Cloudflare (and GitHub for the copy) processes your IP address to deliver the pages and protect the site: see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>. Versus uses it, without keeping it, to limit how often one address can publish or call the server and how many new voters it can bring to a ranking, and keeps technical logs of calls to the server for a few days to fix errors.',
+    'Like any host, Cloudflare (and GitHub for the copy) processes your IP address to deliver the pages and protect the site: see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>. Versus uses it to limit how often one address can publish or call the server, and how many new voters and suggestions it can bring to a ranking: for that last count, a published ranking keeps a short fingerprint of the address, which can’t be turned back into it and differs from one ranking to the next, for ten minutes. Versus keeps technical logs of calls to the server for a few days to fix errors.',
 
   rightsTitle: 'Your rights',
   rights1:

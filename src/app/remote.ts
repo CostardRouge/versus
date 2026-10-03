@@ -246,9 +246,14 @@ export class BoardSocket {
     this.connect('connecting');
   }
 
-  /** The owner token the next connections say hello with (the author made a new one). */
+  /**
+   * The author made a new owner token: the open connection says hello again with it (the server took the author's
+   * rights from every connection opened with the old one), and so do the next ones.
+   */
   setOwner(owner: string): void {
-    if (this.hello.t === 'hello') this.hello = { ...this.hello, owner };
+    if (this.hello.t !== 'hello') return;
+    this.hello = { ...this.hello, owner };
+    this.send(this.hello);
   }
 
   /** False when not connected: the caller keeps its state and tells the user. */

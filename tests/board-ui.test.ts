@@ -919,6 +919,8 @@ describe('author', () => {
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[MINE]).toBe(NEXT);
     expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`http://localhost:3000/b/${MINE}#owner=${NEXT}`);
     expect($('#toast')?.textContent).toBe('New admin link copied. The old one no longer works.');
+    // The open connection says hello again with it: the server took the author's rights from the old token's.
+    expect(ws.sent.at(-1)).toMatchObject({ t: 'hello', owner: NEXT });
     // What follows uses the new token: the author's calls, and the next connection's hello.
     click('[data-action="b-settings"]');
     click('#b-settings [data-action="b-close"]');

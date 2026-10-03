@@ -18,6 +18,7 @@ import {
   DEFAULT_MODERATION,
   DEFAULT_SETTINGS,
   editItem,
+  helloAgain,
   itemId,
   keepsVoter,
   LIMITS,
@@ -121,6 +122,14 @@ describe('cleanText', () => {
     expect(cleanText('Cafe\u0301')).toBe('Café');
     expect(cleanText('Cafe\u0301')).toHaveLength(4);
     expect(cleanText('\u200B \u202E ')).toBe('');
+    // Other format characters and blanks that draw nothing: tags, word joiners, the soft hyphen, fillers.
+    expect(cleanText('a\u{E0041}\u2060\u2063\u00AD\uFFF9b')).toBe('ab');
+    expect(cleanText('\u3164')).toBe('');
+    expect(cleanText('x\u115F\u1160\uFFA0\u2800y')).toBe('xy');
+    expect(cleanText('Line\u2028break\u2029here')).toBe('Line break here');
+    // A flag's tags stay: 🏴 and the region they spell.
+    const england = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}';
+    expect(cleanText(`Go ${england}!`)).toBe(`Go ${england}!`);
   });
 
   it('applies to titles, labels, item edits and report notes', () => {
@@ -702,6 +711,36 @@ describe('sessions', () => {
   let rng = mulberry32(7);
   beforeEach(() => {
     rng = mulberry32(7);
+  });
+
+  it('serves pairs that say nothing of a ranking the voter may not see', () => {
+    const b = board(8, { settings: { ...DEFAULT_SETTINGS, visibility: 'blind' } });
+    // A crowd with a clear order: i0 beats everyone, i1 everyone but i0, and so on.
+    for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) value(castVote(b, V1, `i${i}`, `i${j}`, 1, T0));
+    const C = crowd(b);
+    // Another order, not a mirror (a mirror keeps every distance between positions).
+    const order = [3, 7, 0, 5, 1, 6, 2, 4];
+    const other = {
+      ...C,
+      st: Object.fromEntries(Object.entries(C.st).map(([id, s]) => [id, { ...s, pos: order[s.pos] ?? 0 }])),
+    };
+    const queue = (crowdView: typeof C, owner: boolean) =>
+      openSession(b, crowdView, mulberry32(5), { voter: V2, owner }).queue;
+    // A visitor's pairs are the same whatever the order: they can't be read back into it.
+    expect(queue(other, false)).toEqual(queue(C, false));
+    // The author sees the ranking: their pairs follow it, close positions first.
+    expect(queue(other, true)).not.toEqual(queue(C, true));
+  });
+
+  it('lets a connection say hello again only an action later, and never to pick its next pair', () => {
+    expect(helloAgain(null, T0)).toBe(true);
+    expect(helloAgain({ lastActionAt: T0 }, T0 + ACTION_INTERVAL_MS - 1)).toBe(false);
+    expect(helloAgain({ lastActionAt: T0 }, T0 + ACTION_INTERVAL_MS)).toBe(true);
+    const b = board(6);
+    const first = openSession(b, crowd(b), rng, { voter: V2, wanted: ['i4', 'i5'] });
+    expect(first.queue[0]).toEqual(['i4', 'i5']);
+    const again = openSession(b, crowd(b), mulberry32(9), { voter: V2, prev: first, wanted: ['i0', 'i3'] });
+    expect(again.queue).toEqual(openSession(b, crowd(b), mulberry32(9), { voter: V2, prev: first }).queue);
   });
 
   it('opens with a full queue of distinct pairs', () => {

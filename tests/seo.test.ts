@@ -490,6 +490,8 @@ describe('content security policy', () => {
     expect(withPolicy).toMatch(/^\/\*\n(?: {2}.+\n)*? {2}Content-Security-Policy-Report-Only: default-src 'self'\n/);
     expect(withPolicy).not.toContain('Content-Security-Policy:');
     expect(withPolicy).toContain('  Referrer-Policy: strict-origin-when-cross-origin');
+    // Nothing frames the site, whether the policy is enforced yet or not.
+    expect(headersFile()).toContain('  X-Frame-Options: DENY');
   });
 });
 

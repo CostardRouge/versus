@@ -67,6 +67,8 @@ export const ADD_INTERVAL_MS = 5_000;
 /** New voters one address may bring to a board within NEW_VOTERS_WINDOW_MS (`admitNewVoter`). */
 export const NEW_VOTERS_PER_ADDRESS = 30;
 export const NEW_VOTERS_WINDOW_MS = 10 * 60_000;
+/** Items visitors from one address may suggest to a board within NEW_VOTERS_WINDOW_MS (`admitSuggestion`). */
+export const SUGGESTIONS_PER_ADDRESS = 10;
 /** Inactive published boards are deleted after this many days without activity. */
 export const TTL_DAYS = 60;
 
@@ -100,17 +102,19 @@ export const isRecord = (x: unknown): x is Record<string, unknown> =>
 export const isOutcome = (x: unknown): x is Outcome => x === 0 || x === 0.5 || x === 1;
 
 /**
- * Characters nobody sees or types on purpose: C0 and C1 controls, the zero-width space, the byte order mark, and
- * the explicit bidi marks, embeddings and isolates, which can reorder what follows them (a label that reads
- * backwards, a title that hides its end). The zero-width joiner and non-joiner stay: emoji and scripts need them.
+ * Characters nobody sees or types on purpose: controls, format characters (zero-width spaces, the byte order mark,
+ * the soft hyphen, the bidi marks, embeddings and isolates that can reorder what follows them, tags), and the fillers
+ * and blanks that draw nothing (Hangul fillers, the empty braille pattern). The zero-width joiner and non-joiner stay
+ * (emoji and scripts need them), and so do the tags of a flag (🏴 and its region), kept by the first alternative.
  */
-const INVISIBLE_RE = /[\p{Cc}\u061C\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu;
+const INVISIBLE_RE =
+  /(\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F})|(?![\u200C\u200D])[\p{Cc}\p{Cf}\u115F\u1160\u3164\uFFA0\u2800]/gu;
 
 /** Text from untrusted input as boards keep it: line breaks and tabs as spaces, invisible characters out, NFC, trimmed. */
 export const cleanText = (s: string): string =>
   s
-    .replace(/[\t\n\v\f\r\u0085]/g, ' ')
-    .replace(INVISIBLE_RE, '')
+    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
+    .replace(INVISIBLE_RE, (_, flag?: string) => flag ?? '')
     .normalize('NFC')
     .trim();
 
@@ -712,12 +716,23 @@ export function assignPairs(
   return picked;
 }
 
-/** Tops up the session's queue. Skipped pairs come back only once nothing else is left. */
+/** The crowd's stats with every item at the same position. */
+const unranked = (C: Computed): Computed => ({
+  ...C,
+  st: Object.fromEntries(Object.entries(C.st).map(([id, s]) => [id, { ...s, pos: 0 }])),
+});
+
+/**
+ * Tops up the session's queue. Skipped pairs come back only once nothing else is left. Close positions make a duel
+ * informative, but they are the crowd's ranking: for a voter who may not see it, pairs are chosen without them, or
+ * the pairs served would spell it out.
+ */
 export function refill(board: SharedBoard, session: Session, C: Computed, rng: Rng): void {
   if (board.status !== 'open') {
     session.queue = [];
     return;
   }
+  const crowd = canSeeRanking(board, session.voter, session.owner) ? C : unranked(C);
   const ids = new Set(board.items.map((i) => i.id));
   const mine = board.voters.get(session.voter);
   // Drop pairs that became invalid meanwhile (voted from another tab, item removed).
@@ -726,7 +741,7 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
     const need = LIMITS.queue - session.queue.length;
     if (need <= 0) return;
     const exclude = new Set([...session.queue.map(([a, b]) => pairKey(a, b)), ...skipped]);
-    session.queue.push(...assignPairs(board, session.voter, C, exclude, session.queue.flat(), need, rng));
+    session.queue.push(...assignPairs(board, session.voter, crowd, exclude, session.queue.flat(), need, rng));
   };
   fill(session.skipped);
   if (session.queue.length < LIMITS.queue && session.skipped.length) {
@@ -745,9 +760,16 @@ export interface SessionStart {
    * can't dodge the limits, and so does a human check it passed.
    */
   prev?: Pick<Session, 'lastActionAt' | 'lastAddAt' | 'human'> | null;
-  /** The duel a shared link asked for: it comes first when this voter can still vote on it. */
+  /**
+   * The duel a shared link asked for: it comes first when this voter can still vote on it, on a connection's first
+   * hello only (a later one can't pick the next pair at will).
+   */
   wanted?: readonly [string, string] | null;
 }
+
+/** Whether a connection may say hello again: a new hello draws new pairs, so it counts as an action. */
+export const helloAgain = (prev: Pick<Session, 'lastActionAt'> | null, now: number): boolean =>
+  prev === null || now - prev.lastActionAt >= ACTION_INTERVAL_MS;
 
 /** A new session for a connection, its queue filled. */
 export function openSession(board: SharedBoard, C: Computed, rng: Rng, start: SessionStart): Session {
@@ -756,7 +778,7 @@ export function openSession(board: SharedBoard, C: Computed, rng: Rng, start: Se
   if (prev?.lastAddAt !== undefined) session.lastAddAt = prev.lastAddAt;
   if (prev?.human) session.human = true;
   refill(board, session, C, rng);
-  if (wanted) preferPair(board, session, wanted[0], wanted[1]);
+  if (wanted && !prev) preferPair(board, session, wanted[0], wanted[1]);
   return session;
 }
 
@@ -795,15 +817,43 @@ export const needsCheck = (board: SharedBoard, session: Session, checks: boolean
   checks && board.official && !session.human && voteCount(board, session.voter) === 0;
 
 /**
+ * What limits count an address by: an IPv4 address as it is (an IPv4 address mapped into IPv6 too), an IPv6 address by
+ * its /64 prefix. A machine or a household gets a whole /64: counted by full address, it could change at will.
+ */
+export function addressKey(ip: string): string {
+  const addr = ip.trim().toLowerCase().replace(/%.*$/, '');
+  if (!addr.includes(':')) return addr;
+  const mapped = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(addr);
+  if (mapped) return mapped[1] as string;
+  const [head = '', tail] = addr.split('::');
+  const before = head ? head.split(':') : [];
+  const after = tail ? tail.split(':') : [];
+  const zeros = tail === undefined ? [] : Array<string>(Math.max(0, 8 - before.length - after.length)).fill('0');
+  const groups = [...before, ...zeros, ...after].slice(0, 4).map((g) => g.replace(/^0+(?=.)/, ''));
+  return `${groups.join(':')}::/64`;
+}
+
+/** Times an address did something, `now` added: null when it did it `limit` times within `windowMs` already. */
+function admitFromAddress(times: readonly number[], now: number, limit: number, windowMs: number): number[] | null {
+  const recent = times.filter((t) => now - t < windowMs);
+  return recent.length < limit ? [...recent, now] : null;
+}
+
+/**
  * A voter's first vote on a board, from an address whose earlier first votes there were at `times` (oldest first):
  * the times to keep once this vote is cast, or null when the address brought NEW_VOTERS_PER_ADDRESS voters within
  * NEW_VOTERS_WINDOW_MS already. A voter is a browser (a private window is another one): an address can bring a
  * household or a classroom, not a crowd. Times older than the window are dropped.
  */
-export function admitNewVoter(times: readonly number[], now: number): number[] | null {
-  const recent = times.filter((t) => now - t < NEW_VOTERS_WINDOW_MS);
-  return recent.length < NEW_VOTERS_PER_ADDRESS ? [...recent, now] : null;
-}
+export const admitNewVoter = (times: readonly number[], now: number): number[] | null =>
+  admitFromAddress(times, now, NEW_VOTERS_PER_ADDRESS, NEW_VOTERS_WINDOW_MS);
+
+/**
+ * A visitor's suggestion, from an address whose earlier ones were at `times`: like `admitNewVoter`, with
+ * SUGGESTIONS_PER_ADDRESS. The delay between two additions is a connection's; this holds when there are many.
+ */
+export const admitSuggestion = (times: readonly number[], now: number): number[] | null =>
+  admitFromAddress(times, now, SUGGESTIONS_PER_ADDRESS, NEW_VOTERS_WINDOW_MS);
 
 /** A vote from a connection: rate limited, and only on a pair the server assigned to it. */
 export function sessionVote(

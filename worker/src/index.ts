@@ -1,4 +1,4 @@
-import { ALIAS_RE, isRecord, LIMITS, parsePublish } from '../../src/core/board';
+import { ALIAS_RE, addressKey, isRecord, LIMITS, parsePublish } from '../../src/core/board';
 import { type HttpErrorCode, parseSummaryRequest, type ServerConfig } from '../../src/core/protocol';
 import { CARD_MAX_BYTES, cardKey, cardUpload, parseDuelQuery } from '../../src/core/share';
 import type { BoardLang, Result } from '../../src/core/types';
@@ -98,7 +98,8 @@ const reply = <T>(r: Result<T>): Response => (r.ok ? json(r.value) : error(r.err
 
 const bearer = (req: Request): string => req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? '';
 
-const clientIp = (req: Request): string => req.headers.get('CF-Connecting-IP') ?? 'unknown';
+/** The client's address as limits count it: an IPv6 address by its /64 (`addressKey`). */
+const clientIp = (req: Request): string => addressKey(req.headers.get('CF-Connecting-IP') ?? 'unknown');
 
 /**
  * The body's bytes, or null past `limit`: counted as they arrive, so a body sent without a length (chunked) is cut
@@ -129,14 +130,34 @@ async function readBody(req: Request, limit: number): Promise<Uint8Array | null>
   return bytes;
 }
 
-/** Parsed JSON body, `undefined` when invalid, `null` when too large. */
-async function readJson(req: Request): Promise<unknown> {
+/** A body's bytes parsed as JSON: `undefined` when invalid, `null` when too large. */
+async function parseBody(req: Request): Promise<unknown> {
   const bytes = await readBody(req, MAX_BODY);
   if (!bytes) return null;
   try {
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * A JSON body, sent as JSON: a page of another site can post plain text without asking first (a "simple" request),
+ * never `application/json`, so its visitors' browsers can't report or publish for it. `undefined` otherwise.
+ */
+async function readJson(req: Request): Promise<unknown> {
+  const type = req.headers.get('Content-Type')?.toLowerCase() ?? '';
+  return type.startsWith('application/json') ? parseBody(req) : undefined;
+}
+
+/** Whether a request comes from this site's pages: a browser names its page's origin; scripts and tools name none. */
+function sameOrigin(req: Request): boolean {
+  const origin = req.headers.get('Origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === new URL(req.url).host;
+  } catch {
+    return false;
   }
 }
 
@@ -151,7 +172,8 @@ async function allowed(limit: RateLimit | undefined, req: Request): Promise<bool
  */
 async function cspReport(req: Request, env: Env): Promise<Response> {
   if (await allowed(env.CSP_LIMIT, req)) {
-    const fields = cspFields(await readJson(req));
+    // Browsers send reports as application/csp-report.
+    const fields = cspFields(await parseBody(req));
     if (fields) log('csp', fields);
   }
   return new Response(null, { status: 204 });
@@ -191,7 +213,7 @@ async function popular(req: Request, env: Env, ctx: ExecutionContext): Promise<R
   const db = env.REGISTRY;
   if (!db) return json({ boards: [] });
   const lang: BoardLang = new URL(req.url).searchParams.get('lang') === 'fr' ? 'fr' : 'en';
-  return cached(req, env, ctx, 300, async () => {
+  return cached(req, env, ctx, { seconds: 300, params: ['lang'] }, async () => {
     await ensureTemplates(env, lang);
     const boards = await popularBoards(db, lang, 16);
     return Response.json({ boards }, { headers: { 'Cache-Control': 'public, max-age=300' } });
@@ -271,7 +293,11 @@ async function board(req: Request, env: Env, alias: string, rest: string[]): Pro
   }
   if (action === undefined) {
     if (m === 'GET') {
-      if (req.headers.get('Upgrade')?.toLowerCase() === 'websocket') return stub.fetch(req);
+      if (req.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+        // Another site's page can't open a board's socket from its visitors' browsers (each voting from its own
+        // address).
+        return sameOrigin(req) ? stub.fetch(req) : error('forbidden');
+      }
       const view = await stub.view();
       return view ? json(view) : error('not_found');
     }
@@ -409,14 +435,19 @@ async function boardPage(
   alias: string,
 ): Promise<Response> {
   const url = new URL(req.url);
-  const page = () => assets.fetch(new Request(new URL('/app/', url), req));
+  // The shell alone, without the visitor's conditional headers: what goes back is rewritten, not the stored file.
+  const page = () => assets.fetch(new Request(new URL('/app/', url)));
   if (!ALIAS_RE.test(alias)) return page();
-  return cached(req, env, ctx, 60, async () => {
+  // The only parameter the head depends on: the duel a link names. Others share the copy.
+  const duel = url.searchParams.get('duel');
+  const search = duel === null ? '' : `?duel=${encodeURIComponent(duel)}`;
+  return cached(req, env, ctx, { seconds: 60, params: ['duel'] }, async () => {
+    if (!(await allowed(env.API_LIMIT, req))) return error('rate_limited');
     const app = page();
     const unfurl = await env.BOARDS.getByName(alias).unfurl();
     if (!unfurl) return app;
-    const p = await preview(env.IMAGES, url.origin, alias, unfurl, url.search);
-    return rewriteHead(await app, p, `${url.origin}${url.pathname}${url.search}`);
+    const p = await preview(env.IMAGES, url.origin, alias, unfurl, search);
+    return rewriteHead(await app, p, `${url.origin}${url.pathname}${search}`);
   });
 }
 
@@ -434,14 +465,31 @@ async function site(req: Request, env: Env, ctx: ExecutionContext, parts: string
     const page = await assets.fetch(new Request(new URL('/404', url), req));
     return new Response(page.body, { status: 404, headers: page.headers });
   };
+  // What a miss costs (an object woken, the registry or the bucket read) stays within the API's per-IP limit;
+  // copies from the cache cost nothing.
+  const limited = (build: () => Promise<Response>) => async () =>
+    (await allowed(env.API_LIMIT, req)) ? build() : error('rate_limited');
   if (parts[0] === 'og') {
-    const card = await readCard(env.IMAGES, parts);
-    return card ?? assets.fetch(new Request(new URL('/og.png', url), req));
+    // Card addresses carry their version: a day in the cache.
+    return cached(
+      req,
+      env,
+      ctx,
+      { seconds: 86_400 },
+      limited(async () => (await readCard(env.IMAGES, parts)) ?? assets.fetch(new Request(new URL('/og.png', url)))),
+    );
   }
   if (parts[0] === 'img') {
     const named = parsePicturePath(parts);
-    const picture = named ? await readPicture(env.IMAGES, named.alias, named.id, false) : null;
-    return picture ?? error('not_found');
+    if (!named) return error('not_found');
+    // An approved picture; one removed since leaves the cache within five minutes.
+    return cached(
+      req,
+      env,
+      ctx,
+      { seconds: 300 },
+      limited(async () => (await readPicture(env.IMAGES, named.alias, named.id, false)) ?? error('not_found')),
+    );
   }
   if (url.pathname.startsWith('/app/')) {
     const [, kind, alias, ...more] = parts;
@@ -450,7 +498,13 @@ async function site(req: Request, env: Env, ctx: ExecutionContext, parts: string
   }
   // The sitemap (an hour) and the template pages (five minutes) come from the edge cache when they can.
   if (parts.length === 1 && parts[0] === 'sitemap.xml')
-    return cached(req, env, ctx, 3600, () => sitemap(req, env, assets));
+    return cached(
+      req,
+      env,
+      ctx,
+      { seconds: 3600 },
+      limited(() => sitemap(req, env, assets)),
+    );
   // The template pages: /t/<slug>/ in English, /fr/t/<slug>/ in French.
   const template =
     parts.length === 2 && parts[0] === 't' && parts[1]
@@ -459,7 +513,8 @@ async function site(req: Request, env: Env, ctx: ExecutionContext, parts: string
         ? { lang: 'fr' as const, slug: parts[2] }
         : null;
   if (template) {
-    return cached(req, env, ctx, 300, () => templatePage(req, env, assets, template.lang, template.slug, notFound));
+    const page = () => templatePage(req, env, assets, template.lang, template.slug, notFound);
+    return cached(req, env, ctx, { seconds: 300 }, limited(page));
   }
   return notFound();
 }

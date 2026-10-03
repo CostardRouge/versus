@@ -220,7 +220,8 @@ export async function templatePage(
   // The shell's addresses are relative to the legal page's folder (`../assets/…`): a <base> keeps them right
   // from this page's deeper folder; its own fragment links are made absolute, so the base doesn't move them.
   const shellPath = lang === 'fr' ? '/fr/mentions-legales/' : '/legal/';
-  const shell = await assets.fetch(new Request(new URL(shellPath, url), req));
+  // The shell alone, without the visitor's conditional headers: the page is built from it, not the stored file.
+  const shell = await assets.fetch(new Request(new URL(shellPath, url)));
   const title = `${t.title[lang]} · Versus`;
   const description = t.intro[lang];
   // The site's canonical address comes from the shell's own canonical link (the first head tag rewritten).
@@ -338,6 +339,9 @@ export async function templatePage(
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
   headers.set('X-Robots-Tag', indexable ? 'all' : 'noindex');
+  // The shell's validators describe the shell: a revalidation must get the page again.
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
   return new Response(out.body, { status: shell.ok ? 200 : shell.status, headers });
 }
 
@@ -349,7 +353,7 @@ export async function templatePage(
  */
 export async function sitemap(req: Request, env: Env, assets: Fetcher): Promise<Response> {
   const url = new URL(req.url);
-  const base = await assets.fetch(new Request(new URL('/sitemap.xml', url), req));
+  const base = await assets.fetch(new Request(new URL('/sitemap.xml', url)));
   if (!base.ok) return base;
   let xml = await base.text();
   const db = env.REGISTRY;

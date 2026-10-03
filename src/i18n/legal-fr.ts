@@ -5,7 +5,7 @@ export const legalFr: LegalMessages = {
   title: 'Mentions légales et confidentialité',
   intro:
     'Qui publie Versus, qui l’héberge, et ce qu’il sait de toi : très peu. Tes classements ne quittent jamais ton navigateur, sauf si tu en publies un.',
-  updated: 'Dernière mise à jour le 30 septembre 2026.',
+  updated: 'Dernière mise à jour le 3 octobre 2026.',
   tocAria: 'Sur cette page',
 
   pubTitle: 'Éditeur',
@@ -60,7 +60,7 @@ export const legalFr: LegalMessages = {
 
   logsTitle: 'Hébergement et abus',
   logs1:
-    'Comme tout hébergeur, Cloudflare (et GitHub pour la copie) traite ton adresse IP pour délivrer les pages et protéger le site : voir la <a href="https://www.cloudflare.com/privacypolicy/">politique de confidentialité de Cloudflare</a>. Versus s’en sert, sans la garder, pour limiter la fréquence à laquelle une même adresse peut publier ou appeler le serveur et le nombre de nouveaux votants qu’elle peut amener à un classement, et garde quelques jours des journaux techniques des appels au serveur pour corriger les erreurs.',
+    'Comme tout hébergeur, Cloudflare (et GitHub pour la copie) traite ton adresse IP pour délivrer les pages et protéger le site : voir la <a href="https://www.cloudflare.com/privacypolicy/">politique de confidentialité de Cloudflare</a>. Versus s’en sert pour limiter la fréquence à laquelle une même adresse peut publier ou appeler le serveur, et le nombre de nouveaux votants et de suggestions qu’elle peut amener à un classement : pour ce dernier compte, un classement publié garde dix minutes une courte empreinte de l’adresse, qui ne permet pas de la retrouver et change d’un classement à l’autre. Versus garde quelques jours des journaux techniques des appels au serveur pour corriger les erreurs.',
 
   rightsTitle: 'Tes droits',
   rights1:
