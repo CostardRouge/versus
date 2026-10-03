@@ -1096,6 +1096,20 @@ describe('official templates', () => {
     expect((await server.fetch('/api/popular', { method: 'POST' })).status).toBe(404);
   });
 
+  it('reads the Popular list through its own index', async () => {
+    const env = await server
+      .getWorker<{ REGISTRY: { prepare(sql: string): { bind(...v: unknown[]): { all(): Promise<unknown> } } } }>()
+      .getEnv();
+    // The query of popularBoards (worker/src/registry.ts), as it is written there.
+    const plan = await env.REGISTRY.prepare(
+      `EXPLAIN QUERY PLAN SELECT * FROM boards WHERE hidden = 0 AND lang = ? AND (featured = 1 OR template != '')
+       ORDER BY featured DESC, recent DESC, voters DESC, alias LIMIT ?`,
+    )
+      .bind('en', 16)
+      .all();
+    expect(JSON.stringify(plan)).toContain('boards_popular');
+  });
+
   it('adds the template pages that have a crowd to the sitemap, and asks to index them', async () => {
     const before = await (await server.fetch('/sitemap.xml')).text();
     expect(before).toContain('<urlset');
