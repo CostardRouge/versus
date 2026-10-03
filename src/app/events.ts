@@ -68,7 +68,7 @@ import {
   shareView,
 } from './share';
 import { drawSlopes } from './slope';
-import { cur, S, save, saveSoon } from './state';
+import { cur, S, saveSoon } from './state';
 import { setMethod, setTab, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */

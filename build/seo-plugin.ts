@@ -5,7 +5,18 @@ import { LINKS } from '../src/app/about.ts';
 import { landingBody, landingBoot } from '../src/landing/markup.ts';
 import { legalBody, legalBoot } from '../src/legal/markup.ts';
 import { type AnalyticsConfig, analyticsConfig, analyticsTag } from './analytics.ts';
-import { aboutStatic, generatedFiles, headTags, noscriptHtml, rootFrom, sitePath, siteUrl } from './seo.ts';
+import {
+  aboutStatic,
+  contentPolicy,
+  generatedFiles,
+  headersFile,
+  headTags,
+  noscriptHtml,
+  rootFrom,
+  scriptHashes,
+  sitePath,
+  siteUrl,
+} from './seo.ts';
 import { CONTACT, PAGES, type PageKey } from './site.ts';
 
 /** Placeholders in the pages, replaced at dev and build time. */
@@ -105,6 +116,7 @@ export function seo(): Plugin {
   let root = process.cwd();
   let worker = false;
   let publish = false;
+  let api: string | null = null;
   let analytics: AnalyticsConfig | null = null;
   return {
     name: 'versus-seo',
@@ -115,6 +127,7 @@ export function seo(): Plugin {
       root = config.root;
       worker = config.mode === 'worker';
       publish = config.env.VITE_API_URL !== undefined;
+      api = config.env.VITE_API_URL ?? null;
       analytics = analyticsConfig(config.env, { production: config.isProduction, url });
     },
     transformIndexHtml: {
@@ -144,10 +157,22 @@ export function seo(): Plugin {
     configurePreviewServer(server) {
       server.middlewares.use(appViews);
     },
-    generateBundle() {
-      for (const [fileName, file] of Object.entries(generatedFiles(url, { lastmod: lastmod(), worker }))) {
-        this.emitFile({ type: 'asset', fileName, source: file.body });
-      }
+    generateBundle: {
+      // After the HTML plugin: the pages are final, so the policy can list their inline scripts' hashes.
+      order: 'post',
+      handler(_options, bundle) {
+        const files = generatedFiles(url, { lastmod: lastmod(), worker });
+        if (files._headers) {
+          const pages = Object.values(bundle).flatMap((out) =>
+            out.type === 'asset' && out.fileName.endsWith('.html') ? [String(out.source)] : [],
+          );
+          const scripts = [...pages, files['404.html']?.body ?? ''].flatMap(scriptHashes);
+          const policy = contentPolicy({ scripts, analytics: analytics?.src ?? null, api });
+          files._headers = { ...files._headers, body: headersFile(policy) };
+        }
+        for (const [fileName, file] of Object.entries(files))
+          this.emitFile({ type: 'asset', fileName, source: file.body });
+      },
     },
   };
 }

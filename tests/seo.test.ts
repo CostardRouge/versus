@@ -1,10 +1,14 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   aboutStatic,
+  CSP_REPORT_PATH,
+  contentPolicy,
   generatedFiles,
   graph,
+  headersFile,
   headTags,
   jsonLd,
   legalGraph,
@@ -16,6 +20,7 @@ import {
   ROBOTS_ADMIN,
   ROBOTS_APP,
   rootFrom,
+  scriptHashes,
   sitePath,
   siteUrl,
 } from '../build/seo';
@@ -435,5 +440,52 @@ describe('generated files', () => {
     expect(worker._headers?.body).toContain('/admin/*\n  X-Robots-Tag: noindex');
     expect(worker._headers?.body).toContain('/sitemap.xml\n  Content-Type: application/xml; charset=utf-8');
     expect(worker._headers?.body).toContain('/404\n  Content-Type: text/html; charset=utf-8');
+  });
+});
+
+describe('content security policy', () => {
+  const sha = (code: string) => `'sha256-${createHash('sha256').update(code).digest('base64')}'`;
+
+  it('hashes the inline scripts a page runs, not its bundles or its data', () => {
+    const page = [
+      '<script>document.documentElement.dataset.theme = "dark";</script>',
+      '<script type="module" crossorigin src="/assets/app-1.js"></script>',
+      '<script type="application/ld+json">{"@type":"WebSite"}</script>',
+      '<script defer src="https://insight.example.com/s.js" data-website-id="x"></script>',
+      '<script type="module">\n  start();\n</script>',
+    ].join('\n');
+    expect(scriptHashes(page)).toEqual([
+      sha('document.documentElement.dataset.theme = "dark";'),
+      sha('\n  start();\n'),
+    ]);
+    expect(scriptHashes(notFoundHtml(URL_))).toHaveLength(1);
+  });
+
+  it('allows this site, the hashed scripts, the tracker and Turnstile, and nothing else runs or frames', () => {
+    const policy = contentPolicy({
+      scripts: ["'sha256-b'", "'sha256-a'", "'sha256-b'"],
+      analytics: 'https://insight.example.com/s.js',
+      api: 'https://api.example.com/api',
+    });
+    const rule = (name: string) => policy.split('; ').find((r) => r.startsWith(`${name} `));
+    expect(rule('script-src')).toBe(
+      "script-src 'self' 'sha256-a' 'sha256-b' https://insight.example.com https://challenges.cloudflare.com",
+    );
+    expect(rule('connect-src')).toBe("connect-src 'self' https://insight.example.com https://api.example.com");
+    expect(rule('object-src')).toBe("object-src 'none'");
+    expect(rule('frame-ancestors')).toBe("frame-ancestors 'none'");
+    expect(rule('report-uri')).toBe(`report-uri ${CSP_REPORT_PATH}`);
+    // A same-origin API (a relative address) and no tracker add nothing.
+    const plain = contentPolicy({ scripts: [], analytics: null, api: '/api' });
+    expect(plain).toContain("connect-src 'self';");
+    expect(plain).toContain("script-src 'self' https://challenges.cloudflare.com;");
+  });
+
+  it('is reported only, on every path, when the build gives it', () => {
+    expect(headersFile()).not.toContain('Content-Security-Policy');
+    const withPolicy = headersFile("default-src 'self'");
+    expect(withPolicy).toMatch(/^\/\*\n(?: {2}.+\n)*? {2}Content-Security-Policy-Report-Only: default-src 'self'\n/);
+    expect(withPolicy).not.toContain('Content-Security-Policy:');
+    expect(withPolicy).toContain('  Referrer-Policy: strict-origin-when-cross-origin');
   });
 });

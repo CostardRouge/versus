@@ -265,7 +265,13 @@ describe('compute, kept per history', () => {
     const checks: [string, () => void][] = [
       ['a duel', () => pushDuel(r, a.id, b.id, 0)],
       ['an undo', () => undoDuel(r)],
-      ['an undo then another duel', () => (undoDuel(r), pushDuel(r, b.id, a.id, 0.5))],
+      [
+        'an undo then another duel',
+        () => {
+          undoDuel(r);
+          pushDuel(r, b.id, a.id, 0.5);
+        },
+      ],
       ['an item added in place', () => r.items.push(mkItem('E'))],
       ['an item replaced in place', () => (r.items[4] = mkItem('F'))],
       ['an item removed', () => (r.items = r.items.filter((i) => i.label !== 'F'))],

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { aboutHTML } from '../src/app/about.ts';
 import { en } from '../src/i18n/en.ts';
 import {
@@ -396,16 +397,69 @@ export function llmsTxt(url: string): string {
   ].join('\n');
 }
 
+/** The scripts a page runs from its own HTML (JSON data aside), as the hashes a content security policy allows. */
+export function scriptHashes(html: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g)) {
+    const attrs = m[1] ?? '';
+    if (/\bsrc=/.test(attrs) || /type="application\/(?:ld\+)?json"/.test(attrs)) continue;
+    out.push(
+      `'sha256-${createHash('sha256')
+        .update(m[2] ?? '')
+        .digest('base64')}'`,
+    );
+  }
+  return out;
+}
+
+/** Where the policy's violations are sent (the Worker logs them). */
+export const CSP_REPORT_PATH = '/api/csp-report';
+
+/**
+ * The content security policy of every page: scripts from this site (the inline ones by hash), the measurement
+ * tracker and Turnstile; pictures, fonts and data from this site, data: and blob: URLs (images kept as data URLs,
+ * shared cards); no plugin, no framing. Inline style attributes stay allowed: the views set colors with them.
+ */
+export function contentPolicy(opts: {
+  scripts: readonly string[];
+  analytics: string | null;
+  api: string | null;
+}): string {
+  const turnstile = 'https://challenges.cloudflare.com';
+  const tracker = opts.analytics ? new URL(opts.analytics).origin : null;
+  const api = opts.api && /^https?:\/\//.test(opts.api) ? new URL(opts.api).origin : null;
+  const list = (...xs: (string | null)[]) => xs.filter(Boolean).join(' ');
+  return [
+    "default-src 'self'",
+    `script-src ${list("'self'", ...[...new Set(opts.scripts)].sort(), tracker, turnstile)}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    `connect-src ${list("'self'", tracker, api)}`,
+    `frame-src ${turnstile}`,
+    "worker-src 'self'",
+    "manifest-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    `report-uri ${CSP_REPORT_PATH}`,
+  ].join('; ');
+}
+
 /**
  * Cloudflare static assets headers (Worker build only; GitHub Pages ignores the file). Charset stated for the
  * HTML, which the platform omits otherwise; hashed bundles cached for a year; HSTS without preload, which is
- * a separate, hard-to-undo decision.
+ * a separate, hard-to-undo decision. The content security policy is first reported only (`policy`, filled in
+ * once the pages are built: their inline scripts' hashes), to be enforced once its reports are clean.
  */
-export function headersFile(): string {
+export function headersFile(policy?: string): string {
   return [
     '/*',
     '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
     '  X-Content-Type-Options: nosniff',
+    '  Referrer-Policy: strict-origin-when-cross-origin',
+    ...(policy ? [`  Content-Security-Policy-Report-Only: ${policy}`] : []),
     '',
     ...[...Object.values(PAGES).flatMap((p) => [`/${p.path}`, `/${p.file}`]), '/404', '/404.html'].flatMap((path) => [
       path,
