@@ -43,6 +43,7 @@ import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
   changeLang,
+  closeNotice,
   deleteRank,
   duplicateRank,
   goBack,
@@ -105,6 +106,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'back':
       goBack();
+      break;
+    case 'notice-close':
+      closeNotice();
       break;
     case 'tab': {
       const tab = el.dataset.tab;

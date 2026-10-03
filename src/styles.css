@@ -452,6 +452,24 @@ kbd {
   margin: 18px 0 0;
   font-size: 13px;
 }
+/* An address that led nowhere: a word at the top of the gallery, until closed */
+.g-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-top: 22px;
+  padding: 14px 18px;
+  border: 1px solid var(--field);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  font-size: 14px;
+}
+.g-notice p {
+  margin: 0;
+  flex: 1 1 32ch;
+}
 /* The iOS home-screen app starts empty: how to bring the rankings from Safari */
 .g-note {
   display: flex;

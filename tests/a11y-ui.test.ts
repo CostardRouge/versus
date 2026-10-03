@@ -528,3 +528,49 @@ describe('figures a screen reader can tell apart', () => {
     expect(neck?.getAttribute('aria-label')).toBe('Neck and neck with the one above');
   });
 });
+
+describe('Back and addresses', () => {
+  const popTo = (path: string) => {
+    history.pushState(null, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
+  it('steps back to the gallery a view was opened from, rather than piling up an entry', async () => {
+    popTo('/');
+    const back = vi.spyOn(history, 'back');
+    click('.rcard [data-action="open"][data-id="demo-accent"][data-tab="duel"]');
+    expect(history.state).toEqual({ fromGallery: true });
+    const length = history.length;
+    click('.ws-head [data-action="back"]');
+    expect(back).toHaveBeenCalledOnce();
+    expect(history.length).toBe(length);
+    expect(location.pathname).toBe('/');
+    expect($('#view h1').textContent).toBe('Your rankings');
+    await vi.advanceTimersByTimeAsync(50);
+    expect(location.pathname).toBe('/');
+    expect($('#view h1').textContent).toBe('Your rankings');
+    back.mockRestore();
+  });
+
+  it('adds the gallery’s entry for a view reached straight from its address', () => {
+    history.replaceState(null, '', '/demo/accent');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const back = vi.spyOn(history, 'back');
+    click('.ws-head [data-action="back"]');
+    expect(back).not.toHaveBeenCalled();
+    expect(location.pathname).toBe('/');
+    back.mockRestore();
+  });
+
+  it('keeps a notice in the gallery for an address that leads nowhere, until closed', () => {
+    popTo('/nowhere/at/all');
+    expect(location.pathname).toBe('/');
+    const notice = $('.g-notice');
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(notice.textContent).toContain('This address leads nowhere in Versus.');
+    vi.advanceTimersByTime(60000);
+    expect(document.querySelector('.g-notice')).not.toBeNull();
+    click('[data-action="notice-close"]');
+    expect(document.querySelector('.g-notice')).toBeNull();
+  });
+});

@@ -306,7 +306,8 @@ describe('addresses', () => {
     expect(title()).toBe(mine.title);
     expect(location.pathname).toBe(`/r/${mine.id}/items`);
     back('/r/elsewhere1');
-    expect($('#toast')?.textContent).toContain('This ranking isn’t in this browser');
+    // A notice that stays in the gallery, not a toast gone in seconds.
+    expect($('.g-notice')?.textContent).toContain('This ranking isn’t in this browser');
     expect(location.pathname).toBe('/');
     expect($('h1')?.textContent).toBe('Your rankings');
   });

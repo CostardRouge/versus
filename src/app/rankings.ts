@@ -12,13 +12,13 @@ import { enterBoard, leaveBoard, renderBoard } from './board';
 import { cp } from './color';
 import { $, ask, focusOn, keepFocus, narrow, toast } from './dom';
 import { clearEnding } from './ending';
-import { galleryHTML } from './gallery';
+import { galleryHTML, setNotice } from './gallery';
 import { applyStatic, viewTitle } from './header';
 import { renderList } from './items';
 import { refreshJoined } from './joined';
 import { refreshPopular } from './popular';
 import { online } from './remote';
-import { currentPath, routeURL, stashedURL, syncURL, takeStash } from './router';
+import { backIsGallery, currentPath, routeURL, stashedURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
 import { savePrefs } from './storage';
 import { setTab, wsHTML } from './workspace';
@@ -78,6 +78,7 @@ export function open(id: string | undefined, tab: string | undefined, opts: { re
     return;
   }
   S.route = { view: 'rank', id, tab: tab === 'results' || tab === 'items' ? tab : 'duel' };
+  setNotice(null);
   syncURL(opts.replace ? 'replace' : 'push');
   render();
   focusView();
@@ -188,13 +189,25 @@ export async function deleteRank(id: string | undefined): Promise<void> {
   toast(t('deleted'));
 }
 
+/**
+ * Back to the gallery. A view opened from it steps back to its entry, as the browser's Back would: a new one
+ * would make Back loop to the view just left. The gallery and its address show at once; the history follows.
+ */
 export function goBack(): void {
   if (S.route.view === 'gallery') return;
+  const back = backIsGallery();
   S.route = { view: 'gallery', tab: 'duel' };
-  syncURL();
+  syncURL(back ? 'replace' : 'push');
+  if (back) history.back();
   render();
   focusView();
   window.scrollTo?.(0, 0);
+}
+
+/** Closes the gallery's notice. */
+export function closeNotice(): void {
+  setNotice(null);
+  render();
 }
 
 /**
@@ -207,6 +220,7 @@ export function openBoard(
 ): void {
   if (!alias) return;
   S.route = { view: 'board', alias, tab: 'duel' };
+  setNotice(null);
   syncURL(opts.replace ? 'replace' : 'push');
   enterBoard(alias, online(), opts.duel ?? null, opts.owner ?? null);
   render();
@@ -254,8 +268,9 @@ function route(): void {
       open(r.id, route.tab, { replace: true });
       return;
     }
-    toast(t('rankNotHere'));
   }
+  // What the address named isn't here: the gallery says so until closed, not in a toast gone in seconds.
+  if (route?.view !== 'gallery') setNotice(t(route ? 'rankNotHere' : 'pathUnknown'));
   clearEnding();
   S.route = { view: 'gallery', tab: 'duel' };
   syncURL('replace');

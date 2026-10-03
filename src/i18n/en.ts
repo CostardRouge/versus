@@ -456,6 +456,7 @@ export const en = {
   endStableLive: 'Ranking stable after {duels}: see it, or keep dueling.',
   cpTypeAria: 'Solid or gradient',
   differs: 'differs from the active method',
+  pathUnknown: 'This address leads nowhere in Versus. Here are your rankings.',
   recordText: (v: Vars) =>
     [
       `${v.w} ${Number(v.w) === 1 ? 'win' : 'wins'}`,

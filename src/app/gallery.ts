@@ -165,6 +165,16 @@ function dataHTML(): string {
 const iosNoteHTML = (): string =>
   `<div class="g-note"><p><b>${t('iosNoteTitle')}</b> ${t('iosNoteBody')}</p><button class="btn sm" type="button" data-action="import">${t('importBtn')}</button></div>`;
 
+/** A word that stays at the top of the gallery until closed or another view opens (an address that led nowhere). */
+let notice: string | null = null;
+export function setNotice(msg: string | null): void {
+  notice = msg;
+}
+const noticeHTML = (): string =>
+  notice
+    ? `<div class="g-notice" role="status"><p>${esc(notice)}</p><button class="btn sm" type="button" data-action="notice-close">${t('gotIt')}</button></div>`
+    : '';
+
 export function galleryHTML(): string {
   const mine = S.ranks.filter((r) => !r.demo).sort((a, b) => b.updated - a.updated);
   const joined = sortJoined(S.joined);
@@ -205,7 +215,7 @@ export function galleryHTML(): string {
     }`;
   const note = iosHomeScreen() && !mine.length && !joined.length ? iosNoteHTML() : '';
   return `<section class="gallery">
-    ${note}${top}
+    ${noticeHTML()}${note}${top}
     ${dataHTML()}
     ${popularSec}
     <div class="sec-head demo-head">

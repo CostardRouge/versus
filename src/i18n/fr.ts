@@ -465,6 +465,7 @@ export const fr: Messages = {
   endStableLive: 'Classement stable après {duels} : regarde-le, ou continue les duels.',
   cpTypeAria: 'Unie ou dégradé',
   differs: 'diffère de la méthode active',
+  pathUnknown: 'Cette adresse ne mène nulle part dans Versus. Voici tes classements.',
   recordText: (v: Vars) =>
     [
       `${v.w} ${Number(v.w) > 1 ? 'victoires' : 'victoire'}`,
