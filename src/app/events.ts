@@ -68,7 +68,7 @@ import {
   shareView,
 } from './share';
 import { drawSlopes } from './slope';
-import { cur, S, save } from './state';
+import { cur, S, save, saveSoon } from './state';
 import { setMethod, setTab, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */
@@ -314,7 +314,7 @@ function onInput(e: Event): void {
     if (r) {
       r.title = tg.value.trim() || t('untitled');
       r.updated = Date.now();
-      save();
+      saveSoon();
     }
     return;
   }

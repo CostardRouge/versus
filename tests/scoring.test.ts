@@ -17,7 +17,7 @@ import {
   undoDuel,
   validHistory,
 } from '../src/core/scoring';
-import type { MethodKey, Ranking } from '../src/core/types';
+import type { Item, MethodKey, Ranking } from '../src/core/types';
 import { mulberry32 } from '../src/core/util';
 
 /** A ranking whose hidden preference order is the order of `labels`. */
@@ -246,5 +246,120 @@ describe('finishedBy', () => {
     expect(finishedBy(r, before, after)).toBe('stable');
     pushDuel(r, a, b, 1);
     expect(finishedBy(r, after, compute(r))).toBeNull();
+  });
+});
+
+describe('compute, kept per history', () => {
+  /** The same ranking computed from scratch: copies of its history and items share nothing with it. */
+  const fresh = (r: Ranking, upto?: number) =>
+    compute({ ...r, history: r.history.map((d) => ({ ...d })), items: [...r.items] }, upto);
+  const plain = (C: ReturnType<typeof compute>) => ({ ...C, order: C.order.map((i) => i.id) });
+
+  it('gives back the same computation until the history, the items or the method change', () => {
+    const r = ranking(['A', 'B', 'C', 'D'], 'bt');
+    playConsistently(r, ['A', 'B', 'C', 'D'], 8);
+    const C = compute(r);
+    expect(compute(r)).toBe(C);
+    expect(compute({ ...r, method: 'bt' })).toBe(C);
+    const [a, b] = r.items as [Item, Item];
+    const checks: [string, () => void][] = [
+      ['a duel', () => pushDuel(r, a.id, b.id, 0)],
+      ['an undo', () => undoDuel(r)],
+      ['an undo then another duel', () => (undoDuel(r), pushDuel(r, b.id, a.id, 0.5))],
+      ['an item added in place', () => r.items.push(mkItem('E'))],
+      ['an item replaced in place', () => (r.items[4] = mkItem('F'))],
+      ['an item removed', () => (r.items = r.items.filter((i) => i.label !== 'F'))],
+      ['the method', () => (r.method = 'elo')],
+    ];
+    for (const [what, change] of checks) {
+      const before = compute(r);
+      change();
+      const after = compute(r);
+      expect(after, what).not.toBe(before);
+      expect(plain(after), what).toEqual(plain(fresh(r)));
+    }
+    // An earlier point of the history is kept apart from the whole of it, and still holds after a new duel.
+    expect(plain(compute(r, 3))).toEqual(plain(fresh(r, 3)));
+    expect(compute(r, 3)).not.toBe(compute(r));
+    const n = r.history.length;
+    const before = compute(r);
+    pushDuel(r, a.id, b.id, 1);
+    expect(compute(r, n)).toBe(before);
+  });
+});
+
+describe('Bradley-Terry on flat arrays', () => {
+  /** The fit as it was written before (Maps and arrays allocated at each iteration): the scores must not move. */
+  function reference(r: Ranking): Record<string, { score: number; se: number }> {
+    const n = r.items.length;
+    const ix: Record<string, number> = {};
+    r.items.forEach((it, i) => {
+      ix[it.id] = i;
+    });
+    const wins = new Array<number>(n).fill(0.5);
+    const adj = r.items.map(() => new Map<number, number>());
+    for (const h of validHistory(r)) {
+      const a = ix[h.a] as number;
+      const b = ix[h.b] as number;
+      wins[a] = (wins[a] as number) + h.s;
+      wins[b] = (wins[b] as number) + 1 - h.s;
+      adj[a]?.set(b, (adj[a]?.get(b) ?? 0) + 1);
+      adj[b]?.set(a, (adj[b]?.get(a) ?? 0) + 1);
+    }
+    let p = new Array<number>(n).fill(1);
+    for (let iter = 0; iter < 400; iter++) {
+      const prev = p;
+      const next = prev.map((pi, i) => {
+        let den = 1 / (pi + 1);
+        adj[i]?.forEach((c, j) => {
+          den += c / (pi + (prev[j] as number));
+        });
+        return (wins[i] as number) / den;
+      });
+      let diff = 0;
+      next.forEach((v, i) => {
+        diff = Math.max(diff, Math.abs(Math.log(v / (prev[i] as number))));
+      });
+      p = next;
+      if (diff < 1e-7) break;
+    }
+    const LOG = 400 / Math.LN10;
+    return Object.fromEntries(
+      r.items.map((item, i) => {
+        const pi = p[i] as number;
+        let info = pi / (pi + 1) ** 2;
+        adj[i]?.forEach((c, j) => {
+          const pj = p[j] as number;
+          info += (c * pi * pj) / (pi + pj) ** 2;
+        });
+        return [item.id, { score: 1500 + LOG * Math.log(pi), se: LOG / Math.sqrt(info) }];
+      }),
+    );
+  }
+
+  it('gives exactly the same scores and margins, to the last bit', () => {
+    for (const [n, duels, seed] of [
+      [2, 1, 1],
+      [6, 40, 2],
+      [30, 180, 3],
+      [100, 800, 4],
+    ] as const) {
+      const rng = mulberry32(seed);
+      const r = ranking(
+        Array.from({ length: n }, (_, i) => `I${i}`),
+        'bt',
+      );
+      for (let k = 0; k < duels; k++) {
+        const a = r.items[Math.floor(rng() * n)] as Item;
+        const b = r.items[Math.floor(rng() * n)] as Item;
+        if (a !== b) pushDuel(r, a.id, b.id, ([0, 0.5, 1] as const)[Math.floor(rng() * 3)] as 0 | 0.5 | 1);
+      }
+      const want = reference(r);
+      const C = compute(r);
+      for (const it of r.items) {
+        expect(C.st[it.id]?.score, `${n}/${it.id}`).toBe(want[it.id]?.score);
+        expect(C.st[it.id]?.se, `${n}/${it.id}`).toBe(want[it.id]?.se);
+      }
+    }
   });
 });

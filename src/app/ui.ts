@@ -23,13 +23,22 @@ export function mount(d: Document): void {
   S.voter = loadVoter(() => voterId(crypto.getRandomValues(new Uint8Array(22))));
   const lang: Lang = detectLang(S.prefs.lang, navigator.language);
   setI18nLang(lang);
-  S.ranks = loadRanks(() => setTimeout(() => toast(t('storageDamaged')), 0)) ?? loadLegacyRanks();
+  let damaged = false;
+  const stored = loadRanks(() => {
+    damaged = true;
+    setTimeout(() => toast(t('storageDamaged')), 0);
+  });
+  S.ranks = stored ?? loadLegacyRanks();
   S.joined = loadJoined();
+  // Written back only when something changed: every ranking is rewritten, images included.
+  let changed = stored === null || damaged;
   for (const demo of DEMOS) {
-    if (!S.ranks.some((r) => r.id === demo.id)) S.ranks.push(buildDemo(demo, lang));
+    if (S.ranks.some((r) => r.id === demo.id)) continue;
+    S.ranks.push(buildDemo(demo, lang));
+    changed = true;
   }
-  relabelDemos(S.ranks, lang === 'fr' ? 'en' : 'fr', lang);
-  save();
+  if (relabelDemos(S.ranks, lang === 'fr' ? 'en' : 'fr', lang)) changed = true;
+  if (changed) save();
   bindEvents();
   initPwa();
   applyStatic();

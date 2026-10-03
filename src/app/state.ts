@@ -32,10 +32,18 @@ export const cur = (): Ranking | undefined =>
 export const stat = (C: Computed, id: string): ItemStats => C.st[id] as ItemStats;
 
 export function save(): void {
+  clearTimeout(soon);
   if (!saveRanks(S.ranks) && !warned) {
     warned = true;
     toast(t('storageWarn'));
   }
+}
+
+let soon: ReturnType<typeof setTimeout> | undefined;
+/** Saves a moment after the last call: a title typed is written once, not at every key (every ranking is rewritten). */
+export function saveSoon(): void {
+  clearTimeout(soon);
+  soon = setTimeout(save, 400);
 }
 
 /** Everything this browser keeps, for export and import (src/core/backup.ts). */

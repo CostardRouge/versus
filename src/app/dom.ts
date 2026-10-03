@@ -139,7 +139,11 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * An item's small square: its color, its picture, or its initials. A picture from the server (a published board's,
+ * up to 250 KB) waits until its row is near the screen, so a long list doesn't hold back the duel's pictures.
+ */
 export const thumbHTML = (it: Item): string =>
   it.fill
     ? `<span class="thumb" style="background:${fillCSS(it.fill)}"></span>`
-    : `<span class="thumb" style="--h:${it.h}">${it.img ? `<img src="${it.img}" alt="">` : esc(initials(it.label))}</span>`;
+    : `<span class="thumb" style="--h:${it.h}">${it.img ? `<img src="${esc(it.img)}" alt=""${it.img.startsWith('data:') ? '' : ' loading="lazy" decoding="async"'}>` : esc(initials(it.label))}</span>`;

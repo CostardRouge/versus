@@ -167,7 +167,9 @@ export function choose(side: string | undefined): void {
   const C1 = compute(r);
   const done = finishedBy(r, C0, C1);
   if (done) startEnding(r, done);
+  // The next pair is drawn now, so that one write keeps both the duel and the duel a reload shows.
   r.pair = null;
+  if (!done) ensurePair(r, C1);
   save();
   renderList(r, true);
   const st = $('#stage');

@@ -19,6 +19,7 @@ import {
   sitePath,
   siteUrl,
 } from '../build/seo';
+import { preloadFonts } from '../build/seo-plugin';
 import {
   ADMIN_TITLE,
   DEFAULT_SITE_URL,
@@ -387,6 +388,22 @@ describe('generated files', () => {
     expect(html).toContain(`href="${URL_}"`);
     expect(html).toContain(`href="${URL_}fr/"`);
     expect(html).toContain(`href="${URL_}app/"`);
+  });
+
+  it('preloads the display font on the home pages only, the body font everywhere', () => {
+    const bricolage = 'assets/bricolage-grotesque-latin-opsz-normal-Cre6nC2_.woff2';
+    const figtree = 'assets/figtree-latin-wght-normal-D_ZTVpCC.woff2';
+    expect(preloadFonts('home').map((re) => re.test(bricolage) || re.test(figtree))).toEqual([true, true]);
+    for (const kind of ['app', 'legal', 'admin']) {
+      expect(
+        preloadFonts(kind).some((re) => re.test(bricolage)),
+        kind,
+      ).toBe(false);
+      expect(
+        preloadFonts(kind).some((re) => re.test(figtree)),
+        kind,
+      ).toBe(true);
+    }
   });
 
   it('sends a deep path to its app folder once, and never loops on a folder that doesn’t exist', () => {

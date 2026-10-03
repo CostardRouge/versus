@@ -31,10 +31,32 @@ const HOMES: Record<string, string> = {
 };
 
 self.addEventListener('install', (event) => {
-  // `reload` skips the HTTP cache, which could still hold the previous deploy's page.
-  const requests = [...PRECACHED].map((url) => new Request(url, { cache: 'reload' }));
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(requests)));
+  event.waitUntil(precache());
 });
+
+/**
+ * Stores the files of this version. Files under assets/ have hashed names: one the previous version already holds
+ * is the same file, copied over instead of downloaded again (a deploy changes a few of them, not the fonts). The
+ * rest is fetched with `reload`, which skips the HTTP cache: it could still hold the previous deploy's page.
+ */
+async function precache(): Promise<void> {
+  const cache = await caches.open(CACHE);
+  const previous = await Promise.all(
+    (await caches.keys()).filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.open(k)),
+  );
+  const fetched: Request[] = [];
+  for (const url of PRECACHED) {
+    const hashed = new URL(url).pathname.startsWith(`${scope.pathname}assets/`);
+    let kept: Response | undefined;
+    for (const old of hashed ? previous : []) {
+      kept = await old.match(url);
+      if (kept) break;
+    }
+    if (kept) await cache.put(url, kept);
+    else fetched.push(new Request(url, { cache: 'reload' }));
+  }
+  await cache.addAll(fetched);
+}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(

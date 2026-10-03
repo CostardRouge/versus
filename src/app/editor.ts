@@ -64,7 +64,11 @@ function swatchHTML(it: Item, editable: boolean): string {
   return `<button class="thumb thumb-btn" type="button" data-action="edit-color" data-id="${esc(it.id)}" style="background:${fillCSS(it.fill)}" aria-label="${esc(t('editColorAria', { label: it.label }))}" title="${t('editColor')}"></button>`;
 }
 
-export function rowHTML(row: Row, editable: boolean): string {
+const rtClass = (row: Row): string => `rt mono ${row.dim ? 'dim' : ''}`;
+const dlClass = (moved: number): string => `dl mono ${moved > 0 ? 'up' : moved < 0 ? 'down' : ''}`;
+const dlText = (moved: number): string => (moved > 0 ? `↑${moved}` : moved < 0 ? `↓${-moved}` : '');
+
+function rowHTML(row: Row, editable: boolean): string {
   const { it, moved = 0 } = row;
   const name = editable
     ? `<input class="row-label" data-id="${esc(it.id)}" value="${esc(it.label)}" aria-label="${esc(t('renameAria', { label: it.label }))}" maxlength="${LABEL_MAX}">`
@@ -79,31 +83,113 @@ export function rowHTML(row: Row, editable: boolean): string {
       <span class="pos mono">${row.pos}</span>
       ${swatchHTML(it, editable)}
       ${label}
-      <span class="rt mono ${row.dim ? 'dim' : ''}" ${row.metaTitle ? `title="${esc(row.metaTitle)}"` : ''}>${row.meta}</span>
-      <span class="dl mono ${moved > 0 ? 'up' : moved < 0 ? 'down' : ''}">${moved > 0 ? `↑${moved}` : moved < 0 ? `↓${-moved}` : ''}</span>
+      <span class="${rtClass(row)}" ${row.metaTitle ? `title="${esc(row.metaTitle)}"` : ''}>${row.meta}</span>
+      <span class="${dlClass(moved)}">${dlText(moved)}</span>
       ${remove}
     </li>`;
 }
 
+/** What a row was drawn with, apart from what changes at every duel (its place, score and move). */
+interface Drawn {
+  it: Item;
+  label: string;
+  img: string | null;
+  fill: string;
+  note: string;
+  editable: boolean;
+}
+
+const drawn = new WeakMap<Element, Drawn>();
+
+const drawnOf = (row: Row, editable: boolean): Drawn => ({
+  it: row.it,
+  label: row.it.label,
+  img: row.it.img,
+  fill: row.it.fill ? `${row.it.fill.type}:${row.it.fill.colors.join(',')}` : '',
+  note: row.note ? `${row.note.bad ? '!' : ''}${row.note.text}` : '',
+  editable,
+});
+
+/** True when the row's picture, name, color and note are as drawn: only its place, score and move need patching. */
+const unchanged = (a: Drawn | undefined, b: Drawn): boolean =>
+  !!a &&
+  a.it.id === b.it.id &&
+  a.label === b.label &&
+  a.img === b.img &&
+  a.fill === b.fill &&
+  a.note === b.note &&
+  a.editable === b.editable;
+
+function patchRow(li: Element, row: Row): void {
+  const pos = $('.pos', li);
+  if (pos && pos.textContent !== row.pos) pos.textContent = row.pos;
+  const rt = $('.rt', li);
+  if (rt) {
+    if (rt.innerHTML !== row.meta) rt.innerHTML = row.meta;
+    rt.className = rtClass(row);
+    if (row.metaTitle) rt.title = row.metaTitle;
+    else rt.removeAttribute('title');
+  }
+  const dl = $('.dl', li);
+  const moved = row.moved ?? 0;
+  if (dl) {
+    dl.className = dlClass(moved);
+    dl.textContent = dlText(moved);
+  }
+}
+
+function rowElement(row: Row, editable: boolean): Element {
+  const tpl = doc.createElement('template');
+  tpl.innerHTML = rowHTML(row, editable);
+  const li = tpl.content.firstElementChild as Element;
+  drawn.set(li, drawnOf(row, editable));
+  return li;
+}
+
 /**
  * Fills the list, rows sliding from their old place to the new one (none under reduced motion); a row that
- * wasn't there pops in.
+ * wasn't there pops in. Rows already on screen are kept and patched (their place, score and move): a duel no
+ * longer rebuilds every row, its pictures and its name fields. A row is drawn again only when its content changed.
  */
 export function renderRows(rows: readonly Row[], editable: boolean, animate: boolean): void {
   const ul = $('#item-list');
   if (!ul) return;
-  const before: Record<string, number> = {};
-  if (animate) for (const li of $$('li[data-id]', ul)) before[li.dataset.id ?? ''] = li.getBoundingClientRect().top;
-  ul.innerHTML = rows.length
-    ? rows.map((r) => rowHTML(r, editable)).join('')
-    : `<li class="empty">${t('emptyList')}</li>`;
   const count = $('#aside-count');
   if (count) count.textContent = plural(rows.length, 'item');
   const n = $('#n-items');
   if (n) n.textContent = String(rows.length);
-  if (!animate || reduced) return;
-  for (const li of $$('li[data-id]', ul)) {
-    const b = before[li.dataset.id ?? ''];
+  if (!rows.length) {
+    ul.innerHTML = `<li class="empty">${t('emptyList')}</li>`;
+    return;
+  }
+  const old = new Map<string, Element>();
+  for (const li of $$('li[data-id]', ul)) old.set(li.dataset.id ?? '', li);
+  // Positions are read (a layout) only when rows will move: live counts on a board leave the order as it is.
+  const moves = animate && !reduced && [...old.keys()].join('\n') !== rows.map((r) => r.it.id).join('\n');
+  const before = new Map<Element, number>();
+  if (moves) for (const li of old.values()) before.set(li, li.getBoundingClientRect().top);
+  for (const li of $$('li:not([data-id])', ul)) li.remove();
+  const lis = rows.map((row) => {
+    const li = old.get(row.it.id);
+    old.delete(row.it.id);
+    if (li && unchanged(drawn.get(li), drawnOf(row, editable))) {
+      patchRow(li, row);
+      return li;
+    }
+    const fresh = rowElement(row, editable);
+    // A name being typed in is kept: only another name from elsewhere replaces it.
+    li?.replaceWith(fresh);
+    if (li && before.has(li)) before.set(fresh, before.get(li) as number);
+    return fresh;
+  });
+  for (const li of old.values()) li.remove();
+  // Only rows out of place move: a focused field stays where it is unless its row moves.
+  lis.forEach((li, i) => {
+    if (ul.children[i] !== li) ul.insertBefore(li, ul.children[i] ?? null);
+  });
+  if (!moves) return;
+  for (const li of lis) {
+    const b = before.get(li);
     if (b === undefined) {
       li.classList.add('new');
       continue;

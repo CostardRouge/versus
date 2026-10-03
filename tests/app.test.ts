@@ -71,6 +71,36 @@ describe('app', () => {
     vi.advanceTimersByTime(600);
     expect($('.eyebrow')?.textContent).not.toBe(before);
     expect(JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].history).toHaveLength(25);
+    // The next duel was saved with the vote: a reload shows that one.
+    const pair = JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].pair;
+    expect([$('.card-a')?.dataset.id, $('.card-b')?.dataset.id]).toEqual(pair);
+  });
+
+  it('keeps the rows of the list across a duel, patching their place and score', () => {
+    const rows = () =>
+      new Map([...document.querySelectorAll<HTMLElement>('#item-list li[data-id]')].map((li) => [li.dataset.id, li]));
+    const before = rows();
+    click('[data-action="pick"][data-side="b"]');
+    vi.advanceTimersByTime(600);
+    const after = rows();
+    expect(after.size).toBe(before.size);
+    for (const [id, li] of after) expect(li, id).toBe(before.get(id));
+    const places = [...document.querySelectorAll('#item-list li[data-id] .pos')].map((p) => p.textContent);
+    expect(places).toEqual(places.map((_, i) => String(i + 1)));
+  });
+
+  it('writes a title being typed once the typing pauses', () => {
+    const input = $('#rank-title') as HTMLInputElement;
+    const stored = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].title;
+    const before = stored();
+    input.value = 'Next trip';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(stored()).toBe(before);
+    vi.advanceTimersByTime(500);
+    expect(stored()).toBe('Next trip');
+    input.value = before;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(500);
   });
 
   it('casts no vote with keys pressed on a tab, only on the page or in the duel', () => {

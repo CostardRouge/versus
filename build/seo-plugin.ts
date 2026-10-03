@@ -74,10 +74,14 @@ export function fillPage(
 }
 
 /**
- * Self-hosted fonts the first render needs (body and display, latin subset): preloaded so they download
- * alongside the bundle instead of after the stylesheet is parsed.
+ * Self-hosted fonts the first render needs (latin subset), preloaded so they download alongside the bundle
+ * instead of after the stylesheet is parsed: the body font everywhere, the display font on the home pages only,
+ * whose first view is its big title. Elsewhere it would compete with the app's script for the bandwidth the first
+ * render waits on (−350 ms of LCP measured on /app/ over a slow 4G).
  */
-const PRELOAD_FONTS = [/figtree-latin-wght-normal[^/]*\.woff2$/, /bricolage-grotesque-latin-opsz-normal[^/]*\.woff2$/];
+const BODY_FONT = /figtree-latin-wght-normal[^/]*\.woff2$/;
+const DISPLAY_FONT = /bricolage-grotesque-latin-opsz-normal[^/]*\.woff2$/;
+export const preloadFonts = (kind: string): RegExp[] => (kind === 'home' ? [BODY_FONT, DISPLAY_FONT] : [BODY_FONT]);
 
 /** Date of the last commit (the content's real last change), or today outside a git checkout. */
 function lastmod(): string {
@@ -119,8 +123,9 @@ export function seo(): Plugin {
         const page = pageOf(relative(root, ctx.filename));
         // A relative base resolves from each page's own folder: preloads go through the way back to the root.
         const prefix = base === './' || base === '' ? rootFrom(page) : base;
+        const wanted = preloadFonts(PAGES[page].kind);
         const fonts = Object.keys(ctx.bundle ?? {})
-          .filter((file) => PRELOAD_FONTS.some((re) => re.test(file)))
+          .filter((file) => wanted.some((re) => re.test(file)))
           .map((file) => `<link rel="preload" href="${prefix}${file}" as="font" type="font/woff2" crossorigin />`);
         return fillPage(html, page, { url, publish, head: fonts, path, analytics });
       },

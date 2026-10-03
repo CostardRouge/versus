@@ -3,7 +3,8 @@
 // (admin-*.js), which keeps it out of the service worker's precache (build/pwa.ts).
 import '@fontsource-variable/bricolage-grotesque/opsz.css';
 import '@fontsource-variable/figtree/wght.css';
-import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/latin-500.css';
+import '@fontsource/jetbrains-mono/latin-ext-500.css';
 import '../tokens.css';
 import './admin.css';
 import { mountAdmin } from './page';

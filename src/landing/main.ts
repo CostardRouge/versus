@@ -3,7 +3,8 @@
 // self-hosted fonts as the app.
 import '@fontsource-variable/bricolage-grotesque/opsz.css';
 import '@fontsource-variable/figtree/wght.css';
-import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/latin-500.css';
+import '@fontsource/jetbrains-mono/latin-ext-500.css';
 import './landing.css';
 import { startAnalytics, trackPage } from '../audience';
 import { mountLanding } from './mount';
