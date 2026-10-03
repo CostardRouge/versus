@@ -88,4 +88,3 @@ test('shares a ranking as a picture, the drawing code loaded on demand', async (
   await expect(preview).not.toHaveAttribute('aria-busy', 'true');
   await expect(page.locator('#share-msg')).toContainText('Next destination');
 });
-
