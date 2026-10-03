@@ -1824,7 +1824,7 @@ kbd {
   font-size: 13px;
   color: var(--muted);
 }
-.cp-seg button[aria-checked="true"] {
+.cp-seg button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -3694,7 +3694,7 @@ svg[data-slope-svg] path {
 .tab[aria-selected="true"],
 .lang button[aria-pressed="true"],
 .theme button[aria-pressed="true"],
-.cp-seg button[aria-checked="true"],
+.cp-seg button[aria-pressed="true"],
 .share-fmts button[aria-pressed="true"],
 .fin-views button[aria-pressed="true"],
 .res-views button[aria-pressed="true"],

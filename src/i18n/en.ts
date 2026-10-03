@@ -454,6 +454,7 @@ export const en = {
   tabsAria: 'Ranking views',
   endSortLive: 'Sort complete: every item found its place, in {duels}.',
   endStableLive: 'Ranking stable after {duels}: see it, or keep dueling.',
+  cpTypeAria: 'Solid or gradient',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

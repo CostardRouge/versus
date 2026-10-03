@@ -463,6 +463,7 @@ export const fr: Messages = {
   tabsAria: 'Vues du classement',
   endSortLive: 'Tri terminé : chaque élément a trouvé sa place, en {duels}.',
   endStableLive: 'Classement stable après {duels} : regarde-le, ou continue les duels.',
+  cpTypeAria: 'Unie ou dégradé',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

@@ -36,9 +36,26 @@ const rankOf = (id: string): Stored => {
 };
 const duels = (id: string) => stored().find((r) => r.id === id)?.history.length;
 
+/** The media queries the app reads: wide layout and motion by default, switched by the tests. */
+const media = { narrow: false, reduced: false };
+const changes: [string, () => void][] = [];
+/** Switches a media query and tells its listeners, as a browser does. */
+const setMedia = (k: keyof typeof media, v: boolean) => {
+  media[k] = v;
+  for (const [q, fn] of changes) if (q.includes(k === 'narrow' ? 'max-width' : 'reduce')) fn();
+};
+
 beforeAll(() => {
   vi.useFakeTimers();
   window.scrollTo = () => {};
+  window.matchMedia = ((q: string) => ({
+    get matches() {
+      return q.includes('max-width') ? media.narrow : q.includes('reduce') ? media.reduced : false;
+    },
+    media: q,
+    addEventListener: (_: string, fn: () => void) => changes.push([q, fn]),
+    removeEventListener() {},
+  })) as unknown as typeof window.matchMedia;
   localStorage.clear();
   document.body.innerHTML = body;
   mount(document);
@@ -185,5 +202,64 @@ describe('toast', () => {
     expect(rank().history).toHaveLength(before.history.length);
     vi.advanceTimersByTime(300);
     expect(box().textContent).toBe('');
+  });
+});
+
+describe('color editor', () => {
+  const pop = () => $('#cpop');
+  const hex = () => $<HTMLInputElement>('.cp-hex[data-i="0"]');
+
+  it('is a named dialog that takes the focus', () => {
+    click('[data-action="back"]');
+    click('.rcard [data-action="open"][data-id="demo-accent"][data-tab="duel"]');
+    click('#item-list .thumb-btn');
+    expect(pop().hidden).toBe(false);
+    expect(pop().getAttribute('role')).toBe('dialog');
+    expect($(`#${pop().getAttribute('aria-labelledby')}`).textContent).toBe('Edit color');
+    expect(document.activeElement).toBe(hex());
+  });
+
+  it('offers solid or gradient as two toggle buttons in a named group, keeping the focus', () => {
+    const seg = $('.cp-seg');
+    expect(seg.getAttribute('role')).toBe('group');
+    expect(seg.getAttribute('aria-label')).toBe('Solid or gradient');
+    const grad = $('[data-action="cp-type"][data-type="gradient"]');
+    expect(grad.getAttribute('aria-pressed')).toBe('false');
+    grad.focus();
+    grad.click();
+    expect($('[data-action="cp-type"][data-type="gradient"]').getAttribute('aria-pressed')).toBe('true');
+    expect($('[data-action="cp-type"][data-type="solid"]').getAttribute('aria-pressed')).toBe('false');
+    expect(document.activeElement).toBe($('[data-action="cp-type"][data-type="gradient"]'));
+    $('[data-action="cp-type"][data-type="solid"]').click();
+  });
+
+  it('announces a code it can’t read, tied to the field', () => {
+    const field = hex();
+    const color = field.value;
+    field.value = 'nope';
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    const err = $('#cp-err');
+    expect(err.hidden).toBe(false);
+    expect(err.getAttribute('role')).toBe('alert');
+    expect(err.textContent).toBe('Enter a code like #2743F5.');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.getAttribute('aria-describedby')).toBe('cp-err');
+    expect(field.value).toBe(color);
+    field.value = '#123456';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(err.hidden).toBe(true);
+    expect(field.hasAttribute('aria-invalid')).toBe(false);
+    key('Escape', field);
+    expect(pop().hidden).toBe(true);
+  });
+
+  it('takes the focus on phones too, on its switch rather than a text field', () => {
+    setMedia('narrow', true);
+    click('.tab[data-tab="items"]');
+    click('#item-list .thumb-btn');
+    expect(document.activeElement).toBe($('.cp-seg [aria-pressed="true"]'));
+    key('Escape');
+    setMedia('narrow', false);
+    click('.tab[data-tab="duel"]');
   });
 });

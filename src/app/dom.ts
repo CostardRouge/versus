@@ -127,6 +127,30 @@ export function focusOn(el: HTMLElement | null): void {
   if (!el.hasAttribute('tabindex')) el.tabIndex = -1;
   el.focus({ preventScroll: true });
 }
+
+/** The data attributes that tell what a control does and to what; a duel card is known by its side alone. */
+const FOCUS_DATA = ['action', 'side', 'id', 'm', 'tab', 'view', 'fmt', 'type', 'alias', 'i'];
+const quote = (v: string): string => `"${v.replace(/["\\]/g, '\\$&')}"`;
+function focusKey(el: HTMLElement): string | null {
+  if (el.id) return `#${el.id}`;
+  const keys = FOCUS_DATA.filter((k) => el.dataset[k] !== undefined && !(k === 'id' && el.dataset.side));
+  if (!keys.length) return null;
+  const cls = el.classList[0] ? `.${el.classList[0]}` : '';
+  return `${el.tagName.toLowerCase()}${cls}${keys.map((k) => `[data-${k}=${quote(el.dataset[k] ?? '')}]`).join('')}`;
+}
+
+/**
+ * Runs a render that replaces the focused control, then focuses its replacement: the one doing the same thing
+ * to the same item (data-action with data-id, data-side, data-m…), else `fallback`'s. A focus the render left
+ * alone stays where it is.
+ */
+export function keepFocus(render: () => void, fallback?: () => HTMLElement | null | undefined): void {
+  const at = doc.activeElement;
+  const key = at instanceof HTMLElement && at !== doc.body ? focusKey(at) : null;
+  render();
+  if (!(at instanceof HTMLElement) || at === doc.body || at.isConnected) return;
+  ((key ? $(key) : null) ?? fallback?.())?.focus();
+}
 /**
  * Confirm modal. `html` replaces the text body with markup the caller reads back after OK (a small
  * form); `cancel: false` makes it a plain notice.
