@@ -63,7 +63,7 @@ Decided on 2026-09-30 (D110 to D112), built in `src/core/templates.ts`, `worker/
 ## Voting rules
 
 - **One voice per voter per pair.** A new vote on a pair replaces the voter's previous one. A tie is a vote (half a win each). Heavy voters bring more information (more pairs covered), never more weight on a pair.
-- **Voter identity**: an anonymous random id per browser (`localStorage`). Two devices or a private window count as two voters. Acceptable: Versus is a game, not an election.
+- **Voter identity**: an anonymous random id per browser (`localStorage`). Two devices or a private window count as two voters. Acceptable: Versus is a game, not an election. One address can bring at most 30 new voters to a board in 10 minutes (a household, a classroom, not a crowd of private windows); beyond, the first vote is refused for a while.
 - **Anonymity**: nobody, the author included, sees who voted what. Only aggregates leave the server.
 - **Changing one's vote** (author setting, on by default): a voter can delete one vote or all of theirs, and vote again. When off, votes are final, except undoing the very last vote for a few seconds (mis-taps).
   - Not a weighting risk: under one voice per pair, changing a vote never adds weight. The setting guards against strategic changes (see the results, then adjust) and suits "final vote" contests. The real abuse vector is multiplying identities (see `docs/online-architecture.md`, main risks).

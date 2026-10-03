@@ -66,6 +66,9 @@ export const UNDO_GRACE_MS = 10_000;
 export const ACTION_INTERVAL_MS = 150;
 /** Minimum delay between two items added by one connection. */
 export const ADD_INTERVAL_MS = 5_000;
+/** New voters one address may bring to a board within NEW_VOTERS_WINDOW_MS (`admitNewVoter`). */
+export const NEW_VOTERS_PER_ADDRESS = 30;
+export const NEW_VOTERS_WINDOW_MS = 10 * 60_000;
 /** Inactive published boards are deleted after this many days without activity. */
 export const TTL_DAYS = 60;
 
@@ -783,6 +786,17 @@ const queueIndex = (session: Session, a: string, b: string): number => {
   const k = pairKey(a, b);
   return session.queue.findIndex(([x, y]) => pairKey(x, y) === k);
 };
+
+/**
+ * A voter's first vote on a board, from an address whose earlier first votes there were at `times` (oldest first):
+ * the times to keep once this vote is cast, or null when the address brought NEW_VOTERS_PER_ADDRESS voters within
+ * NEW_VOTERS_WINDOW_MS already. A voter is a browser (a private window is another one): an address can bring a
+ * household or a classroom, not a crowd. Times older than the window are dropped.
+ */
+export function admitNewVoter(times: readonly number[], now: number): number[] | null {
+  const recent = times.filter((t) => now - t < NEW_VOTERS_WINDOW_MS);
+  return recent.length < NEW_VOTERS_PER_ADDRESS ? [...recent, now] : null;
+}
 
 /** A vote from a connection: rate limited, and only on a pair the server assigned to it. */
 export function sessionVote(

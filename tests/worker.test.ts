@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
-import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS } from '../src/core/board';
+import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS, NEW_VOTERS_PER_ADDRESS } from '../src/core/board';
 import type {
   AdminBoardView,
   AdminList,
@@ -137,10 +137,18 @@ class Client {
     );
   }
 
-  static async open(alias: string, voter: string, owner?: string, pair?: [string, string]): Promise<Client> {
+  /** `ip` is the client address the platform would give (CF-Connecting-IP); Node's WebSocket can send headers. */
+  static async open(
+    alias: string,
+    voter: string,
+    owner?: string,
+    pair?: [string, string],
+    ip?: string,
+  ): Promise<Client> {
     const url = new URL(`/api/boards/${alias}`, base);
     url.protocol = 'ws:';
-    const ws = new WebSocket(url);
+    const init = ip ? { headers: { 'CF-Connecting-IP': ip } } : undefined;
+    const ws = new WebSocket(url, init as unknown as string[]);
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve);
       ws.addEventListener('error', reject);
@@ -329,6 +337,41 @@ describe('voting', () => {
     expect((await voter.next('pairs')).mine).toBe(2);
     expect((await view(alias)).body.counts.votes).toBe(2);
     voter.close();
+  });
+});
+
+describe('new voters per address', () => {
+  it('refuses the first vote of a 31st new voter from one address within 10 minutes', async () => {
+    const { alias } = await publish();
+    /** A new voter from `ip` casts their first vote: what the server answers. */
+    const firstVote = async (voter: string, ip: string) => {
+      const c = await Client.open(alias, voter, undefined, undefined, ip);
+      const [a, b] = (await c.next('state')).pairs[0] as [string, string];
+      c.send({ t: 'vote', a, b, s: 1 });
+      const pairs = await c.next('pairs');
+      return { c, mine: pairs.mine };
+    };
+    for (let i = 0; i < NEW_VOTERS_PER_ADDRESS; i++) {
+      const { c, mine } = await firstVote(`crowd-voter-${i}`, '198.51.100.7');
+      expect(mine).toBe(1);
+      c.close();
+    }
+    const refused = await Client.open(alias, 'crowd-voter-x', undefined, undefined, '198.51.100.7');
+    const [a, b] = (await refused.next('state')).pairs[0] as [string, string];
+    refused.send({ t: 'vote', a, b, s: 1 });
+    expect((await refused.next('error')).code).toBe('rate_limited');
+    expect((await refused.next('pairs')).mine).toBe(0);
+    refused.close();
+    // Another address is not affected, nor a voter of this address who already voted.
+    const other = await firstVote('crowd-voter-y', '198.51.100.8');
+    expect(other.mine).toBe(1);
+    other.c.close();
+    const known = await Client.open(alias, 'crowd-voter-0', undefined, undefined, '198.51.100.7');
+    const [c, d] = (await known.next('state')).pairs[0] as [string, string];
+    known.send({ t: 'vote', a: c, b: d, s: 0 });
+    expect((await known.next('pairs')).mine).toBe(2);
+    known.close();
+    expect((await view(alias)).body.counts.voters).toBe(NEW_VOTERS_PER_ADDRESS + 1);
   });
 });
 

@@ -401,6 +401,16 @@ describe('voting', () => {
     FakeSocket.last().receive({ t: 'error', code: 'upgrade' });
     expect($('#toast')?.textContent).toBe('A new version of Versus is out: reload the page to keep voting.');
   });
+
+  it('says so when the server turns a vote away for too many new voters', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'rate_limited' });
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    expect($('#toast')?.textContent).toBe('Too many attempts. Try again in a minute.');
+    await vi.advanceTimersByTimeAsync(600);
+  });
 });
 
 describe('author', () => {

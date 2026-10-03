@@ -6,6 +6,7 @@ import {
   addItem,
   addItems,
   addReport,
+  admitNewVoter,
   assignPairs,
   boardMeta,
   canSeeRanking,
@@ -25,6 +26,8 @@ import {
   localCopy,
   makeAlias,
   moderate,
+  NEW_VOTERS_PER_ADDRESS,
+  NEW_VOTERS_WINDOW_MS,
   openSession,
   type PublishInput,
   parseItemEdit,
@@ -836,6 +839,29 @@ describe('sessions', () => {
     setStatus(b, 'closed', T0);
     refill(b, t, crowd(b), rng);
     expect(t.queue).toEqual([]);
+  });
+});
+
+describe('new voters per address', () => {
+  it('lets an address bring a few new voters, then waits for the oldest to age out', () => {
+    let times: number[] = [];
+    for (let i = 0; i < NEW_VOTERS_PER_ADDRESS; i++) {
+      const next = admitNewVoter(times, T0 + i * 1000);
+      expect(next).not.toBeNull();
+      times = next ?? [];
+    }
+    expect(times).toHaveLength(NEW_VOTERS_PER_ADDRESS);
+    // One more within the window: refused, and nothing changes.
+    expect(admitNewVoter(times, T0 + NEW_VOTERS_PER_ADDRESS * 1000)).toBeNull();
+    expect(admitNewVoter(times, T0 + NEW_VOTERS_WINDOW_MS - 1)).toBeNull();
+    // The first one ages out: room for one, the old time dropped.
+    const later = admitNewVoter(times, T0 + NEW_VOTERS_WINDOW_MS);
+    expect(later).toHaveLength(NEW_VOTERS_PER_ADDRESS);
+    expect(later?.[0]).toBe(T0 + 1000);
+    expect(later?.at(-1)).toBe(T0 + NEW_VOTERS_WINDOW_MS);
+    // Long after, the window is empty again.
+    expect(admitNewVoter(times, T0 + 10 * NEW_VOTERS_WINDOW_MS)).toEqual([T0 + 10 * NEW_VOTERS_WINDOW_MS]);
+    expect(admitNewVoter([], T0)).toEqual([T0]);
   });
 });
 

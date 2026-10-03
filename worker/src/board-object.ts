@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import {
   addItems,
   addReport,
+  admitNewVoter,
   awaitsPicture,
   boardMeta,
   canSeeRanking,
@@ -19,6 +20,7 @@ import {
   lastActivity,
   localCopy,
   moderate,
+  NEW_VOTERS_WINDOW_MS,
   type NewItem,
   type Origin,
   openSession,
@@ -89,6 +91,10 @@ const BROADCAST_MS = 1000;
 const GONE = 4004;
 /** Up to this many voters, each new voter refreshes the registry row (then once a day). */
 const FRESH_VOTERS = 100;
+/** A connection's address tag when the platform gives no address (local tools, tests without the header). */
+const NO_ADDRESS = 'local';
+/** Addresses remembered for their new voters before old ones are swept out. */
+const ADDRESSES_SWEPT_AT = 1000;
 
 // One row per voter and pair: a vote is a single upsert, so one row write (no extra index).
 const SCHEMA = `
@@ -152,6 +158,11 @@ export class BoardObject extends DurableObject<Env> {
   private dirty = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private lastBroadcast = 0;
+  /**
+   * First votes on this board by address tag (`addressTag`), for `admitNewVoter`. In memory only, never stored:
+   * the board forgets them when it sleeps, which only ever lets more in.
+   */
+  private newVoters = new Map<string, number[]>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -627,8 +638,21 @@ export class BoardObject extends DurableObject<Env> {
       return Response.json({ error: 'bad_request' }, { status: 426 });
     }
     const { 0: client, 1: server } = new WebSocketPair();
-    this.ctx.acceptWebSocket(server);
+    // The address rides with the socket as a tag, so it survives hibernation; hashed with the board's alias.
+    this.ctx.acceptWebSocket(server, [await this.addressTag(request.headers.get('CF-Connecting-IP'))]);
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** A connection's address as a short hash, salted with the alias: enough to count, not to read back. */
+  private async addressTag(ip: string | null): Promise<string> {
+    return ip ? (await sha256(`${this.alias}:${ip}`)).slice(0, 16) : NO_ADDRESS;
+  }
+
+  /** Remembers a first vote from an address; addresses with nothing recent go once there are many. */
+  private noteNewVoter(tag: string, times: number[], now: number): void {
+    this.newVoters.set(tag, times);
+    if (this.newVoters.size < ADDRESSES_SWEPT_AT) return;
+    for (const [k, v] of this.newVoters) if (now - (v.at(-1) ?? 0) >= NEW_VOTERS_WINDOW_MS) this.newVoters.delete(k);
   }
 
   override async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
@@ -668,9 +692,16 @@ export class BoardObject extends DurableObject<Env> {
     const C = this.crowd(board);
     let r: Result<unknown>;
     if (msg.t === 'vote') {
-      const res = sessionVote(board, session, msg.a, msg.b, msg.s, now, C, Math.random);
-      if (res.ok) this.saveVote(res.value.vote);
-      r = res;
+      // A voter's first vote on the board counts against their address.
+      const tag = voteCount(board, session.voter) ? null : (this.ctx.getTags(ws)[0] ?? NO_ADDRESS);
+      const admitted = tag === null ? null : admitNewVoter(this.newVoters.get(tag) ?? [], now);
+      if (tag !== null && !admitted) r = { ok: false, error: 'rate_limited' };
+      else {
+        const res = sessionVote(board, session, msg.a, msg.b, msg.s, now, C, Math.random);
+        if (res.ok) this.saveVote(res.value.vote);
+        if (res.ok && tag !== null && admitted) this.noteNewVoter(tag, admitted, now);
+        r = res;
+      }
     } else if (msg.t === 'skip') {
       r = sessionSkip(board, session, msg.a, msg.b, now, C, Math.random);
     } else if (msg.t === 'undo') {

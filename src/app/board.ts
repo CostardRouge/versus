@@ -91,6 +91,7 @@ export const boardState = (): Board | null => B;
 /** What to tell the user when the server refuses an action. */
 function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
   if (code === 'upgrade') return 'appOutdated';
+  if (code === 'rate_limited') return 'tooManyTries';
   if (code === 'closed') return 'voteClosed';
   if (code === 'final') return 'finalVotes';
   if (kind !== 'add') return null;
