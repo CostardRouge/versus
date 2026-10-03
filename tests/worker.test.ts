@@ -25,7 +25,16 @@ vi.setConfig({ testTimeout: 20_000, hookTimeout: 60_000 });
 
 const CONFIG = 'worker/wrangler.jsonc';
 const ADMIN = 'admin-secret-for-tests';
-const server = createTestHarness({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN } }] });
+// No edge cache: the tests read fresh data right after a vote (one test turns it on).
+const NO_CACHE = { CACHE_SECONDS: '0' };
+const server = createTestHarness({
+  workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: NO_CACHE }],
+});
+/** Reloads the Worker with these variables and secrets (the admin token always, the cache off unless said). */
+const configure = (vars: Record<string, string> = {}, secrets: Record<string, string> = {}) =>
+  server.update({
+    workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN, ...secrets }, vars: { ...NO_CACHE, ...vars } }],
+  });
 let base: URL;
 
 /** The app page's head, as the build writes it (the tags a board's link preview rewrites). */
@@ -1092,9 +1101,7 @@ describe('official templates', () => {
     expect(before).toContain('<urlset');
     expect(before).not.toContain('/t/');
     // One voter is a crowd for this test.
-    await server.update({
-      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { TEMPLATE_INDEX_VOTERS: '1' } }],
-    });
+    await configure({ TEMPLATE_INDEX_VOTERS: '1' });
     const page = await (await server.fetch('/t/game-consoles/')).text();
     const alias = page.match(ALIAS_IN_PAGE)?.[1] ?? '';
     const voter = await Client.open(alias, 'voter-tpl-1');
@@ -1162,9 +1169,7 @@ describe('pictures for review', () => {
   });
 
   it('keeps a picture for review, shows it to the admin only, then to everyone once approved', async () => {
-    await server.update({
-      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { IMAGES_UPLOAD: 'review' } }],
-    });
+    await configure({ IMAGES_UPLOAD: 'review' });
     expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'review' });
     const { alias, owner } = await publishPics(announced('p0'));
     const first = (await view(alias)).body.items;
@@ -1368,7 +1373,7 @@ describe('limits', () => {
   });
 
   it('asks for a Turnstile token once a secret is set', async () => {
-    await server.update({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN, TURNSTILE_SECRET: 'x' } }] });
+    await configure({}, { TURNSTILE_SECRET: 'x' });
     const res = await api('', { method: 'POST', body: { title: 'Pizzas', items, voter: AUTHOR } });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'captcha' });
@@ -1377,7 +1382,7 @@ describe('limits', () => {
 
 describe('human checks', () => {
   it('asks for one before a first vote on the site’s own boards, once a secret is set', async () => {
-    await server.update({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN } }] });
+    await configure();
     const page = await (await server.fetch('/t/superheroes/')).text();
     const alias = page.match(/\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/)?.[1] ?? '';
     const vote = async (c: Client) => {
@@ -1389,7 +1394,7 @@ describe('human checks', () => {
     expect((await early.next('pairs')).mine).toBe(1);
     early.close();
     const { alias: theirs } = await publish();
-    await server.update({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN, TURNSTILE_SECRET: 'x' } }] });
+    await configure({}, { TURNSTILE_SECRET: 'x' });
     // A new voter is asked first; the vote isn't recorded.
     const fresh = await Client.open(alias, 'fresh-voter-1');
     await vote(fresh);
@@ -1412,9 +1417,44 @@ describe('human checks', () => {
   });
 });
 
+describe('edge cache', () => {
+  it('keeps a board’s page, the Popular list and a template page a while, by URL', async () => {
+    await configure({ CACHE_SECONDS: '' });
+    const text = async (path: string) => (await server.fetch(path)).text();
+    const { alias } = await publish();
+    const page = await text(`/app/b/${alias}`);
+    expect(page).toContain('0 votes');
+    const voter = await Client.open(alias, 'cache-voter-1');
+    const [a, b] = (await voter.next('state')).pairs[0] as [string, string];
+    voter.send({ t: 'vote', a, b, s: 1 });
+    expect((await voter.next('pairs')).mine).toBe(1);
+    voter.close();
+    // The same link a moment later: the copy kept (one board woken, not two); another link is its own.
+    expect(await text(`/app/b/${alias}`)).toBe(page);
+    expect(await text(`/app/b/${alias}?from=chat`)).toContain('1 vote');
+    // The Popular list doesn't see a board featured meanwhile, nor does a template page see a new vote.
+    const popular = await text('/api/popular?lang=en');
+    const template = await text('/t/pizzas/');
+    await adminApi(`/boards/${alias}`, { method: 'PATCH', body: { featured: true } });
+    const tpl = template.match(/\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/)?.[1] ?? '';
+    const fan = await Client.open(tpl, 'cache-voter-2');
+    const [c, d] = (await fan.next('state')).pairs[0] as [string, string];
+    fan.send({ t: 'vote', a: c, b: d, s: 1 });
+    expect((await fan.next('pairs')).mine).toBe(1);
+    fan.close();
+    await sleep(300);
+    expect(await text('/api/popular?lang=en')).toBe(popular);
+    expect(await text('/t/pizzas/')).toBe(template);
+    // Turned off, everything is fresh again.
+    await configure();
+    expect(await text(`/app/b/${alias}`)).toContain('1 vote');
+    expect(await text('/api/popular?lang=en')).toContain(alias);
+  });
+});
+
 describe('cleanup', () => {
   it('deletes a board after the inactivity TTL', async () => {
-    await server.update({ workers: [{ configPath: CONFIG, vars: { BOARD_TTL_SECONDS: '1' } }] });
+    await configure({ BOARD_TTL_SECONDS: '1' });
     const { alias } = await publish();
     expect((await view(alias)).status).toBe(200);
     await vi.waitFor(async () => expect((await view(alias)).status).toBe(404), { timeout: 8000, interval: 250 });

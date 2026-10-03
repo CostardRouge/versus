@@ -2,6 +2,7 @@ import { ALIAS_RE, type ImagePolicy, isRecord, LIMITS, parsePublish } from '../.
 import { parseSummaryRequest, type ServerConfig } from '../../src/core/protocol';
 import { CARD_MAX_BYTES, cardKey, cardUpload, parseDuelQuery } from '../../src/core/share';
 import type { BoardLang, ErrorCode, Result } from '../../src/core/types';
+import { cached } from './cache';
 import { cardURL, deleteCards, preview, readCard, rewriteHead, storeCard } from './cards';
 import type { Env } from './env';
 import { log } from './log';
@@ -173,14 +174,19 @@ async function publish(req: Request, env: Env): Promise<Response> {
   return error('exists');
 }
 
-/** The Popular section of one language, from the registry; the templates are published first when missing. */
-async function popular(req: Request, env: Env): Promise<Response> {
+/**
+ * The Popular section of one language, from the registry; the templates are published first when missing. Kept five
+ * minutes in the edge cache: the app asks on every gallery.
+ */
+async function popular(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const db = env.REGISTRY;
   if (!db) return json({ boards: [] });
   const lang: BoardLang = new URL(req.url).searchParams.get('lang') === 'fr' ? 'fr' : 'en';
-  await ensureTemplates(env, lang);
-  const boards = await popularBoards(db, lang, 16);
-  return Response.json({ boards }, { headers: { 'Cache-Control': 'public, max-age=300' } });
+  return cached(req, env, ctx, 300, async () => {
+    await ensureTemplates(env, lang);
+    const boards = await popularBoards(db, lang, 16);
+    return Response.json({ boards }, { headers: { 'Cache-Control': 'public, max-age=300' } });
+  });
 }
 
 /**
@@ -385,16 +391,26 @@ async function decidePictureRoute(req: Request, env: Env, alias: string, id: str
 /**
  * The app's page for a board (`/app/b/<alias>`, with `?duel=a.b` for one of its duels): its head says what the
  * link is about, in the board's language, with the card the app drew when there is one. A board that is gone
- * gets the page as it is (the app then says so).
+ * gets the page as it is (the app then says so). Kept a minute in the edge cache, by full URL: a link shared to
+ * many costs one board woken a minute.
  */
-async function boardPage(req: Request, env: Env, assets: Fetcher, alias: string): Promise<Response> {
+async function boardPage(
+  req: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  assets: Fetcher,
+  alias: string,
+): Promise<Response> {
   const url = new URL(req.url);
-  const page = assets.fetch(new Request(new URL('/app/', url), req));
-  if (!ALIAS_RE.test(alias)) return page;
-  const unfurl = await env.BOARDS.getByName(alias).unfurl();
-  if (!unfurl) return page;
-  const p = await preview(env.IMAGES, url.origin, alias, unfurl, url.search);
-  return rewriteHead(await page, p, `${url.origin}${url.pathname}${url.search}`);
+  const page = () => assets.fetch(new Request(new URL('/app/', url), req));
+  if (!ALIAS_RE.test(alias)) return page();
+  return cached(req, env, ctx, 60, async () => {
+    const app = page();
+    const unfurl = await env.BOARDS.getByName(alias).unfurl();
+    if (!unfurl) return app;
+    const p = await preview(env.IMAGES, url.origin, alias, unfurl, url.search);
+    return rewriteHead(await app, p, `${url.origin}${url.pathname}${url.search}`);
+  });
 }
 
 /**
@@ -402,7 +418,7 @@ async function boardPage(req: Request, env: Env, assets: Fetcher, alias: string)
  * which reads its path; a card under /og/ comes from the bucket, or is the site's card; anything else gets the
  * 404 page with a 404 status.
  */
-async function site(req: Request, env: Env, parts: string[]): Promise<Response> {
+async function site(req: Request, env: Env, ctx: ExecutionContext, parts: string[]): Promise<Response> {
   const url = new URL(req.url);
   const assets = env.ASSETS;
   if (!assets || (req.method !== 'GET' && req.method !== 'HEAD')) return error('not_found');
@@ -422,30 +438,38 @@ async function site(req: Request, env: Env, parts: string[]): Promise<Response> 
   }
   if (url.pathname.startsWith('/app/')) {
     const [, kind, alias, ...more] = parts;
-    if (kind === 'b' && alias && !more.length) return boardPage(req, env, assets, alias);
+    if (kind === 'b' && alias && !more.length) return boardPage(req, env, ctx, assets, alias);
     return assets.fetch(new Request(new URL('/app/', url), req));
   }
-  if (parts.length === 1 && parts[0] === 'sitemap.xml') return sitemap(req, env, assets);
+  // The sitemap (an hour) and the template pages (five minutes) come from the edge cache when they can.
+  if (parts.length === 1 && parts[0] === 'sitemap.xml')
+    return cached(req, env, ctx, 3600, () => sitemap(req, env, assets));
   // The template pages: /t/<slug>/ in English, /fr/t/<slug>/ in French.
-  if (parts.length === 2 && parts[0] === 't' && parts[1])
-    return templatePage(req, env, assets, 'en', parts[1], notFound);
-  if (parts.length === 3 && parts[0] === 'fr' && parts[1] === 't' && parts[2]) {
-    return templatePage(req, env, assets, 'fr', parts[2], notFound);
+  const template =
+    parts.length === 2 && parts[0] === 't' && parts[1]
+      ? { lang: 'en' as const, slug: parts[1] }
+      : parts.length === 3 && parts[0] === 'fr' && parts[1] === 't' && parts[2]
+        ? { lang: 'fr' as const, slug: parts[2] }
+        : null;
+  if (template) {
+    return cached(req, env, ctx, 300, () => templatePage(req, env, assets, template.lang, template.slug, notFound));
   }
   return notFound();
 }
 
 export default {
-  async fetch(req, env): Promise<Response> {
+  async fetch(req, env, ctx): Promise<Response> {
     const parts = new URL(req.url).pathname.split('/').filter(Boolean);
     const [api, section, ...rest] = parts;
     // Static files are served before the Worker runs.
-    if (api !== 'api') return site(req, env, parts);
+    if (api !== 'api') return site(req, env, ctx, parts);
     if (!(await allowed(env.API_LIMIT, req))) return error('rate_limited');
     if (section === 'admin') return admin(req, env, rest);
     if (section === 'summaries')
       return req.method === 'POST' && !rest.length ? summaries(req, env) : error('not_found');
-    if (section === 'popular') return req.method === 'GET' && !rest.length ? popular(req, env) : error('not_found');
+    if (section === 'popular') {
+      return req.method === 'GET' && !rest.length ? popular(req, env, ctx) : error('not_found');
+    }
     if (section === 'config') return req.method === 'GET' && !rest.length ? config(env) : error('not_found');
     if (section !== 'boards') return error('not_found');
     const [alias, ...more] = rest;

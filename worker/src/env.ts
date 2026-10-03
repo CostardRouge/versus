@@ -22,4 +22,10 @@ export interface Env {
   BOARD_TTL_SECONDS?: string;
   /** Voters a template page needs before it asks to be indexed (tests lower it). Defaults to TEMPLATE_INDEX_VOTERS. */
   TEMPLATE_INDEX_VOTERS?: string;
+  /**
+   * Longest a response stays in the edge cache, in seconds (`cache.ts`): each has its own (a board's page 60, the
+   * Popular list and the template pages 300, the sitemap 3600), this caps them. `0` turns the cache off (tests,
+   * which read fresh data right after a vote). Unset: the defaults.
+   */
+  CACHE_SECONDS?: string;
 }
