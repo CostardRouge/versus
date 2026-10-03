@@ -53,11 +53,12 @@ export interface Shell {
 }
 
 export function shellHTML(s: Shell): string {
+  // The view's h1 holds the title field: its name is the title, and a new view focuses it (rankings.ts).
   // The header's colored control comes last (first after the score on phones).
   return `<div class="ws" ${s.alias ? `data-alias="${esc(s.alias)}"` : ''}>
     <div class="ws-head">
       <button class="back" type="button" data-action="back">${t('back')}</button>
-      <input id="rank-title" class="title-input" value="${esc(s.title)}" aria-label="${t('rankNameAria')}" maxlength="80" autocomplete="off">${s.chip}
+      <h1 class="ws-title"><input id="rank-title" class="title-input" value="${esc(s.title)}" aria-label="${t('rankNameAria')}" maxlength="80" autocomplete="off"></h1>${s.chip}
       ${s.action ? '<span class="ws-break" aria-hidden="true"></span>' : ''}
       ${methodMenuHTML(s.method, s.crowd)}
       ${s.action}

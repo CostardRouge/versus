@@ -29,6 +29,14 @@ export function applyStatic(): void {
   applyTheme();
 }
 
+/**
+ * The tab's title follows the view, for screen readers, tabs and the history: a ranking's own name, the app's
+ * title (as in the static head) elsewhere.
+ */
+export function viewTitle(name?: string): void {
+  doc.title = name ? `${name} · Versus` : t('pageTitle');
+}
+
 /** Browser chrome colors matching the two palettes (see --bg in styles.css). */
 const THEME_COLORS: Record<'light' | 'dark', string> = { light: '#ECEEF2', dark: '#0E1015' };
 

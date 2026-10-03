@@ -61,6 +61,48 @@ beforeAll(() => {
   mount(document);
 });
 
+describe('views', () => {
+  const appTitle = 'Versus — Rank anything by comparing two items at a time';
+
+  it('leave the focus alone when the page loads', () => {
+    expect(document.activeElement).toBe(document.body);
+    expect(document.title).toBe(appTitle);
+  });
+
+  it('take the ranking’s name in the tab, and focus their heading', () => {
+    click('.rcard [data-action="open"][data-id="demo-destinations"][data-tab="duel"]');
+    expect(document.title).toBe('Next destination · Versus');
+    const h1 = $('#view h1');
+    expect(document.querySelectorAll('#view h1')).toHaveLength(1);
+    expect(h1.querySelector('#rank-title')).not.toBeNull();
+    expect(document.activeElement).toBe(h1);
+    const input = $<HTMLInputElement>('#rank-title');
+    input.value = 'Trip';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(document.title).toBe('Trip · Versus');
+    input.value = 'Next destination';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    click('.ws-head [data-action="back"]');
+    expect(document.title).toBe(appTitle);
+    expect(document.activeElement).toBe($('#view h1'));
+    expect(document.activeElement?.textContent).toBe('Your rankings');
+  });
+
+  it('focus the view Back and Forward show', () => {
+    history.pushState(null, '', '/demo/accent');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(document.title).toBe('Accent color · Versus');
+    expect(document.activeElement).toBe($('.ws-title'));
+    history.pushState(null, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect(document.activeElement).toBe($('#view h1'));
+  });
+
+  it('title their dialogs with an h2', () => {
+    expect($('#m-title').tagName).toBe('H2');
+  });
+});
+
 describe('workspace tabs', () => {
   const tab = (t: string) => $(`.tab[data-tab="${t}"]`);
 

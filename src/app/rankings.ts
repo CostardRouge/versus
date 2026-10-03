@@ -10,10 +10,10 @@ import { uid } from '../core/util';
 import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
 import { enterBoard, leaveBoard, renderBoard } from './board';
 import { cp } from './color';
-import { $, ask, narrow, toast } from './dom';
+import { $, ask, focusOn, keepFocus, narrow, toast } from './dom';
 import { clearEnding } from './ending';
 import { galleryHTML } from './gallery';
-import { applyStatic } from './header';
+import { applyStatic, viewTitle } from './header';
 import { renderList } from './items';
 import { refreshJoined } from './joined';
 import { refreshPopular } from './popular';
@@ -25,7 +25,11 @@ import { setTab, wsHTML } from './workspace';
 
 /** Top-level view switch (gallery, workspace or published board), navigation and actions on whole rankings. */
 
+/** Draws the view the route names. The same view drawn again keeps its focused control (keepFocus). */
 export function render(): void {
+  keepFocus(draw);
+}
+function draw(): void {
   const pop = $('#cpop');
   if (pop && !pop.hidden) {
     pop.hidden = true;
@@ -34,24 +38,36 @@ export function render(): void {
   const view = $('#view');
   if (!view) return;
   if (S.route.view !== 'board') leaveBoard();
-  if (S.route.view === 'board') renderBoard();
-  else if (S.route.view === 'rank') {
+  if (S.route.view === 'board') {
+    viewTitle();
+    renderBoard();
+  } else if (S.route.view === 'rank') {
     const r = cur();
     if (!r) {
       S.route = { view: 'gallery', tab: 'duel' };
       syncURL('replace');
-      render();
+      draw();
       return;
     }
+    viewTitle(r.title);
     view.innerHTML = wsHTML(r);
     renderList(r, false);
     setTab(S.route.tab);
   } else {
+    viewTitle();
     view.innerHTML = galleryHTML();
     void refreshJoined();
     void refreshPopular();
   }
 }
+
+/** False until the page's first view is on screen: that one leaves the focus where the browser puts it. */
+let booted = false;
+/** After a change of view, the focus goes to the new view's heading, where a screen reader starts reading. */
+function focusView(): void {
+  if (booted) focusOn($('#view h1'));
+}
+
 /** Opens a ranking; `replace` when the view it leaves shouldn't stay in the history (a withdrawn board). */
 export function open(id: string | undefined, tab: string | undefined, opts: { replace?: boolean } = {}): void {
   if (!id) return;
@@ -64,6 +80,7 @@ export function open(id: string | undefined, tab: string | undefined, opts: { re
   S.route = { view: 'rank', id, tab: tab === 'results' || tab === 'items' ? tab : 'duel' };
   syncURL(opts.replace ? 'replace' : 'push');
   render();
+  focusView();
   window.scrollTo?.(0, 0);
 }
 export function newRank(title?: string): Ranking {
@@ -176,6 +193,7 @@ export function goBack(): void {
   S.route = { view: 'gallery', tab: 'duel' };
   syncURL();
   render();
+  focusView();
   window.scrollTo?.(0, 0);
 }
 
@@ -192,6 +210,7 @@ export function openBoard(
   syncURL(opts.replace ? 'replace' : 'push');
   enterBoard(alias, online(), opts.duel ?? null, opts.owner ?? null);
   render();
+  focusView();
   window.scrollTo?.(0, 0);
 }
 
@@ -201,6 +220,10 @@ export function openBoard(
  * A ranking of another browser falls back to the gallery with a word of explanation.
  */
 export function routeFromURL(): void {
+  route();
+  booted = true;
+}
+function route(): void {
   const stashed = takeStash();
   // The stashed path stays under the app's folder, on this origin; anything else is dropped.
   const target = stashed === null ? null : stashedURL(stashed);
@@ -237,4 +260,5 @@ export function routeFromURL(): void {
   S.route = { view: 'gallery', tab: 'duel' };
   syncURL('replace');
   render();
+  focusView();
 }

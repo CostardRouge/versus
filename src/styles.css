@@ -526,8 +526,16 @@ kbd {
 .back:hover {
   color: var(--ink);
 }
-.title-input {
+.ws-title {
   flex: 1 1 240px;
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+  border-radius: 10px;
+}
+.title-input {
+  flex: 1;
   min-width: 0;
   font: 700 clamp(24px, 3.2vw, 34px) / 1.1 var(--f-display);
   letter-spacing: -0.03em;
@@ -2007,7 +2015,7 @@ body.dropping .drop-overlay {
   padding: 22px;
   box-shadow: var(--shadow);
 }
-.modal-box h3 {
+.modal-box h2 {
   margin: 0 0 8px;
   font: 700 21px / 1.2 var(--f-display);
   letter-spacing: -0.02em;

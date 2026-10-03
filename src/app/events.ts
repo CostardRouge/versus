@@ -35,7 +35,7 @@ import {
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
 import { $, closeModal, doc, narrow, toastAct, toastHasAct, trapTab } from './dom';
 import { choose, duelKeydown, endContinue, endSee, skip, undoLast } from './duel';
-import { changeTheme } from './header';
+import { changeTheme, viewTitle } from './header';
 import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
 import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
 import { makeMineFromPopular } from './popular';
@@ -68,7 +68,7 @@ import {
   shareView,
 } from './share';
 import { drawSlopes } from './slope';
-import { cur, S, save, saveSoon } from './state';
+import { cur, S, saveSoon } from './state';
 import { menuKeydown, setMethod, setTab, tabKeydown, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */
@@ -311,6 +311,7 @@ function onInput(e: Event): void {
     if (r) {
       r.title = tg.value.trim() || t('untitled');
       r.updated = Date.now();
+      viewTitle(r.title);
       saveSoon();
     }
     return;
