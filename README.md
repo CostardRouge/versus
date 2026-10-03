@@ -47,6 +47,7 @@ npm run check      # lint, typecheck, tests, build: what CI runs
 | `npm run preview` | Serve the production build |
 | `npm test` / `npm run test:watch` | Unit tests (Vitest) |
 | `npm run coverage` | Tests with coverage; the scoring engine must stay above 90% |
+| `npm run e2e` | End-to-end tests in Chromium (Playwright): duels by keyboard and swipe, the items list, the color editor, a published board voted to the end |
 | `npm run lint` / `npm run format` | Biome lint and format check / auto-fix |
 | `npm run typecheck` | TypeScript in strict mode (app and Worker) |
 | `npm run worker:dev` | The whole app and the published boards API on http://localhost:8787 (`npm run dev` proxies `/api` to it) |

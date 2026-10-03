@@ -16,7 +16,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "tests", "build", "scripts", "vite.config.ts"],
+  "include": ["src", "tests", "build", "scripts", "vite.config.ts", "playwright.config.ts"],
   // The service worker has its own tsconfig: WebWorker types instead of the DOM's.
   "exclude": ["src/sw"]
 }

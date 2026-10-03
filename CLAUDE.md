@@ -25,6 +25,7 @@ npm install
 npm run dev          # Vite dev server
 npm run check        # lint + typecheck + tests + build (what CI runs); run before every commit
 npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/functions/statements, ≥ 75% branches)
+npm run e2e          # end-to-end tests in Chromium (Playwright, tests/e2e; the API and WebSocket faked per test)
 npm run format       # Biome auto-fix
 npm run icons        # redraw the icons and the social card into public/ (commit the files)
 npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1 migrated); npm run dev proxies /api to it
