@@ -81,6 +81,8 @@ export interface Board {
 interface Pending {
   kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add' | 'check';
   revert?: () => void;
+  /** Refused already: only the queue that follows is awaited. */
+  refused?: boolean;
 }
 
 let B: Board | null = null;
@@ -354,6 +356,7 @@ function onMessage(board: Board, m: ServerMessage): void {
     // replay the cards' entrance, halfway through it on a slow (mobile) connection.
     if (!board.busy && $('#b-main')?.dataset.duel !== duelKey(board)) renderDuel();
     renderRanking();
+    if (head?.kind === 'add') addBusy(suggesting(board));
   } else if (m.t === 'ranking') {
     board.counts = m.counts;
     board.latest = m.ranking;
@@ -377,7 +380,11 @@ function onMessage(board: Board, m: ServerMessage): void {
       head.revert = undefined;
       renderRanking();
     }
-    if (head?.kind === 'add') board.sentLabel = null;
+    if (head?.kind === 'add') {
+      board.sentLabel = null;
+      head.refused = true;
+      addBusy(suggesting(board));
+    }
     if (m.code === 'captcha' && head?.kind === 'vote') void humanCheck(board);
     const key = errorText(m.code, head?.kind);
     if (key) toast(t(key));
@@ -433,8 +440,24 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
     renderDuel();
     renderRanking();
   }
+  addBusy(suggesting(b));
   refocus(mark);
 }
+
+/**
+ * The add field's button while what it sent waits for its answer: disabled and busy, so that Enter pressed again,
+ * or a second click, sends nothing more.
+ */
+export function addBusy(busy: boolean): void {
+  const btn = $<HTMLButtonElement>('#add-form .add-btn');
+  if (!btn) return;
+  btn.disabled = busy;
+  if (busy) btn.setAttribute('aria-busy', 'true');
+  else btn.removeAttribute('aria-busy');
+}
+
+/** A visitor's suggestion was sent and the server hasn't answered yet. */
+const suggesting = (b: Board): boolean => b.pending.some((p) => p.kind === 'add' && !p.refused);
 
 const waitText = (b: Board): string => `<h2 class="q">${b.conn === 'lost' ? t('boardOffline') : t('connecting')}</h2>`;
 
@@ -927,13 +950,14 @@ export async function boardAdd(text: string): Promise<void> {
     return;
   }
   const item = typed(text);
-  if (!item.label) return;
+  if (!item.label || suggesting(b)) return;
   if (!b.socket?.send({ t: 'add', item })) {
     toast(t('notSent'));
     return;
   }
   b.sentLabel = text;
   b.pending.push({ kind: 'add' });
+  addBusy(true);
 }
 
 export async function copyBoardLink(alias: string | undefined, admin = false): Promise<void> {

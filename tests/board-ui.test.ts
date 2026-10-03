@@ -473,6 +473,23 @@ describe('voting', () => {
     expect($('#add-input')).toBeNull();
   });
 
+  it('sends a suggestion once, however often Enter is pressed, until the server answers', () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    const sent = ws.sent.length;
+    submit('Hawaii');
+    submit('Hawaii');
+    expect(ws.sent.slice(sent).filter((m) => m.t === 'add')).toHaveLength(1);
+    const btn = $('#add-form .add-btn') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    expect(btn.disabled).toBe(false);
+    expect(btn.hasAttribute('aria-busy')).toBe(false);
+    ($('#add-input') as HTMLInputElement).value = '';
+    ws.receive(state());
+  });
+
   it('draws a skipped duel once, even when the server confirms it late', () => {
     const ws = FakeSocket.last();
     click('[data-action="b-skip"]');
@@ -573,6 +590,29 @@ describe('author', () => {
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p0` });
     expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
+  });
+
+  it('sends what the author adds once, however often Enter is pressed, until the server answers', async () => {
+    FakeSocket.last().receive(state({}, true));
+    respond = () =>
+      new Promise<Answer>((res) =>
+        setTimeout(
+          () => res({ status: 200, body: { id: 'n-Bianca', label: 'Bianca', img: null, fill: null, h: 1 } }),
+          500,
+        ),
+      );
+    calls.length = 0;
+    submit('Bianca');
+    submit('Bianca');
+    const btn = $('#add-form .add-btn') as HTMLButtonElement;
+    expect([btn.disabled, btn.getAttribute('aria-busy')]).toEqual([true, 'true']);
+    // A new state meanwhile draws the field again: still busy.
+    FakeSocket.last().receive(state({}, true));
+    expect(($('#add-form .add-btn') as HTMLButtonElement).disabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    expect(($('#add-form .add-btn') as HTMLButtonElement).disabled).toBe(false);
+    expect($('#add-form .add-btn')?.hasAttribute('aria-busy')).toBe(false);
   });
 
   it('tells the author when the server can’t be reached, and when this device lost the admin key', async () => {

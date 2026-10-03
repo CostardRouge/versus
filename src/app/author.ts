@@ -8,6 +8,7 @@ import type { BoardSettings, Fill, Item, MethodKey } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
 import {
+  addBusy,
   type Board,
   boardState,
   boardURL,
@@ -192,6 +193,7 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
     else closeColor();
   }
   setTab(S.route.tab);
+  addBusy(adding);
   // Once the main pane is drawn too: the focus may have been in the duel.
   restoreTyping(typing, a);
 }
@@ -362,9 +364,25 @@ async function dropItems(b: Authored, items: Item[]): Promise<void> {
 }
 
 /** What was typed or pasted in the add field: one item, or every new label of a list (core/list.ts). */
+/** Items being sent from the add field (typed, pasted, a color): another Enter or click waits for the answer. */
+let adding = false;
+
+/** Runs `send` as the add field's one request in flight, its button busy meanwhile. */
+async function addOnce<T>(send: () => Promise<T>): Promise<T | null> {
+  if (adding) return null;
+  adding = true;
+  addBusy(true);
+  try {
+    return await send();
+  } finally {
+    adding = false;
+    addBusy(false);
+  }
+}
+
 export async function authorAdd(text: string): Promise<boolean> {
   const b = authored();
-  if (b?.view.status !== 'open') return false;
+  if (b?.view.status !== 'open' || adding) return false;
   const all = typedItems(text);
   if (!all.length) return false;
   const { fresh, dupes } = freshLabels(
@@ -376,7 +394,7 @@ export async function authorAdd(text: string): Promise<boolean> {
     return true;
   }
   b.sentLabel = text;
-  const added = await sendItems(b, fresh.map(typed), dupes, all.length > 1);
+  const added = await addOnce(() => sendItems(b, fresh.map(typed), dupes, all.length > 1));
   if (!added) {
     b.sentLabel = null;
     return false;
@@ -389,8 +407,9 @@ export async function authorAdd(text: string): Promise<boolean> {
 /** The color picked beside the add field. */
 export async function authorAddColor(): Promise<void> {
   const b = authored();
+  if (!b || adding) return;
   const color = takeColor();
-  if (b && color) await sendItems(b, [color], 0, false);
+  if (color) await addOnce(() => sendItems(b, [color], 0, false));
 }
 
 /** Labels for new images, each new on the board: "Beach", then "Beach 2". */
