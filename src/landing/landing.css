@@ -838,7 +838,7 @@ kbd {
   background: var(--a);
 }
 .card-b .side-tag {
-  background: var(--b);
+  background: var(--b-ink);
 }
 .txt {
   position: relative;
@@ -890,7 +890,7 @@ kbd {
   color: var(--a);
 }
 .pb {
-  color: var(--b);
+  color: var(--b-ink);
 }
 .vs-lbl {
   font-size: 9.5px;
@@ -1065,12 +1065,12 @@ kbd {
   color: var(--on-accent);
 }
 .ctl-b {
-  border-color: var(--b);
-  color: var(--b);
+  border-color: var(--b-ink);
+  color: var(--b-ink);
 }
 .ctl-b:hover,
 .ctl-b.kpress {
-  background: var(--b);
+  background: var(--b-ink);
   color: var(--on-accent);
 }
 .ctl:hover kbd,
@@ -1424,7 +1424,7 @@ kbd {
   color: var(--a);
 }
 .vsx .xb {
-  color: var(--b);
+  color: var(--b-ink);
 }
 
 /* How it works */
@@ -1678,7 +1678,7 @@ kbd {
   background: var(--a);
 }
 .mc-b .tag {
-  background: var(--b);
+  background: var(--b-ink);
 }
 .mc-a.win {
   box-shadow: 0 0 0 4px var(--a);
@@ -1786,7 +1786,7 @@ kbd {
   position: absolute;
   right: 16px;
   bottom: 44px;
-  color: var(--good);
+  color: var(--good-ink);
   border-color: color-mix(in oklab, var(--good) 50%, transparent);
   background: var(--surface);
   opacity: 0;
@@ -1971,7 +1971,7 @@ kbd {
   text-align: right;
 }
 .dl.up {
-  color: var(--good);
+  color: var(--good-ink);
 }
 .dl.down {
   color: var(--bad);
@@ -2012,7 +2012,7 @@ kbd {
   }
 }
 .soon {
-  color: var(--b);
+  color: var(--b-ink);
   border-color: color-mix(in oklab, var(--b) 50%, transparent);
 }
 .c-points {
@@ -2060,7 +2060,7 @@ kbd {
   font: 600 11px var(--f-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--good);
+  color: var(--good-ink);
 }
 .livechip i {
   width: 8px;
@@ -2160,7 +2160,7 @@ kbd {
   right: 54px;
   top: 4px;
   font: 700 12px var(--f-mono);
-  color: var(--good);
+  color: var(--good-ink);
   pointer-events: none;
   animation: plus 0.9s ease-out forwards;
 }

@@ -1,5 +1,9 @@
 /* Design tokens shared by the app (styles.css) and the home page (src/landing/landing.css): light values on
-   :root, dark values under prefers-color-scheme and [data-theme]. */
+   :root, dark values under prefers-color-scheme and [data-theme].
+   Contrast (tests/tokens.test.ts): text tokens reach 4.5:1 on --bg, --surface and --surface-2; --field, the
+   accents and the focus ring reach 3:1. --b and --good are fills: as text, thin borders or under white text
+   they take their -ink variant, darker in the light theme (the same color in the dark one). --line only
+   separates surfaces; a field's edge is --field. */
 :root {
   --bg: #eceef2;
   --surface: #fafbfd;
@@ -7,10 +11,13 @@
   --ink: #13151b;
   --muted: #5a6072;
   --line: #d2d6df;
+  --field: #7a8090;
   --a: #2743f5;
   --b: #e4492a;
+  --b-ink: #b5361a;
   --on-accent: #ffffff;
   --good: #16855a;
+  --good-ink: #11704b;
   --bad: #c23e28;
   --shadow: 0 1px 0 rgba(19, 21, 27, 0.04), 0 12px 30px -14px rgba(19, 21, 27, 0.22);
   --f-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
@@ -27,10 +34,13 @@
     --ink: #eceef3;
     --muted: #9298a8;
     --line: #2a2f3a;
+    --field: #6a7183;
     --a: #7089ff;
     --b: #ff7a58;
+    --b-ink: #ff7a58;
     --on-accent: #0e1015;
     --good: #4cc98e;
+    --good-ink: #4cc98e;
     --bad: #ff6b52;
     --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 14px 34px -14px rgba(0, 0, 0, 0.7);
     color-scheme: dark;
@@ -43,10 +53,13 @@
   --ink: #eceef3;
   --muted: #9298a8;
   --line: #2a2f3a;
+  --field: #6a7183;
   --a: #7089ff;
   --b: #ff7a58;
+  --b-ink: #ff7a58;
   --on-accent: #0e1015;
   --good: #4cc98e;
+  --good-ink: #4cc98e;
   --bad: #ff6b52;
   --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 14px 34px -14px rgba(0, 0, 0, 0.7);
   color-scheme: dark;

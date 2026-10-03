@@ -612,7 +612,7 @@ kbd {
 #add-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   background: var(--bg);
   border-radius: 12px;
   padding: 10px 12px;
@@ -700,7 +700,7 @@ kbd {
   font-weight: 700;
 }
 .list li.in-b .pos {
-  color: var(--b);
+  color: var(--b-ink);
   font-weight: 700;
 }
 .list li.in-a .thumb {
@@ -735,9 +735,9 @@ kbd {
   font-weight: 500;
   text-overflow: ellipsis;
 }
+/* Focused, the global focus ring shows: a 1 px line of --line would hardly be seen. */
 .row-label:focus {
   background: var(--surface);
-  outline: 1px solid var(--line);
 }
 /* A name that can't change (a closed vote), and a word under a name (picture under review, same color). */
 .row-text {
@@ -786,7 +786,7 @@ kbd {
   text-align: right;
 }
 .dl.up {
-  color: var(--good);
+  color: var(--good-ink);
 }
 .dl.down {
   color: var(--bad);
@@ -953,7 +953,7 @@ kbd {
   background: var(--a);
 }
 .card-b .side-tag {
-  background: var(--b);
+  background: var(--b-ink);
 }
 .txt {
   padding: 22px 22px 26px;
@@ -1006,7 +1006,7 @@ kbd {
   color: var(--a);
 }
 .pb {
-  color: var(--b);
+  color: var(--b-ink);
 }
 .vs-lbl {
   font-size: 10px;
@@ -1137,11 +1137,11 @@ kbd {
   color: var(--on-accent);
 }
 .ctl-b {
-  border-color: var(--b);
-  color: var(--b);
+  border-color: var(--b-ink);
+  color: var(--b-ink);
 }
 .ctl-b:hover {
-  background: var(--b);
+  background: var(--b-ink);
   color: var(--on-accent);
 }
 .ctl:hover kbd {
@@ -1521,7 +1521,7 @@ kbd {
   background: color-mix(in oklab, var(--surface) 90%, var(--a));
 }
 .cmp-table td.diff {
-  color: var(--b);
+  color: var(--b-ink);
   font-weight: 600;
 }
 .cmp-table td:first-child,
@@ -1597,7 +1597,7 @@ kbd {
   width: 44px;
   height: 36px;
   padding: 2px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 10px;
   background: var(--bg);
   cursor: pointer;
@@ -1844,7 +1844,7 @@ kbd {
   width: 40px;
   height: 32px;
   padding: 2px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 8px;
   background: var(--bg);
   cursor: pointer;
@@ -1852,7 +1852,7 @@ kbd {
 .cp-hex {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   background: var(--surface);
   border-radius: 8px;
   padding: 6px 8px;
@@ -2227,7 +2227,7 @@ body.dropping .drop-overlay {
 .opt-n {
   width: 68px;
   padding: 4px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 8px;
   background: var(--surface);
 }
@@ -2261,7 +2261,7 @@ body.dropping .drop-overlay {
   margin-top: 10px;
 }
 .chip-live {
-  color: var(--good);
+  color: var(--good-ink);
   border-color: currentColor;
 }
 .b-head .b-title {
@@ -2536,7 +2536,7 @@ body.dropping .drop-overlay {
   font: inherit;
   color: inherit;
   padding: 8px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 10px;
   background: var(--bg);
   resize: vertical;
@@ -2613,11 +2613,11 @@ body.dropping .drop-overlay {
     background 0.15s,
     color 0.15s;
 }
-.fin-views button,
+.fin-views button:hover,
 .res-views button:hover {
   color: var(--ink);
 }
-.fin-views button,
+.fin-views button[aria-pressed="true"],
 .res-views button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);
@@ -3700,5 +3700,29 @@ svg[data-slope-svg] path {
   }
   .slope .nm {
     font-size: 13.5px;
+  }
+}
+
+/* Selected tabs and segments: a border too, not only a lighter background (WCAG 1.4.11). */
+.tab[aria-selected="true"],
+.lang button[aria-pressed="true"],
+.theme button[aria-pressed="true"],
+.cp-seg button[aria-checked="true"],
+.share-fmts button[aria-pressed="true"],
+.fin-views button[aria-pressed="true"],
+.res-views button[aria-pressed="true"],
+.fin-who button[aria-pressed="true"],
+.slope-picks button[aria-pressed="true"] {
+  box-shadow:
+    inset 0 0 0 1px var(--field),
+    0 1px 3px rgba(0, 0, 0, 0.12);
+}
+/* Forced colors (Windows contrast themes) drop backgrounds and shadows: the selected state gets an outline. */
+@media (forced-colors: active) {
+  [aria-selected="true"],
+  [aria-pressed="true"],
+  [aria-checked="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
   }
 }
