@@ -146,7 +146,8 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       pictures.test.ts, log.test.ts, cache.test.ts, turnstile.test.ts (Worker modules that run in Node)
                       + a11y-ui.test.ts (keyboard patterns, focus kept and moved, names, toasts), gallery-wait-ui.test.ts, styles.test.ts
                       and tokens.test.ts (contrast of the tokens, target sizes, focus and forced-colors rules)
-tests/e2e/            Playwright (`npm run e2e`): real Chromium, desktop and phone, the API and the board's WebSocket faked per test
+tests/e2e/            Playwright (`npm run e2e`): real Chromium, desktop and phone, the API and the board's WebSocket faked per test;
+                      a11y.spec.ts runs axe (WCAG 2.2 AA) on every page and view in both themes
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 

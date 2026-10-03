@@ -819,7 +819,6 @@ kbd {
   display: block;
   font: 500 max(10px, 4.2cqi) / 1.3 var(--f-mono);
   margin-top: 4px;
-  opacity: 0.85;
 }
 .side-tag {
   position: absolute;
@@ -2454,7 +2453,7 @@ kbd {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
   .marq-row {
     animation: none;
