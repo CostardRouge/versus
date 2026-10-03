@@ -838,7 +838,7 @@ kbd {
   background: var(--a);
 }
 .card-b .side-tag {
-  background: var(--b);
+  background: var(--b-ink);
 }
 .txt {
   position: relative;
@@ -890,7 +890,7 @@ kbd {
   color: var(--a);
 }
 .pb {
-  color: var(--b);
+  color: var(--b-ink);
 }
 .vs-lbl {
   font-size: 9.5px;
@@ -1065,12 +1065,12 @@ kbd {
   color: var(--on-accent);
 }
 .ctl-b {
-  border-color: var(--b);
-  color: var(--b);
+  border-color: var(--b-ink);
+  color: var(--b-ink);
 }
 .ctl-b:hover,
 .ctl-b.kpress {
-  background: var(--b);
+  background: var(--b-ink);
   color: var(--on-accent);
 }
 .ctl:hover kbd,
@@ -1424,7 +1424,7 @@ kbd {
   color: var(--a);
 }
 .vsx .xb {
-  color: var(--b);
+  color: var(--b-ink);
 }
 
 /* How it works */
@@ -1678,7 +1678,7 @@ kbd {
   background: var(--a);
 }
 .mc-b .tag {
-  background: var(--b);
+  background: var(--b-ink);
 }
 .mc-a.win {
   box-shadow: 0 0 0 4px var(--a);
@@ -1689,8 +1689,26 @@ kbd {
   transform: scale(1.04);
 }
 .mc.lose {
-  opacity: 0.45;
   transform: scale(0.94);
+}
+/* The card not picked fades its picture, never its name (WCAG 1.4.3): the name turns to ink. */
+.mc .bgd,
+.mc .pic,
+.mc .shade {
+  transition: opacity 0.3s;
+}
+.mc.lose .bgd,
+.mc.lose .pic {
+  opacity: 0.3;
+}
+.mc.lose .shade {
+  opacity: 0;
+}
+.mc.lose.media b {
+  color: var(--ink);
+}
+.mc.lose.is-txt {
+  background: color-mix(in oklab, var(--surface) 92%, hsl(var(--h) 72% 55%));
 }
 .mvs {
   width: 30px;
@@ -1733,8 +1751,8 @@ kbd {
   border-color: var(--a);
 }
 .v2-keys kbd[data-k="b"].on {
-  background: var(--b);
-  border-color: var(--b);
+  background: var(--b-ink);
+  border-color: var(--b-ink);
 }
 .v2-keys kbd[data-k="draw"].on {
   background: var(--ink);
@@ -1786,7 +1804,7 @@ kbd {
   position: absolute;
   right: 16px;
   bottom: 44px;
-  color: var(--good);
+  color: var(--good-ink);
   border-color: color-mix(in oklab, var(--good) 50%, transparent);
   background: var(--surface);
   opacity: 0;
@@ -1971,7 +1989,7 @@ kbd {
   text-align: right;
 }
 .dl.up {
-  color: var(--good);
+  color: var(--good-ink);
 }
 .dl.down {
   color: var(--bad);
@@ -2012,7 +2030,7 @@ kbd {
   }
 }
 .soon {
-  color: var(--b);
+  color: var(--b-ink);
   border-color: color-mix(in oklab, var(--b) 50%, transparent);
 }
 .c-points {
@@ -2060,7 +2078,7 @@ kbd {
   font: 600 11px var(--f-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--good);
+  color: var(--good-ink);
 }
 .livechip i {
   width: 8px;
@@ -2160,7 +2178,7 @@ kbd {
   right: 54px;
   top: 4px;
   font: 700 12px var(--f-mono);
-  color: var(--good);
+  color: var(--good-ink);
   pointer-events: none;
   animation: plus 0.9s ease-out forwards;
 }
@@ -2260,7 +2278,8 @@ kbd {
   color: var(--on-accent);
   transition:
     flex-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 0.4s,
+    background 0.4s,
+    color 0.4s,
     filter 0.4s;
 }
 .half.ha {
@@ -2312,10 +2331,17 @@ kbd {
 .final.vb .hb {
   flex-grow: 1.8;
 }
+/* The side not picked fades its color, never its words (WCAG 1.4.3): a pale tint, in ink. */
 .final.va .hb,
 .final.vb .ha {
-  opacity: 0.5;
-  filter: saturate(0.6);
+  color: var(--ink);
+  filter: none;
+}
+.final.va .hb {
+  background: color-mix(in oklab, var(--b) 28%, var(--bg));
+}
+.final.vb .ha {
+  background: color-mix(in oklab, var(--a) 28%, var(--bg));
 }
 .final.va .vsd {
   left: 64.3%;
@@ -2532,8 +2558,8 @@ html.paused .caret {
     filter 0.35s;
 }
 .kcap.down.b {
-  background: var(--b);
-  border-color: var(--b);
+  background: var(--b-ink);
+  border-color: var(--b-ink);
 }
 .kcap.down.draw {
   background: var(--ink);

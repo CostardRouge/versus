@@ -17,23 +17,35 @@ let list: PopularBoard[] = [];
 let listLang: Lang | null = null;
 let fetchedAt = -Infinity;
 let fetching = false;
+/** The last request failed (offline): the section isn't announced until one succeeds. */
+let failed = false;
 
 export const popularBoards = (): PopularBoard[] => list;
 
-/** Fetches the list when it is stale, then shows the gallery again if it changed. */
+/**
+ * True while the gallery waits for its first list: the section keeps its place with a word that it is loading,
+ * rather than popping in under the reader's eyes.
+ */
+export const popularWaiting = (): boolean => online() && !failed && !list.length && listLang === null;
+
+/** Fetches the list when it is stale, then shows the gallery again if it changed (keeping the focus: render()). */
 export async function refreshPopular(): Promise<void> {
   const lang = getLang();
   if (!online() || fetching || (lang === listLang && Date.now() - fetchedAt < REFRESH_MS)) return;
+  const waited = popularWaiting();
   fetching = true;
   try {
     const found = await fetchPopular(lang);
     fetchedAt = Date.now();
     listLang = lang;
+    failed = false;
     const changed = JSON.stringify(found) !== JSON.stringify(list);
     list = found;
-    if (changed && S.route.view === 'gallery') render();
+    if ((changed || waited) && S.route.view === 'gallery') render();
   } catch {
-    // Offline or refused: the section waits for the next gallery.
+    // Offline or refused: the section waits for the next gallery, and its place goes.
+    failed = true;
+    if (waited && S.route.view === 'gallery') render();
   } finally {
     fetching = false;
   }

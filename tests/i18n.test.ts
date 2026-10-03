@@ -26,6 +26,20 @@ describe('translations', () => {
       if (typeof v === 'string') expect(v.trim(), key).not.toBe('');
     }
   });
+
+  it('calls a published ranking one thing, never a board', () => {
+    const said = (v: unknown): string => (typeof v === 'function' ? v({ n: 2, w: 1, l: 1, d: 1 }) : String(v));
+    for (const [key, v] of Object.entries(en)) expect(said(v), key).not.toMatch(/\bboards?\b/i);
+    for (const [key, v] of Object.entries(fr)) expect(said(v), key).not.toMatch(/\btableaux?\b/i);
+  });
+
+  it('names the Ranking tab the same on a card, and the record after the duel buttons', () => {
+    for (const m of [en, fr]) {
+      expect(m.result).toBe(m.tabResults);
+      expect(m.colRecord).toBe([m.recW, m.recL, m.recD].join(' · '));
+      expect(String(m.draw).startsWith(String(m.recD))).toBe(true);
+    }
+  });
 });
 
 describe('t', () => {

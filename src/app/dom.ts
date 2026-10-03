@@ -26,7 +26,12 @@ const media = (q: string): MQ =>
 export function initDom(d: Document): void {
   doc = d;
   narrow = media('(max-width: 859px)');
-  reduced = media('(prefers-reduced-motion: reduce)').matches;
+  // Followed while the page is open: someone turning motion off mid-session gets it at once.
+  const calm = media('(prefers-reduced-motion: reduce)');
+  reduced = calm.matches;
+  calm.addEventListener('change', () => {
+    reduced = calm.matches;
+  });
 }
 
 export const trashSvg =
@@ -37,33 +42,120 @@ export const imgSvg =
   '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>';
 
 /* ---------- UI helpers ---------- */
-/** A short message; with an action (Undo), it stays longer and carries a button. */
+/** How long a toast stays: time to read it (2.6 s, and 60 ms a character), at least 6 s with an action. */
+export const toastMs = (msg: string, action: boolean): number => Math.max(action ? 6000 : 0, 2600 + 60 * msg.length);
+
+/** The toast's clock: what is left of its time, from when it last ran. Hovered or focused, it waits. */
+const clock = { left: 0, since: 0, hover: false, focus: false, bound: false };
+let toastClear: ReturnType<typeof setTimeout> | undefined;
+
+function runClock(): void {
+  clearTimeout(toastTimer);
+  if (clock.hover || clock.focus) return;
+  clock.since = Date.now();
+  toastTimer = setTimeout(hideToast, clock.left);
+}
+function holdClock(): void {
+  if (!clock.hover && !clock.focus) clock.left = Math.max(0, clock.left - (Date.now() - clock.since));
+  clearTimeout(toastTimer);
+}
+/** Pauses the toast while the pointer is on it or the focus inside; back to it, at least 1.5 s to read on. */
+function bindToast(el: HTMLElement): void {
+  if (clock.bound) return;
+  clock.bound = true;
+  const on = (k: 'hover' | 'focus', v: boolean) => () => {
+    const live = el.classList.contains('show');
+    if (live && v) holdClock();
+    clock[k] = v;
+    if (live && !v) {
+      clock.left = Math.max(clock.left, 1500);
+      runClock();
+    }
+  };
+  el.addEventListener('mouseenter', on('hover', true));
+  el.addEventListener('mouseleave', on('hover', false));
+  el.addEventListener('focusin', on('focus', true));
+  el.addEventListener('focusout', (e) => {
+    if (!el.contains(e.relatedTarget as Node | null)) on('focus', false)();
+  });
+}
+
+/**
+ * A short message in a live region (#toast); with an action (Undo), it carries a button, and ⌘/Ctrl+Z runs it
+ * (events.ts). It stays long enough to read it, and while pointed at or focused.
+ */
 export function toast(msg: string, action?: { label: string; run: () => void }): void {
   const el = $('#toast');
   if (!el) return;
+  bindToast(el);
+  clearTimeout(toastClear);
   toastRun = action?.run ?? null;
   if (action) {
     el.innerHTML = `<span>${esc(msg)}</span><button class="toast-act" type="button" data-action="toast-act">${esc(action.label)}</button>`;
   } else el.textContent = msg;
   el.classList.toggle('has-act', !!action);
   el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, action ? 6000 : 2600);
+  clock.left = toastMs(msg, !!action);
+  runClock();
 }
 function hideToast(): void {
   toastRun = null;
-  $('#toast')?.classList.remove('show');
+  clearTimeout(toastTimer);
+  const el = $('#toast');
+  if (!el) return;
+  el.classList.remove('show');
+  // Emptied once faded out: no stale words for a screen reader, no button out of sight in the Tab order.
+  toastClear = setTimeout(() => {
+    el.textContent = '';
+    el.classList.remove('has-act');
+  }, 250);
 }
+/** True while a toast with an action (Undo) is on screen. */
+export const toastHasAct = (): boolean => toastRun !== null;
 /** Runs the action of the toast on screen, once. */
 export function toastAct(): void {
   const run = toastRun;
-  clearTimeout(toastTimer);
+  const el = $('#toast');
+  // The button goes away: the focus doesn't stay on it.
+  if (el?.contains(doc.activeElement)) (doc.activeElement as HTMLElement).blur();
+  clock.focus = false;
   hideToast();
   run?.();
 }
 export function announce(msg: string): void {
   const el = $('#live');
   if (el) el.textContent = msg;
+}
+/** Moves the focus to what isn't a control (a view's heading), without putting it in the Tab order. */
+export function focusOn(el: HTMLElement | null): void {
+  if (!el) return;
+  if (!el.hasAttribute('tabindex')) el.tabIndex = -1;
+  el.focus({ preventScroll: true });
+}
+
+/** The data attributes that tell what a control does and to what; a duel card is known by its side alone. */
+const FOCUS_DATA = ['action', 'side', 'id', 'm', 'tab', 'view', 'fmt', 'type', 'alias', 'i'];
+const quote = (v: string): string => `"${v.replace(/["\\]/g, '\\$&')}"`;
+function focusKey(el: HTMLElement): string | null {
+  if (el.id) return `#${el.id}`;
+  const keys = FOCUS_DATA.filter((k) => el.dataset[k] !== undefined && !(k === 'id' && el.dataset.side));
+  if (!keys.length) return null;
+  const cls = el.classList[0] ? `.${el.classList[0]}` : '';
+  return `${el.tagName.toLowerCase()}${cls}${keys.map((k) => `[data-${k}=${quote(el.dataset[k] ?? '')}]`).join('')}`;
+}
+
+/**
+ * Runs a render that replaces the focused control, then focuses its replacement: the one doing the same thing
+ * to the same item (data-action with data-id, data-side, data-m…), else `fallback`'s. A focus the render left
+ * alone stays where it is.
+ */
+export function keepFocus(render: () => void, fallback?: () => HTMLElement | null | undefined): void {
+  const at = doc.activeElement;
+  const key = at instanceof HTMLElement && at !== doc.body ? focusKey(at) : null;
+  render();
+  if (!(at instanceof HTMLElement) || at === doc.body || at.isConnected) return;
+  const same = key ? $<HTMLButtonElement>(key) : null;
+  (same && !same.disabled && !same.closest('[hidden]') ? same : fallback?.())?.focus();
 }
 /**
  * Confirm modal. `html` replaces the text body with markup the caller reads back after OK (a small

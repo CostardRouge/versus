@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 
 test('plays duels with the keyboard, and never from a tab', async ({ page }) => {
   await page
-    .getByRole('button', { name: /Next destination/ })
+    .getByRole('link', { name: /Next destination/ })
     .first()
     .click();
   const before = (await demo(page)).history.length;
@@ -26,7 +26,7 @@ test('plays duels with the keyboard, and never from a tab', async ({ page }) => 
 test('takes a swipe as a pick', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'the gesture is the phone’s');
   await page
-    .getByRole('button', { name: /Next destination/ })
+    .getByRole('link', { name: /Next destination/ })
     .first()
     .click();
   await page.getByRole('tab', { name: 'Duel' }).click();

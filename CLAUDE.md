@@ -96,7 +96,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   items.ts            a local ranking's items in the editor: live-sorted list and edits (add text/colors/images, rename, remove)
   duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
   results.ts          podium or lines comparing two methods (switch), table, method comparison, copy
-  ending.ts           end of a local ranking: announcement with confetti and a countdown to the Ranking tab
+  ending.ts           end of a local ranking: announcement with confetti and a button to the Ranking tab (focused, announced)
   slope.ts            lines between two rankings (end-of-vote page, method comparison): drawing and hover
   color.ts            color editor popover
   publish.ts          publish modal and the settings forms shared with the board's settings
@@ -144,6 +144,8 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       + backup-ui.test.ts (export, import, drop, the iOS home-screen note) + popular-ui.test.ts, finale.test.ts,
                       storage.test.ts, remote.test.ts (time limits), sw.test.ts (the service worker's install against fake caches),
                       pictures.test.ts, log.test.ts, cache.test.ts, turnstile.test.ts (Worker modules that run in Node)
+                      + a11y-ui.test.ts (keyboard patterns, focus kept and moved, names, toasts), gallery-wait-ui.test.ts, styles.test.ts
+                      and tokens.test.ts (contrast of the tokens, target sizes, focus and forced-colors rules)
 tests/e2e/            Playwright (`npm run e2e`): real Chromium, desktop and phone, the API and the board's WebSocket faked per test
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
@@ -159,7 +161,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Items (D116):** one items pane for every ranking (`app/editor.ts`): a local ranking (`items.ts`) and a board's author (`author.ts`) fill it, a visitor's suggestion uses its add field. On a published board, an edit of an item with votes asks whether they stay (`askVotes`); the rule is `editItem` in `core/board.ts`. Don't build a second form for items.
 - **Moderation (D107 to D109, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
 - **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
-- **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
+- **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. Coral and green as text or thin borders use `--b-ink` and `--good-ink` (4.5:1 in both themes, also the fill under white text), field borders `--field` (3:1); `tests/tokens.test.ts` checks the contrasts. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
 - **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-v1-unreadable` (stored rankings the app could not read, set aside untouched), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home and legal pages read theme and lang and write lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"), `umami.disabled` (Umami's own opt-out key, set by the legal page's switch); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Changing the stored shape requires a migration in `storage.ts`.

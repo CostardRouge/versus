@@ -1,5 +1,5 @@
 import { pagePath, trackView } from '../audience';
-import { type Route, routePath, trackedPath } from '../core/route';
+import { parseRoute, type Route, routePath, trackedPath } from '../core/route';
 import { doc } from './dom';
 import { S } from './state';
 
@@ -52,9 +52,17 @@ export function syncURL(mode: 'push' | 'replace' = 'push'): void {
   trackView(`${pagePath()}${trackedPath(route)}`);
   const url = new URL(routeURL(route));
   if (url.pathname === location.pathname && !location.hash && !location.search) return;
-  if (mode === 'push') history.pushState(null, '', url.pathname);
-  else history.replaceState(null, '', url.pathname);
+  // An entry opened from the gallery says so: "‹ Rankings" then steps back to it (rankings.ts goBack). A
+  // replacement (a tab) keeps what its entry knew.
+  if (mode === 'push') history.pushState(fromGallery() ? { fromGallery: true } : null, '', url.pathname);
+  else history.replaceState(history.state, '', url.pathname);
 }
+
+/** Whether the address on screen is the gallery's. */
+const fromGallery = (): boolean => parseRoute(currentPath())?.view === 'gallery';
+
+/** True when the entry on screen was opened from the gallery, the entry just before it. */
+export const backIsGallery = (): boolean => (history.state as { fromGallery?: boolean } | null)?.fromGallery === true;
 
 /**
  * Where a path kept by the 404 page leads: under the app's folder on this origin, or nowhere (null). A scheme, a

@@ -140,12 +140,13 @@ export function navHTML(lang: Lang, S: Strings, links: PageLinks = homeLinks(lan
   </header>`;
 }
 
+/** The other language's offer, in that language: a landmark of its own, before the header. */
 function langHint(lang: Lang): string {
   const to = other(lang);
   const T = strings(to);
-  return `<div class="lang-hint" id="lang-hint" lang="${to}" hidden>
+  return `<aside class="lang-hint" id="lang-hint" lang="${to}" aria-label="${esc(T.suggestAria)}" hidden>
     <div class="wrap lang-hint-in"><p>${esc(T.suggestText)}</p><a class="btn sm" href="${rootOf(lang)}${HOME_PATH[to]}" hreflang="${to}" data-lang="${to}">${esc(T.suggestGo)}</a><button type="button" class="icon-btn" id="lang-hint-close" aria-label="${esc(T.suggestClose)}">${svg('<path d="M6 6l12 12M18 6 6 18"/>')}</button></div>
-  </div>`;
+  </aside>`;
 }
 
 function hero(lang: Lang, S: Strings): string {
@@ -393,7 +394,7 @@ export function footerHTML(
     <div class="wrap foot-in">
       <p class="foot-brand"><span class="brand"><span class="brand-mark" aria-hidden="true">vs</span>Versus</span><span>${esc(S.tagline)}</span></p>
       <p class="foot-links"><a href="${root}${APP_PATH}">${esc(S.footApp)}</a><a href="${source}">${esc(S.footSource)}</a><span>${esc(S.aboutBy)} <a href="${author.url}">${esc(author.name)}</a></span><a href="${root}${LEGAL_PATH[lang]}">${esc(S.footLegal)}</a></p>
-      <nav class="foot-langs" aria-label="${esc(S.langAria)}">${lang2('en')}${lang2('fr')}</nav>
+      <nav class="foot-langs" aria-label="${esc(S.footLangAria)}">${lang2('en')}${lang2('fr')}</nav>
     </div>
   </footer>`;
 }

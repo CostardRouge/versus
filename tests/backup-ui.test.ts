@@ -125,7 +125,7 @@ describe('export and import', () => {
     localStorage.setItem('versus-owners', JSON.stringify({ Ab3dEf7hJk: 'a'.repeat(64) }));
     click('[data-action="export-all"]');
     await vi.waitFor(() => expect(downloads).toHaveLength(1));
-    expect(toast()).toBe('Saved. The file holds the keys to your published boards: keep it to yourself.');
+    expect(toast()).toBe('Saved. The file holds the keys to your published rankings: keep it to yourself.');
     const file = JSON.parse((await downloads[0]?.text) ?? '');
     expect(file.owners).toEqual({ Ab3dEf7hJk: 'a'.repeat(64) });
     localStorage.removeItem('versus-owners');
