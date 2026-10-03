@@ -82,6 +82,12 @@ function onClick(e: MouseEvent): void {
   if (cpop && !cpop.hidden && !target.closest('#cpop') && !target.closest('.thumb-btn')) closeColor();
   const el = target.closest<HTMLElement>('[data-action]');
   if (!el || (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return;
+  // A link of the app (a gallery card's title) opens its view here; with a modifier key, or the middle button
+  // (no click event), the browser opens it in a new tab or window.
+  if (el instanceof HTMLAnchorElement) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+  }
   const id = el.dataset.id;
   const action = el.dataset.action ?? '';
   // A published board's settings close before one of their actions runs (it may open a dialog of its own).

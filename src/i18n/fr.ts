@@ -95,7 +95,6 @@ export const fr: Messages = {
   duplicate: 'Dupliquer',
   duplicateTitle: 'Crée ton propre classement avec ces éléments',
   deleteAria: 'Supprimer {title}',
-  openAria: 'Ouvrir {title}',
   leading: 'En tête :',
   noDuels: 'Aucun duel pour l’instant',
   stability: 'Stabilité',

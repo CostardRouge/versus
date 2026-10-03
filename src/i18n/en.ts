@@ -96,7 +96,6 @@ export const en = {
   duplicate: 'Duplicate',
   duplicateTitle: 'Create your own ranking with these items',
   deleteAria: 'Delete {title}',
-  openAria: 'Open {title}',
   leading: 'Leading:',
   noDuels: 'No duels yet',
   stability: 'Stability',

@@ -256,13 +256,26 @@ kbd {
   transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
+/* The card's face opens it: its title is the link (a real one, for a new tab), stretched over the face. */
+.rcard-face {
+  position: relative;
+}
 .rcard-main {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
-  padding: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.rcard-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.rcard-main:focus-visible {
+  outline: none;
+}
+.rcard-main:focus-visible::after {
+  outline: 2px solid var(--a);
+  outline-offset: -2px;
 }
 .mosaic {
   position: relative;

@@ -364,3 +364,35 @@ describe('focus across a render', () => {
     expect(document.activeElement).toBe($('#add-input'));
   });
 });
+
+describe('gallery cards', () => {
+  const link = () => $<HTMLAnchorElement>('.rcard a.rcard-main[data-id="demo-destinations"]');
+
+  it('are articles titled by a real link, their figures plain text', () => {
+    click('[data-action="back"]');
+    const card = link().closest('article') as HTMLElement;
+    expect(new URL(link().href).pathname).toBe('/demo/destinations');
+    expect(link().closest('h3')).not.toBeNull();
+    expect(link().textContent).toBe('Next destination');
+    expect(link().hasAttribute('aria-label')).toBe(false);
+    expect(card.querySelector('button.rcard-main')).toBeNull();
+    expect(link().querySelector('a, button, h3, p')).toBeNull();
+    for (const p of card.querySelectorAll('.meta, .lead, .stab-line')) expect(p.closest('a, button')).toBeNull();
+  });
+
+  it('open in the app on a plain click, and leave a modified click to the browser', () => {
+    let prevented: boolean | null = null;
+    const after = (e: Event) => {
+      prevented = e.defaultPrevented;
+      e.preventDefault();
+    };
+    window.addEventListener('click', after);
+    link().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+    expect(prevented).toBe(false);
+    expect(location.pathname).toBe('/');
+    link().click();
+    expect(prevented).toBe(true);
+    expect(location.pathname).toBe('/demo/destinations');
+    window.removeEventListener('click', after);
+  });
+});

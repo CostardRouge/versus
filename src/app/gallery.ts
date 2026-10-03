@@ -14,6 +14,7 @@ import { ago, fmtScore } from './format';
 import { popularBoards } from './popular';
 import { iosHomeScreen } from './pwa';
 import { online } from './remote';
+import { routeURL } from './router';
 import { localData, S, stat } from './state';
 
 function tileHTML(it: Item | undefined, i: number, ranked: boolean): string {
@@ -48,16 +49,19 @@ function rcardHTML(r: Ranking): string {
   const leadHTML = lead
     ? `${t('leading')} <b>${esc(lead.label)}</b>${m === 'sort' ? '' : ` <span class="mono">${fmtScore(m, stat(C, lead.id))}</span>`}`
     : t('noDuels');
+  const tab = r.items.length >= 2 ? 'duel' : 'items';
+  const href = pub ? routeURL({ view: 'board', alias: pub.alias }) : routeURL({ view: 'rank', id, tab });
+  const link = `<a class="rcard-main" href="${esc(href)}" data-action="open" data-id="${id}" data-tab="${tab}">${esc(r.title)}</a>`;
   return `<article class="rcard">
-    <button class="rcard-main" type="button" data-action="open" data-id="${id}" data-tab="${r.items.length >= 2 ? 'duel' : 'items'}" aria-label="${esc(t('openAria', { title: r.title }))}">
+    <div class="rcard-face">
       <div class="mosaic">${[0, 1, 2].map((i) => tileHTML(C.order[i], i, ranked)).join('')}</div>
       <div class="rcard-body">
-        <div class="rcard-title"><h3>${esc(r.title)}</h3>${r.demo ? `<span class="chip">${t('demoChip')}</span>` : ''}${pub ? `<span class="chip${pub.status === 'closed' ? '' : ' chip-live'}">${t(pub.status === 'closed' ? 'closedChip' : 'pubChip')}</span>` : ''}</div>
+        <div class="rcard-title"><h3>${link}</h3>${r.demo ? `<span class="chip">${t('demoChip')}</span>` : ''}${pub ? `<span class="chip${pub.status === 'closed' ? '' : ' chip-live'}">${t(pub.status === 'closed' ? 'closedChip' : 'pubChip')}</span>` : ''}</div>
         <p class="meta mono">${plural(r.items.length, 'item')} · ${plural(C.n, 'duel')} · ${M(m).name}${r.demo ? '' : ` · ${ago(r.updated)}`}</p>
         <p class="lead">${leadHTML}</p>
         <div class="stab-line"><span>${m === 'sort' ? t('progress') : t('stability')}</span><span class="bar"><i style="width:${st}%"></i></span><span class="mono">${pct(st)}</span></div>
       </div>
-    </button>
+    </div>
     <div class="rcard-actions">${actions}</div>
   </article>`;
 }
@@ -96,17 +100,20 @@ function jcardHTML(j: Joined): string {
     ? `<p class="rcard-note">${t('joinedNewItems', { items: plural(added, 'item'), n: added, pairs: plural(total - done, 'pair') })}</p>`
     : '';
   const cap = top.whose === 'mine' ? `<span class="mosaic-cap">${t('yourTop')}</span>` : '';
-  const body = `<div class="mosaic">${[0, 1, 2].map((i) => tileHTML(top.items[i], i, top.whose !== 'none')).join('')}${cap}</div>
+  // A board that is gone has nothing to open: its title is plain text.
+  const title = j.gone
+    ? esc(j.title)
+    : `<a class="rcard-main" href="${esc(routeURL({ view: 'board', alias: j.alias }))}" data-action="open-board" data-alias="${alias}">${esc(j.title)}</a>`;
+  const main = `<div class="rcard-face">
+      <div class="mosaic">${[0, 1, 2].map((i) => tileHTML(top.items[i], i, top.whose !== 'none')).join('')}${cap}</div>
       <div class="rcard-body">
-        <div class="rcard-title"><h3>${news ? '<span class="fresh-dot" aria-hidden="true"></span>' : ''}${esc(j.title)}</h3>${chip}</div>
+        <div class="rcard-title"><h3>${news ? '<span class="fresh-dot" aria-hidden="true"></span>' : ''}${title}</h3>${chip}</div>
         <p class="meta mono">${meta}</p>
         <p class="lead">${joinedLead(j, top)}</p>
         <div class="stab-line"><span>${t('yourPairs')}</span><span class="bar"><i style="width:${total ? Math.round((100 * done) / total) : 0}%"></i></span><span class="mono">${done}/${total}</span></div>
-      </div>`;
+      </div>
+    </div>`;
   const forget = `<button class="link forget" type="button" data-action="forget" data-alias="${alias}" aria-label="${esc(t('forgetAria', { title: j.title }))}">${t('forget')}</button>`;
-  const main = j.gone
-    ? `<div class="rcard-main">${body}</div>`
-    : `<button class="rcard-main" type="button" data-action="open-board" data-alias="${alias}" aria-label="${esc(t('openAria', { title: j.title }))}">${body}</button>`;
   const actions = j.gone
     ? `<button class="btn sm" type="button" data-action="joined-copy" data-alias="${alias}" title="${t('keepCopyTitle')}">${t('keepCopy')}</button>`
     : `<button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${done < total && j.status === 'open' ? t('continueVote') : t('openBoard')}</button>
@@ -130,14 +137,14 @@ function pcardHTML(b: PopularBoard): string {
   const closed = b.status === 'closed' ? `<span class="chip">${t('closedChip')}</span>` : '';
   const lead = ranked && tops[0] ? `${t('leading')} <b>${esc(tops[0].label)}</b>` : t('noVotesYet');
   return `<article class="rcard">
-    <button class="rcard-main" type="button" data-action="open-board" data-alias="${alias}" aria-label="${esc(t('openAria', { title: b.title }))}">
+    <div class="rcard-face">
       <div class="mosaic">${[0, 1, 2].map((i) => tileHTML(tops[i], i, ranked)).join('')}</div>
       <div class="rcard-body">
-        <div class="rcard-title"><h3>${esc(b.title)}</h3>${chip}${closed}</div>
+        <div class="rcard-title"><h3><a class="rcard-main" href="${esc(routeURL({ view: 'board', alias: b.alias }))}" data-action="open-board" data-alias="${alias}">${esc(b.title)}</a></h3>${chip}${closed}</div>
         <p class="meta mono">${plural(b.items, 'item')} · ${plural(b.votes, 'vote')} · ${plural(b.voters, 'voter')}</p>
         <p class="lead">${lead}</p>
       </div>
-    </button>
+    </div>
     <div class="rcard-actions">
       <button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${t(b.status === 'closed' ? 'openBoard' : 'vote')}</button>
       <button class="btn sm ghost" type="button" data-action="make-mine-popular" data-alias="${alias}" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button>
