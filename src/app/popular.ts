@@ -1,8 +1,8 @@
-import type { PopularBoard } from '../core/protocol';
+import type { BoardView, PopularBoard } from '../core/protocol';
 import { getLang, type Lang, t } from '../i18n';
 import { $, toast } from './dom';
 import { errorKey, READ_ERRORS } from './errors';
-import { makeOwn, render } from './rankings';
+import { render } from './nav';
 import { fetchBoard, fetchPopular, online } from './remote';
 import { S } from './state';
 
@@ -64,16 +64,16 @@ function makingBusy(alias: string, busy: boolean): void {
   else btn.removeAttribute('aria-busy');
 }
 
-/** "Make my own" from a popular card: the board's items become a ranking of this browser, without the votes. */
-export async function makeMineFromPopular(alias: string | undefined): Promise<void> {
-  if (!alias || making || !list.some((b) => b.alias === alias)) return;
+/** A popular board read for "Make my own" (rankings.ts): one at a time, its button busy meanwhile. */
+export async function readPopular(alias: string | undefined): Promise<BoardView | null> {
+  if (!alias || making || !list.some((b) => b.alias === alias)) return null;
   making = alias;
   makingBusy(alias, true);
   try {
-    const view = await fetchBoard(alias);
-    makeOwn(view.title, view.items, 'template');
+    return await fetchBoard(alias);
   } catch (e) {
     toast(t(errorKey(e, READ_ERRORS)));
+    return null;
   } finally {
     making = null;
     makingBusy(alias, false);

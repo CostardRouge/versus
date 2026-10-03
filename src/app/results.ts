@@ -4,7 +4,7 @@ import { compute, METHOD_KEYS, methodOf, remaining, stability } from '../core/sc
 import type { Computed, Item, ItemStats, MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, pct, plural, t } from '../i18n';
-import { $, thumbHTML, toast } from './dom';
+import { $, copyText, thumbHTML, toast } from './dom';
 import { fmtRecord, fmtScore, recordText } from './format';
 import { cur, S, stat } from './state';
 import { savePrefs } from './storage';
@@ -210,7 +210,7 @@ export function resultsHTML(r: Ranking): string {
     ${ranked && n >= 2 ? compareHTML(r, C) : ''}
   </div>`;
 }
-export function copyRanking(): void {
+export async function copyRanking(): Promise<void> {
   const r = cur();
   if (!r) return;
   const C = compute(r);
@@ -218,10 +218,7 @@ export function copyRanking(): void {
     (it, i) => `${i + 1}. ${it.label}${C.m === 'sort' ? '' : ` (${fmtScore(C.m, stat(C, it.id))})`}`,
   );
   const text = `${r.title} (${M(C.m).name})\n${lines.join('\n')}`;
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(
-      () => toast(t('copied')),
-      () => toast(t('copyRefused')),
-    );
-  } else toast(t('copyNA'));
+  // A clipboard that refuses says so, apart from one the browser doesn't have.
+  if (!navigator.clipboard?.writeText) toast(t('copyNA'));
+  else toast(t((await copyText(text)) ? 'copied' : 'copyRefused'));
 }

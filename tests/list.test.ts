@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { freshLabels, LABEL_MAX, labelKey, parseList } from '../src/core/list';
+import { freshLabels, labelKey, parseList } from '../src/core/list';
+import { LABEL_MAX } from '../src/core/model';
 
 describe('parseList', () => {
   it('takes a single line as written', () => {

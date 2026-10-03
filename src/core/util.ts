@@ -42,3 +42,17 @@ export function sizeClass(s: string): 'xl' | 'lg' | 'md' | 'sm' {
 
 /** Signed delta with a real minus sign. */
 export const fmtDelta = (d: number): string => (d > 0 ? `+${d}` : d < 0 ? `−${Math.abs(d)}` : '±0');
+
+/**
+ * A title as part of a file's name: without accents, lowercase letters and digits joined by dashes, at most 40
+ * characters; empty when nothing is left (a title in another script, or only punctuation).
+ */
+export const fileSlug = (title: string): string =>
+  title
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 40)
+    .replace(/-+$/, '');

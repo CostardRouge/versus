@@ -9,14 +9,14 @@ import type { Item, Ranking } from '../core/types';
 import { uid } from '../core/util';
 import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
 import { enterBoard, followLayer, leaveBoard, renderBoard } from './board';
-import { cp } from './color';
+import { closeColor } from './color';
 import { $, ask, focusOn, keepFocus, narrow, toast } from './dom';
 import { clearEnding } from './ending';
 import { galleryHTML, setNotice } from './gallery';
 import { applyStatic, viewTitle } from './header';
 import { renderList } from './items';
-import { refreshJoined } from './joined';
-import { refreshPopular } from './popular';
+import { joinedOf, joinedToRanking, refreshJoined } from './joined';
+import { readPopular, refreshPopular } from './popular';
 import { online } from './remote';
 import { backIsGallery, currentPath, routeURL, stashedURL, syncURL, takeStash } from './router';
 import { cur, S, save } from './state';
@@ -39,11 +39,7 @@ function heading(): HTMLElement | null {
   return h;
 }
 function draw(): void {
-  const pop = $('#cpop');
-  if (pop && !pop.hidden) {
-    pop.hidden = true;
-    cp.id = null;
-  }
+  closeColor();
   const view = $('#view');
   if (!view) return;
   if (S.route.view !== 'board') leaveBoard();
@@ -162,6 +158,23 @@ export function makeOwn(title: string, items: readonly Item[], from: 'board' | '
   toast(t('madeMine'));
   return r;
 }
+/** "Make my own" from a card under "Your votes": the board's items, without the votes. */
+export function makeMineFromCard(alias: string | undefined): void {
+  const j = alias ? joinedOf(alias) : undefined;
+  if (j) makeOwn(j.title, j.items, 'card');
+}
+/** "Make my own" from a popular board: its items, read from the server, without the votes. */
+export async function makeMineFromPopular(alias: string | undefined): Promise<void> {
+  const view = await readPopular(alias);
+  if (view) makeOwn(view.title, view.items, 'template');
+}
+/** "Keep a copy" of a board that is gone: its items and votes as a ranking of this browser, on its result. */
+export function keepJoinedCopy(alias: string | undefined): void {
+  const r = joinedToRanking(alias);
+  if (!r) return;
+  open(r.id, 'results');
+  toast(t('copyKept'));
+}
 export function toggleDemos(): void {
   S.prefs.hideDemos = !S.prefs.hideDemos;
   savePrefs(S.prefs);
@@ -191,7 +204,7 @@ export async function deleteRank(id: string | undefined): Promise<void> {
   const at = S.ranks.indexOf(r);
   S.ranks = S.ranks.filter((x) => x !== r);
   save();
-  if (S.route.id === id) {
+  if (S.route.view === 'rank' && S.route.id === id) {
     S.route = { view: 'gallery', tab: 'duel' };
     syncURL('replace');
   }

@@ -1,7 +1,6 @@
 import { trackEvent } from '../audience';
-import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS } from '../core/board';
+import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS, VISIBILITIES, validSettings } from '../core/board';
 import {
-  dataURLBytes,
   lastDuelPerPair,
   type PublishBlock,
   pictureItems,
@@ -11,7 +10,7 @@ import {
 } from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
 import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
-import { picturesToast, sendPicture } from './author';
+import { sendPictures } from './author';
 import { boardURL } from './board';
 import { $, ask, copyText, toast } from './dom';
 import { errorKey, PUBLISH_ERRORS } from './errors';
@@ -22,8 +21,6 @@ import { saveOwner } from './storage';
 import { turnstileKey, turnstileWidget } from './turnstile';
 
 /** Publishing a local ranking, and the settings form shared by the publish modal and the board's settings. */
-
-const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
 
 const radio = (prefix: string, name: string, value: string, checked: boolean): string =>
   `<input type="radio" name="${prefix}-${name}" value="${value}" ${checked ? 'checked' : ''}>`;
@@ -55,21 +52,16 @@ export const optionsHTML = (prefix: string, s: BoardSettings): string =>
   `<label class="opt"><input type="checkbox" id="${prefix}-change" ${s.allowChange ? 'checked' : ''}> ${t('allowChange')}</label>
   <label class="opt"><input type="checkbox" id="${prefix}-visitors" ${s.visitorsAddItems ? 'checked' : ''}> ${t('visitorsAdd')}</label>`;
 
-/** The settings a form holds; the server validates them again. */
+/** The valid settings a form holds (the fields it has); the server validates them again. */
 export function readSettings(root: ParentNode, prefix: string): Partial<BoardSettings> {
   const input = (sel: string) => root.querySelector<HTMLInputElement>(sel);
-  const out: Partial<BoardSettings> = {};
-  const vis = input(`input[name="${prefix}-vis"]:checked`)?.value;
-  if (VISIBILITIES.includes(vis as Visibility)) out.visibility = vis as Visibility;
-  const n = Number(input(`#${prefix}-n`)?.value);
-  if (Number.isInteger(n) && n >= 1 && n <= LIMITS.revealAfter) out.revealAfter = n;
-  const m = input(`input[name="${prefix}-m"]:checked`)?.value;
-  if (CROWD_METHODS.includes(m as MethodKey)) out.method = m as MethodKey;
-  const change = input(`#${prefix}-change`);
-  if (change) out.allowChange = change.checked;
-  const visitors = input(`#${prefix}-visitors`);
-  if (visitors) out.visitorsAddItems = visitors.checked;
-  return out;
+  return validSettings({
+    method: input(`input[name="${prefix}-m"]:checked`)?.value,
+    visibility: input(`input[name="${prefix}-vis"]:checked`)?.value,
+    revealAfter: Number(input(`#${prefix}-n`)?.value),
+    allowChange: input(`#${prefix}-change`)?.checked,
+    visitorsAddItems: input(`#${prefix}-visitors`)?.checked,
+  });
 }
 
 const BLOCKS: Record<PublishBlock, MsgKey> = {
@@ -86,22 +78,6 @@ interface Published {
   owner: string;
   chosen: Partial<BoardSettings>;
   withVotes: boolean;
-}
-
-/**
- * Sends the pictures the published items announced, one by one, for the moderator's review. A picture that
- * fails leaves its item as text, and the author's list offers to send it again (author.ts).
- */
-async function sendPictures(r: Ranking, alias: string, owner: string): Promise<void> {
-  let sent = 0;
-  let failed = 0;
-  for (const it of pictureItems(r)) {
-    const data = dataURLBytes(it.img);
-    if (!data) continue;
-    if (await sendPicture(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
-    else failed++;
-  }
-  picturesToast(sent, failed);
 }
 
 export async function publishRanking(r: Ranking | undefined): Promise<void> {
@@ -196,7 +172,12 @@ async function publish(r: Ranking): Promise<void> {
   // The link's preview image, drawn here from the same items and votes the server just received.
   // The drawing code loads with it, in the background.
   void import('./share').then((m) => m.uploadPublishedCard(r, alias, withVotes, used));
-  if (pictures) void sendPictures(r, alias, owner);
+  // The pictures the published items announced, for the moderator's review; one that fails leaves its item as
+  // text, and the author's list offers to send it again (author.ts).
+  if (pictures) {
+    const announced = pictureItems(r).map((it) => ({ id: it.id, data: it.img }));
+    void sendPictures(alias, owner, announced);
+  }
   const copied = await copyText(boardURL(alias));
   openBoard(alias);
   toast(t(copied ? 'published' : 'publishedShare'));

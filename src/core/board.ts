@@ -1,4 +1,4 @@
-import { fillCode, sameFill } from './colors.ts';
+import { fillCode, namedByCode, sameFill } from './colors.ts';
 import { labelKey } from './list.ts';
 import { mkRank } from './model.ts';
 import { compute, pairKey } from './scoring.ts';
@@ -34,7 +34,7 @@ import { hueOf } from './util.ts';
 
 /** Methods a crowd can use: binary insertion needs one sequence of comparisons, not concurrent voters. */
 export const CROWD_METHODS: readonly MethodKey[] = ['bt', 'elo', 'win'];
-const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
+export const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
 
 export const LIMITS = {
   title: 120,
@@ -180,20 +180,26 @@ function parseItem(x: unknown, images: ImagePolicy): Result<Item> {
   return ok({ id: x.id, label, img, fill, h, ...(pic ? { pic } : {}) });
 }
 
-/** Applies the valid fields of `patch`; anything else keeps its current value. */
-export function patchSettings(current: BoardSettings, patch: unknown): BoardSettings {
-  const next = { ...current };
-  if (!isRecord(patch)) return next;
+/** The valid fields of `patch`, and only those (a settings form, a request). */
+export function validSettings(patch: unknown): Partial<BoardSettings> {
+  const out: Partial<BoardSettings> = {};
+  if (!isRecord(patch)) return out;
   const { method, visibility, revealAfter, allowChange, visitorsAddItems } = patch;
-  if (CROWD_METHODS.includes(method as MethodKey)) next.method = method as MethodKey;
-  if (VISIBILITIES.includes(visibility as Visibility)) next.visibility = visibility as Visibility;
+  if (CROWD_METHODS.includes(method as MethodKey)) out.method = method as MethodKey;
+  if (VISIBILITIES.includes(visibility as Visibility)) out.visibility = visibility as Visibility;
   if (Number.isInteger(revealAfter) && (revealAfter as number) >= 1 && (revealAfter as number) <= LIMITS.revealAfter) {
-    next.revealAfter = revealAfter as number;
+    out.revealAfter = revealAfter as number;
   }
-  if (typeof allowChange === 'boolean') next.allowChange = allowChange;
-  if (typeof visitorsAddItems === 'boolean') next.visitorsAddItems = visitorsAddItems;
-  return next;
+  if (typeof allowChange === 'boolean') out.allowChange = allowChange;
+  if (typeof visitorsAddItems === 'boolean') out.visitorsAddItems = visitorsAddItems;
+  return out;
 }
+
+/** Applies the valid fields of `patch`; anything else keeps its current value. */
+export const patchSettings = (current: BoardSettings, patch: unknown): BoardSettings => ({
+  ...current,
+  ...validSettings(patch),
+});
 
 export interface PublishInput {
   title: string;
@@ -562,7 +568,7 @@ export function editItem(
   if (board.status !== 'open') return fail('closed');
   if (edit.fill && !it.fill) return fail('bad_request');
   const fill = edit.fill && it.fill && !sameFill(edit.fill, it.fill) ? edit.fill : it.fill;
-  const follows = !!it.fill && !!fill && it.label.toUpperCase() === fillCode(it.fill);
+  const follows = !!it.fill && !!fill && namedByCode(it.label, it.fill);
   const label = edit.label ?? (follows && fill ? fillCode(fill) : it.label);
   if (label === it.label && fill === it.fill) return ok({ item: it, removed: [] });
   const key = labelKey(label);
@@ -634,6 +640,20 @@ export const totalPairs = (n: number): number => (n * (n - 1)) / 2;
  */
 export const revealAt = (revealAfter: number, items: number): number =>
   Math.max(1, Math.min(revealAfter, totalPairs(items)));
+
+/**
+ * Until when the crowd's ranking stays hidden from a voter who can't see it yet: the vote's end, or their `need`-th
+ * vote (`done` of them cast).
+ */
+export function hiddenUntil(
+  settings: Pick<BoardSettings, 'visibility' | 'revealAfter'>,
+  items: number,
+  count: number,
+): { until: 'closed' } | { until: 'votes'; need: number; done: number } {
+  if (settings.visibility !== 'after') return { until: 'closed' };
+  const need = revealAt(settings.revealAfter, items);
+  return { until: 'votes', need, done: Math.min(count, need) };
+}
 
 /** Whether this viewer may see the crowd ranking. Enforced by the server, never by hiding UI. */
 export function canSeeRanking(board: SharedBoard, voter: string | null, owner: boolean): boolean {

@@ -1,5 +1,5 @@
 import { hasBackup } from '../core/backup';
-import { revealAt } from '../core/board';
+import { hiddenUntil } from '../core/board';
 import { fillCSS } from '../core/colors';
 import { DEMOS } from '../core/demos';
 import { addedItems, joinedAgreement, joinedTop, newsOf, pairsOf, sortJoined } from '../core/joined';
@@ -78,9 +78,8 @@ function joinedLead(j: Joined, top: ReturnType<typeof joinedTop>): string {
   const flag = news === 'revealed' ? t('resultsRevealed') : news === 'closed' ? t('voteClosed') : null;
   if (flag) return `<b class="new">${flag}</b>${leader ? ` · ${leader}` : ''}`;
   if (!j.order) {
-    if (j.settings.visibility !== 'after') return t('hiddenBlindShort');
-    const need = revealAt(j.settings.revealAfter, j.items.length);
-    return t('hiddenAfter', { n: need, k: Math.min(j.count, need) });
+    const hidden = hiddenUntil(j.settings, j.items.length, j.count);
+    return hidden.until === 'closed' ? t('hiddenBlindShort') : t('hiddenAfter', { n: hidden.need, k: hidden.done });
   }
   const ag = joinedAgreement(j);
   return `${leader}${ag === null ? '' : ` · ${t('agreeShort', { pct: pct(Math.round(ag * 100)) })}`}`;

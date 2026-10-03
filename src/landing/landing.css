@@ -1,4 +1,5 @@
 @import "../tokens.css";
+@import "../stage.css";
 
 /* Layout: the home page runs the real duel stage. Huge left-aligned type, then the app itself playing;
    cobalt (A) faces coral (B) everywhere, one bold hero, quiet sections after. Colors are the app's tokens
@@ -106,7 +107,7 @@ kbd {
   letter-spacing: 0.07em;
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 2px 8px;
   white-space: nowrap;
 }
@@ -165,7 +166,7 @@ kbd {
   gap: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 10px 16px;
   font-weight: 600;
   font-size: 14px;
@@ -257,7 +258,7 @@ kbd {
 }
 .nav-links a {
   padding: 8px 12px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   text-decoration: none;
   color: var(--muted);
   font-weight: 600;
@@ -283,7 +284,7 @@ kbd {
   gap: 9px;
   margin: 0;
   padding: 5px 13px 5px 5px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
   font-size: 13px;
@@ -497,7 +498,7 @@ kbd {
   display: flex;
   gap: 2px;
   background: var(--surface-2);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 3px;
   flex: none;
 }
@@ -505,7 +506,7 @@ kbd {
   border: 0;
   background: transparent;
   padding: 6px 12px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
@@ -720,7 +721,7 @@ kbd {
   flex: 1;
   display: block;
   height: 6px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
   min-width: 50px;
@@ -770,31 +771,9 @@ kbd {
 .card.is-txt {
   background: color-mix(in oklab, var(--surface) 78%, hsl(var(--h) 72% 56%));
 }
-.card-a {
-  justify-self: end;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pa, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pa, 0) * 6px) var(--a),
-    var(--shadow);
-  opacity: calc(1 - var(--pb, 0) * 0.4);
-}
-.card-b {
-  justify-self: start;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pb, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pb, 0) * 6px) var(--b),
-    var(--shadow);
-  opacity: calc(1 - var(--pa, 0) * 0.4);
-}
 .card:hover,
 .card.vhover {
   translate: 0 -5px;
-}
-.stage.dragging .card {
-  transition: none;
-  cursor: grabbing;
 }
 .stage.reset .card,
 .stage.reset .float {
@@ -833,12 +812,6 @@ kbd {
   font: 800 12px var(--f-display);
   color: var(--on-accent);
 }
-.card-a .side-tag {
-  background: var(--a);
-}
-.card-b .side-tag {
-  background: var(--b-ink);
-}
 .txt {
   position: relative;
   padding: 8cqi 8cqi 9cqi;
@@ -865,13 +838,6 @@ kbd {
   line-height: 1.15;
   letter-spacing: -0.015em;
 }
-.vs {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  transition: opacity 0.2s;
-}
 .vs-dot {
   width: 46px;
   height: 46px;
@@ -884,12 +850,6 @@ kbd {
 }
 .p {
   font-size: 14px;
-}
-.pa {
-  color: var(--a);
-}
-.pb {
-  color: var(--b-ink);
 }
 .vs-lbl {
   font-size: 9.5px;
@@ -916,15 +876,6 @@ kbd {
   right: 25%;
   translate: 50% 0;
 }
-.float.up {
-  color: var(--good);
-}
-.float.down {
-  color: var(--bad);
-}
-.float.eq {
-  color: var(--muted);
-}
 .stage.picked .float {
   animation: rise 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -942,52 +893,11 @@ kbd {
     transform: translateY(-34px);
   }
 }
-.stage.picked .vs {
-  opacity: 0;
-}
-.stage.pick-a .card-a {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--a),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-a .card-b {
-  transform: translateX(35%) rotate(8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-b .card-b {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--b),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-b .card-a {
-  transform: translateX(-35%) rotate(-8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-draw .card {
-  transform: scale(0.94);
-  opacity: 0.5;
-}
 .stage.enter .card-a {
   animation: inA 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .stage.enter .card-b {
   animation: inB 0.5s 0.06s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes inA {
-  from {
-    opacity: 0;
-    translate: -26px 12px;
-  }
-}
-@keyframes inB {
-  from {
-    opacity: 0;
-    translate: 26px 12px;
-  }
 }
 .kcap {
   position: absolute;
@@ -1004,7 +914,7 @@ kbd {
   background: var(--surface);
   border: 1px solid var(--line);
   border-bottom-width: 5px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   box-shadow: var(--shadow);
   opacity: 0;
   scale: 0.7;
@@ -1028,12 +938,6 @@ kbd {
   border-color: var(--a);
   color: var(--on-accent);
 }
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
 .ctl {
   display: inline-flex;
   align-items: center;
@@ -1041,7 +945,7 @@ kbd {
   gap: 8px;
   padding: 11px 18px;
   min-height: 46px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
   font-weight: 600;
@@ -1080,14 +984,6 @@ kbd {
 }
 .ctl.vpress {
   scale: 0.94;
-}
-.duel-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px 16px;
-  font-size: 13px;
 }
 
 /* Results: podium */
@@ -1215,7 +1111,7 @@ kbd {
   background: var(--ink);
   color: var(--bg);
   padding: 9px 16px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   font-size: 13.5px;
   font-weight: 600;
   text-align: center;
@@ -1394,7 +1290,7 @@ kbd {
   align-items: center;
   gap: 12px;
   padding: 8px 18px 8px 8px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   border: 1px solid var(--line);
   white-space: nowrap;
@@ -1625,7 +1521,7 @@ kbd {
   position: relative;
   height: 100%;
   max-height: 190px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   overflow: hidden;
   border: 1px solid var(--line);
   display: flex;
@@ -1837,7 +1733,7 @@ kbd {
   border: 1px solid var(--line);
   background: var(--surface);
   padding: 5px 15px 5px 5px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   font-weight: 600;
   font-size: 14px;
   transition:
@@ -2198,7 +2094,7 @@ kbd {
   gap: 8px 14px;
   margin-top: 14px;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--bg);
   font-size: 13.5px;
 }
@@ -2467,13 +2363,13 @@ kbd {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   flex: none;
 }
 .langs a {
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font: 500 12px / 1 var(--f-mono);
   color: var(--muted);
   text-decoration: none;

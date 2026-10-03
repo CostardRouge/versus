@@ -55,7 +55,8 @@ src/audience.ts       audience measurement in the browser (docs/analytics.md): l
                       (never name a module "analytics": shared chunks take its name and filter lists block it)
 src/prefs.ts          the preferences every page shares (`versus-prefs`): PREFS_KEY, readPrefs, rememberLang
 src/tokens.css        design tokens shared by the app and the home page: light on :root, dark via prefers-color-scheme and [data-theme]
-src/styles.css        the app's styles (imports tokens.css)
+src/styles.css        the app's styles (imports tokens.css and stage.css)
+src/stage.css         the duel stage's rules and keyframes the app and the home page share (cards, side tags, entrances)
 src/sw/sw.ts          service worker (offline app shell, updates on request); own tsconfig (WebWorker types)
 src/core/             pure logic, no DOM: must stay framework-free and fully unit tested
   types.ts            Ranking, Item, Fill, Duel, Computed…
@@ -84,7 +85,8 @@ src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so
                       unfurl.ts: a board's link preview texts, the only dictionary the Worker bundles; admin.ts: the moderation page's
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
   ui.ts               mount(): loads data, adds demos, binds events, first render
-  state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
+  state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons, focus helpers
+  nav.ts              `render` registered by ui.ts and called by the views that only need "draw again" (no import of rankings.ts)
   rankings.ts         render() (gallery or workspace), routeFromURL() and ranking-level actions (new, open, reset, duplicate, delete, language)
   gallery.ts          gallery cards: your rankings, your votes (boards voted on), Popular (featured boards and templates), demos
   joined.ts           "Your votes": records a card at the first vote, refreshes cards from the server, forget, keep a copy
@@ -94,9 +96,11 @@ src/app/              UI: renders HTML strings, one delegated listener per event
                       with the page's h1 is in index.html for crawlers without JavaScript (build/seo.ts)
   workspace.ts        workspace shell (shared with a board's author), tabs, method menu, renderMain() (duel or results)
   editor.ts           the items pane every ranking shares (D116): add field, images and colors, the list (FLIP), the
-                      question on an item's votes; a visitor's suggestion uses its add field
+                      question on an item's votes; `ItemsHost`, the pane's two owners (items.ts localHost, author.ts
+                      authorHost), picked once from the route in workspace.ts; a visitor's suggestion uses its add field
   items.ts            a local ranking's items in the editor: live-sorted list and edits (add text/colors/images, rename, remove)
-  duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
+  duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts; the duel kit board.ts reuses (keys,
+                      controls, side → outcome, pick animation)
   results.ts          podium or lines comparing two methods (switch), table, method comparison, copy
   ending.ts           end of a local ranking: announcement with confetti and a button to the Ranking tab (focused, announced)
   slope.ts            lines between two rankings (end-of-vote page, method comparison): drawing and hover
@@ -104,11 +108,13 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   publish.ts          publish modal and the settings forms shared with the board's settings
   board.ts            published board page: connection, server-assigned duels, crowd ranking (live or frozen), suggestions,
                       report form, withdraw; its author gets author.ts instead
+  board-state.ts      the board's DOM-free state: the Board record, the pending queue and optimistic changes with their undo
   author.ts           a published board seen by its author (D116): the workspace with the items pane, title, method, the
                       settings behind the Published button, and item edits through the API (votes kept or reset)
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
-  share.ts            share as an image: draws the card on a canvas (tokens, fonts), the share panel (share sheet, copy,
-                      download), and sends a board's or a duel's landscape card for its link preview
+  share.ts            share as an image: cards from the app's state, the share panel (share sheet, copy, download), and sends a
+                      board's or a duel's landscape card for its link preview; loaded on demand (events.ts loadSharing)
+  share-draw.ts       draws a card on the canvas it is given (spec, format, palette, pictures): no page, no app state
   errors.ts           what a failed API call says, one full map per kind of call (owner, publish, report, read): typed, so a
                       new error code must say something
   remote.ts           API calls (15 s time limit) and the board WebSocket (hello with the protocol version, reconnect, gone)

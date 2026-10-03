@@ -1,19 +1,7 @@
-import { parseList } from '../core/list';
 import { locale, t } from '../i18n';
-import {
-  authorAdd,
-  authorAddColor,
-  authorAddFiles,
-  authorEditColor,
-  authorNewAdminLink,
-  authorOnScreen,
-  authorRemove,
-  authorRetryPicture,
-  authorSettings,
-} from './author';
+import { authorNewAdminLink, authorRetryPicture, authorSettings } from './author';
 import { exportAll, exportOne, importFile, isBackupFile, pickImport } from './backup';
 import {
-  boardAdd,
   boardAdminLink,
   boardChange,
   boardKeydown,
@@ -26,6 +14,7 @@ import {
   boardShare,
   boardSkip,
   boardStatus,
+  boardSuggest,
   boardUndo,
   boardUnlink,
   boardWithdraw,
@@ -35,13 +24,12 @@ import {
   setFinaleView,
   setFinaleWho,
 } from './board';
-import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
+import { closeColor, colorChange, colorInput, cpAction, placeColor, setActiveStop } from './color';
 import { $, closeModal, doc, narrow, toastAct, toastHasAct, trapTab } from './dom';
 import { choose, duelKeydown, endContinue, endSee, skip, undoLast } from './duel';
 import { changeTheme, viewTitle } from './header';
-import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
-import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
-import { makeMineFromPopular } from './popular';
+import { addFiles } from './items';
+import { forgetJoined } from './joined';
 import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
@@ -50,6 +38,9 @@ import {
   deleteRank,
   duplicateRank,
   goBack,
+  keepJoinedCopy,
+  makeMineFromCard,
+  makeMineFromPopular,
   newRank,
   open,
   openBoard,
@@ -61,7 +52,7 @@ import {
 import { copyRanking, setCompare, setRankView } from './results';
 import { drawSlopes } from './slope';
 import { cur, S, saveSoon } from './state';
-import { menuKeydown, setMethod, setTab, tabKeydown, toggleMethodMenu } from './workspace';
+import { itemsHost, menuKeydown, setMethod, setTab, tabKeydown, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */
 
@@ -138,9 +129,7 @@ function onClick(e: MouseEvent): void {
       setMethod(el.dataset.m);
       break;
     case 'edit-color':
-      if (S.route.view === 'board') authorEditColor(id, el);
-      else if (id && cp.id === id && cpop && !cpop.hidden) closeColor();
-      else if (id) openColor(id, el);
+      itemsHost()?.recolor(id, el);
       break;
     case 'reset':
       void resetRank(id);
@@ -154,18 +143,14 @@ function onClick(e: MouseEvent): void {
     case 'toggle-demos':
       toggleDemos();
       break;
-    case 'add-color': {
-      const r = cur();
-      if (S.route.view === 'board') void authorAddColor();
-      else if (r) addColor(r);
+    case 'add-color':
+      itemsHost()?.addColor();
       break;
-    }
     case 'delete':
       void deleteRank(id);
       break;
     case 'remove-item':
-      if (S.route.view === 'board') void authorRemove(id);
-      else removeItem(id);
+      itemsHost()?.remove(id);
       break;
     case 'pick':
       choose(el.dataset.side);
@@ -177,7 +162,7 @@ function onClick(e: MouseEvent): void {
       undoLast();
       break;
     case 'copy':
-      copyRanking();
+      void copyRanking();
       break;
     case 'share-rank':
       sharing((m) => m.shareLocal(cur()));
@@ -362,18 +347,14 @@ function onChange(e: Event): void {
     if (c2) c2.hidden = !tg.checked;
     return;
   }
-  if (S.route.view === 'board') {
-    boardChange(tg);
-    return;
-  }
-  const r = cur();
-  if (!r) return;
+  // A board's own fields: the Live switch, its author's title and settings.
+  if (boardChange(tg)) return;
+  const host = itemsHost();
+  if (!host) return;
   if (tg.id === 'file-input') {
-    if (tg.files) void addFiles(r, [...tg.files]);
+    if (tg.files) host.addFiles([...tg.files]);
     tg.value = '';
-    return;
-  }
-  if (tg.classList.contains('row-label')) renameItem(r, tg);
+  } else if (tg.classList.contains('row-label')) host.rename(tg);
 }
 
 const NOT_TEXT = new Set(['checkbox', 'radio', 'color', 'file', 'range', 'button', 'submit', 'reset']);
@@ -436,38 +417,24 @@ function onKeydown(e: KeyboardEvent): void {
 }
 
 function onPaste(e: ClipboardEvent): void {
-  const r = cur();
+  const host = itemsHost();
   const tg = e.target as HTMLElement;
-  if (!e.clipboardData || tg.closest?.('#cpop')) return;
+  if (!e.clipboardData || !host || tg.closest?.('#cpop')) return;
   const files = [...(e.clipboardData.files ?? [])].filter((f) => f.type.startsWith('image/'));
-  if (authorOnScreen()) {
-    const text = e.clipboardData.getData('text/plain');
-    if (files.length) void authorAddFiles(files);
-    else if (tg.id === 'add-input' && parseList(text).length >= 2) void authorAdd(text);
-    else return;
-    e.preventDefault();
-    return;
-  }
-  if (!r) return;
   if (files.length) {
     e.preventDefault();
-    void addFiles(r, files);
+    host.addFiles(files);
     return;
   }
   // A list adds all its items at once; anything else goes into the field.
-  if (tg.id === 'add-input' && addList(r, e.clipboardData.getData('text/plain'))) e.preventDefault();
+  if (tg.id === 'add-input' && host.addList(e.clipboardData.getData('text/plain'))) e.preventDefault();
 }
 
 /** A list dropped on the add field, or inserted by a phone keyboard's clipboard, comes without a paste event. */
 function onBeforeInput(e: InputEvent): void {
   if (!e.cancelable || (e.target as HTMLElement).id !== 'add-input') return;
   const text = e.data ?? e.dataTransfer?.getData('text/plain') ?? '';
-  const r = cur();
-  if (authorOnScreen()) {
-    if (parseList(text).length < 2) return;
-    e.preventDefault();
-    void authorAdd(text);
-  } else if (r && addList(r, text)) e.preventDefault();
+  if (itemsHost()?.addList(text)) e.preventDefault();
 }
 
 const hasFiles = (e: DragEvent): boolean => [...(e.dataTransfer?.types ?? [])].includes('Files');
@@ -484,15 +451,10 @@ export function bindEvents(): void {
     e.preventDefault();
     const input = $<HTMLInputElement>('#add-input');
     if (!input) return;
-    // On a published board: the author's items, or a visitor's suggestion.
-    if (S.route.view === 'board') {
-      void boardAdd(input.value);
-      return;
-    }
-    const r = cur();
-    if (!r) return;
-    if (addTyped(r, input.value)) input.value = '';
-    input.focus();
+    const host = itemsHost();
+    // Without the items pane, the field is a visitor's, on a published board: a suggestion.
+    if (host) host.add(input);
+    else boardSuggest(input.value);
   });
   doc.addEventListener('focusin', (e) => {
     const tg = e.target as HTMLElement;
@@ -534,13 +496,13 @@ export function bindEvents(): void {
       return;
     }
     // Images go to the open ranking or the author's board (or a new ranking).
-    if (authorOnScreen()) {
-      void authorAddFiles(files);
+    const host = itemsHost();
+    if (host) {
+      host.addFiles(files);
       return;
     }
     const date = new Date().toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
-    const r = cur() ?? newRank(t('imagesRankTitle', { date }));
-    void addFiles(r, files);
+    void addFiles(newRank(t('imagesRankTitle', { date })), files);
   });
   doc.addEventListener(
     'scroll',
@@ -557,7 +519,7 @@ export function bindEvents(): void {
   // A link written the old way (#/b/<alias>) pasted into an open app.
   window.addEventListener('hashchange', routeFromURL);
   narrow.addEventListener('change', () => {
-    if (cur() || authorOnScreen()) setTab(S.route.tab);
+    if (itemsHost()) setTab(S.route.tab);
     placeColor();
   });
   $('#m-ok')?.addEventListener('click', () => closeModal(true));

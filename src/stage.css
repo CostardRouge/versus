@@ -1,0 +1,109 @@
+/* The duel stage as the app (styles.css) and the home page's demos (landing/landing.css) both draw it: A and B, the
+   "vs", the score floats, a pick, and the entrance's keyframes. Each page keeps its own sizes, surfaces and buttons.
+   Imported before the page's own rules: a rule that has to come after one of them stays in each page (.ctl-a after
+   .ctl, the entrance after the home page's .stage.reset). */
+.card-a {
+  justify-self: end;
+  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
+    scale(calc(1 + var(--pa, 0) * 0.04));
+  box-shadow:
+    0 0 0 calc(var(--pa, 0) * 6px) var(--a),
+    var(--shadow);
+  opacity: calc(1 - var(--pb, 0) * 0.4);
+}
+.card-b {
+  justify-self: start;
+  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
+    scale(calc(1 + var(--pb, 0) * 0.04));
+  box-shadow:
+    0 0 0 calc(var(--pb, 0) * 6px) var(--b),
+    var(--shadow);
+  opacity: calc(1 - var(--pa, 0) * 0.4);
+}
+.stage.dragging .card {
+  transition: none;
+  cursor: grabbing;
+}
+.card-a .side-tag {
+  background: var(--a);
+}
+.card-b .side-tag {
+  background: var(--b-ink);
+}
+.vs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+.pa {
+  color: var(--a);
+}
+.pb {
+  color: var(--b-ink);
+}
+.float.up {
+  color: var(--good);
+}
+.float.down {
+  color: var(--bad);
+}
+.float.eq {
+  color: var(--muted);
+}
+.stage.picked .vs {
+  opacity: 0;
+}
+.stage.pick-a .card-a {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 0 6px var(--a),
+    var(--shadow);
+  opacity: 1;
+}
+.stage.pick-a .card-b {
+  transform: translateX(35%) rotate(8deg) scale(0.88);
+  opacity: 0;
+}
+.stage.pick-b .card-b {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 0 6px var(--b),
+    var(--shadow);
+  opacity: 1;
+}
+.stage.pick-b .card-a {
+  transform: translateX(-35%) rotate(-8deg) scale(0.88);
+  opacity: 0;
+}
+.stage.pick-draw .card {
+  transform: scale(0.94);
+  opacity: 0.5;
+}
+@keyframes inA {
+  from {
+    opacity: 0;
+    translate: -26px 12px;
+  }
+}
+@keyframes inB {
+  from {
+    opacity: 0;
+    translate: 26px 12px;
+  }
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.duel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 13px;
+}

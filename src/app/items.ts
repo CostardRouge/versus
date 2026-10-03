@@ -1,14 +1,25 @@
 import { freshLabels, labelKey, parseList } from '../core/list';
-import { getItem, mkItem } from '../core/model';
+import { ADD_MAX, getItem, IMAGES_MAX, mkItem } from '../core/model';
 import { compute, methodOf } from '../core/scoring';
 import type { Item, Ranking } from '../core/types';
 import { methodText as M, plural, t } from '../i18n';
-import { closeColor, cp } from './color';
+import { closeColor, editingColor, keepName, toggleColor } from './color';
 import { $, $$, doc, keepFocus, toast } from './dom';
-import { fileToThumb, imageFiles, imageName, type Row, renderRows, type Typed, takeColor, typed } from './editor';
+import {
+  addedToast,
+  fileToThumb,
+  type ItemsHost,
+  imageFiles,
+  imageName,
+  type Row,
+  renderRows,
+  type Typed,
+  takeColor,
+  typed,
+} from './editor';
 import { fmtScore } from './format';
 import { cur, S, save, stat } from './state';
-import { effTab, renderMain } from './workspace';
+import { effTab, renderMain, setRankMethod } from './workspace';
 
 /** A local ranking's items in the shared editor (editor.ts): live-sorted list, and edits that apply at once. */
 
@@ -44,7 +55,7 @@ function afterItemsChange(r: Ranking, prevCount: number): void {
   if (effTab() === 'results' || prevCount < 2 || !r.pair || methodOf(r) === 'sort') renderMain(r);
 }
 function addItems(r: Ranking, items: Typed[]): Item[] {
-  const clean = items.filter((x) => x.label || x.fill).slice(0, 200);
+  const clean = items.filter((x) => x.label || x.fill).slice(0, ADD_MAX);
   if (!clean.length) return [];
   const prev = r.items.length;
   const added = clean.map((x) => mkItem(x.label, null, x.fill));
@@ -57,7 +68,7 @@ function addItems(r: Ranking, items: Typed[]): Item[] {
  * A list typed or pasted in the add field (core/list.ts): adds its labels not in the ranking yet, with a toast
  * that can undo. False when the text isn't a list, for the field to take it as one label.
  */
-export function addList(r: Ranking, text: string): boolean {
+function addList(r: Ranking, text: string): boolean {
   const labels = parseList(text);
   if (labels.length < 2) return false;
   const { fresh, dupes } = freshLabels(
@@ -65,24 +76,19 @@ export function addList(r: Ranking, text: string): boolean {
     r.items.map((i) => i.label),
   );
   const added = addItems(r, fresh.map(typed));
-  const n = added.length;
-  if (!n) {
+  if (!added.length) {
     toast(t('allDupes'));
     return true;
   }
-  const items = plural(n, 'item');
-  const msg = dupes
-    ? t('itemsAddedDupes', { items, n, dupes: plural(dupes, 'duplicate'), d: dupes })
-    : t('itemsAdded', { items, n });
   const ids = new Set(added.map((i) => i.id));
-  toast(msg, { label: t('undoToast'), run: () => dropItems(r, ids) });
+  addedToast(added.length, dupes, () => dropItems(r, ids));
   return true;
 }
 /** What was typed in the add field and sent: a list, or one item. False when there was nothing to add. */
-export function addTyped(r: Ranking, text: string): boolean {
+function addTyped(r: Ranking, text: string): boolean {
   return addList(r, text) || addItems(r, parseList(text).map(typed)).length > 0;
 }
-export function addColor(r: Ranking): void {
+function addColor(r: Ranking): void {
   const color = takeColor();
   if (color) addItems(r, [color]);
 }
@@ -94,7 +100,7 @@ export async function addFiles(r: Ranking, files: FileList | File[]): Promise<vo
   }
   const prev = r.items.length;
   let n = 0;
-  for (const f of imgs.slice(0, 60)) {
+  for (const f of imgs.slice(0, IMAGES_MAX)) {
     try {
       r.items.push(mkItem(imageName(f), await fileToThumb(f)));
       n++;
@@ -108,7 +114,8 @@ export async function addFiles(r: Ranking, files: FileList | File[]): Promise<vo
   toast(n ? t('imagesAdded', { images: plural(n, 'image'), n }) : t('cantRead'));
 }
 function dropItems(r: Ranking, ids: Set<string>): void {
-  if (cp.id && ids.has(cp.id)) closeColor();
+  const editing = editingColor();
+  if (editing && ids.has(editing)) closeColor();
   const prev = r.items.length;
   r.items = r.items.filter((i) => !ids.has(i.id));
   if (r.pair?.some((id) => ids.has(id))) r.pair = null;
@@ -124,7 +131,7 @@ const nameField = (id: string | undefined): HTMLElement | null =>
  * Removes an item at once; Undo puts it back in its place with its id, so its duels count again. The focus goes
  * on to the next row's name (the previous one at the end), or to the add field once the list is empty.
  */
-export function removeItem(id: string | undefined): void {
+function removeItem(id: string | undefined): void {
   const r = cur();
   const at = r && id ? r.items.findIndex((i) => i.id === id) : -1;
   const it = r?.items[at];
@@ -154,7 +161,7 @@ export function removeItem(id: string | undefined): void {
 }
 
 /** Commits a label edited in the side list; an empty label, or another item's, is reverted. */
-export function renameItem(r: Ranking, input: HTMLInputElement): void {
+function renameItem(r: Ranking, input: HTMLInputElement): void {
   const it = input.dataset.id ? getItem(r, input.dataset.id) : undefined;
   if (!it) return;
   const v = input.value.trim();
@@ -167,6 +174,24 @@ export function renameItem(r: Ranking, input: HTMLInputElement): void {
   it.label = v;
   r.updated = Date.now();
   save();
-  if (cp.id === it.id) cp.follow = false;
+  keepName(it.id);
   if (effTab() === 'results' || r.pair?.includes(it.id)) renderMain(r);
 }
+
+/** The items pane of a local ranking (ItemsHost, editor.ts): every edit applies at once, in this browser. */
+export const localHost = (r: Ranking): ItemsHost => ({
+  add(input) {
+    if (addTyped(r, input.value)) input.value = '';
+    input.focus();
+  },
+  addList: (text) => addList(r, text),
+  addColor: () => addColor(r),
+  addFiles: (files) => void addFiles(r, files),
+  remove: removeItem,
+  rename: (input) => renameItem(r, input),
+  recolor: (id, anchor) => {
+    if (id) toggleColor(id, anchor);
+  },
+  setMethod: (k) => setRankMethod(r, k),
+  renderMain: () => renderMain(r),
+});

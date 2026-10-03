@@ -9,6 +9,7 @@ import {
   hexToHsl,
   hslToHex,
   isHex,
+  namedByCode,
   normHex,
   PRESETS,
 } from '../core/colors';
@@ -26,12 +27,16 @@ import { effTab, renderMain, toggleMethodMenu } from './workspace';
  * Local items change live. A published board's item is edited as a draft, sent only when validated.
  */
 
-export const cp: { id: string | null; active: number; follow: boolean; anchor: HTMLElement | null } = {
+/** The editor on screen: the item it edits (null when closed), its active stop, whether the name follows the color. */
+const cp: { id: string | null; active: number; follow: boolean; anchor: HTMLElement | null } = {
   id: null,
   active: 0,
   follow: false,
   anchor: null,
 };
+
+/** The item whose color is being edited, if any. */
+export const editingColor = (): string | null => cp.id;
 
 /** A published board's item being recolored: the draft, the board's other items, and what validating does. */
 interface BoardEdit {
@@ -94,7 +99,7 @@ function show(it: Item, anchor: HTMLElement): void {
   toggleMethodMenu(false);
   cp.id = it.id;
   cp.active = 0;
-  cp.follow = it.label.toUpperCase() === fillCode(it.fill);
+  cp.follow = namedByCode(it.label, it.fill);
   cp.anchor = anchor;
   pop.innerHTML = cpHTML(it, it.fill);
   pop.hidden = false;
@@ -108,6 +113,12 @@ export function openColor(id: string, anchor: HTMLElement): void {
   if (!it) return;
   boardEdit = null;
   show(it, anchor);
+}
+/** A local color item's swatch: opens the editor on it, or closes the editor already open on it. */
+export function toggleColor(id: string, anchor: HTMLElement): void {
+  const pop = $('#cpop');
+  if (cp.id === id && pop && !pop.hidden) closeColor();
+  else openColor(id, anchor);
 }
 /** Recolors an item of a published board: nothing changes until `commit` is called with the validated fill. */
 export function openBoardColor(
@@ -137,20 +148,36 @@ export function placeColor(): void {
   pop.style.left = `${left}px`;
   pop.style.top = `${top}px`;
 }
+/**
+ * Closes the editor. A board draft that wasn't validated is dropped; a local item's color, changed live, is saved,
+ * even when another view is replacing this one (rankings.ts).
+ */
 export function closeColor(): void {
   const pop = $('#cpop');
   if (!pop || pop.hidden) return;
   pop.hidden = true;
   const anchorId = cp.id;
   cp.id = null;
-  const r = cur();
-  // A board draft that wasn't validated is dropped.
   if (boardEdit) boardEdit = null;
-  else if (r) {
+  else {
     save();
-    if (effTab() === 'results') renderMain(r);
+    const r = cur();
+    if (r && effTab() === 'results') renderMain(r);
   }
   if (anchorId) $(`.thumb-btn[data-id="${anchorId}"]`)?.focus();
+}
+
+/** The list was drawn anew (a board's author): the editor follows its swatch, or closes when the item has none. */
+export function followSwatch(): void {
+  if (!cp.id) return;
+  const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
+  if (swatch) cp.anchor = swatch;
+  else closeColor();
+}
+
+/** An item renamed while its color is edited: the name given stays, it no longer follows the color. */
+export function keepName(id: string): void {
+  if (cp.id === id) cp.follow = false;
 }
 /** Draws the editor again (a stop added or removed, solid or gradient), the focus kept on its control. */
 function redrawColor(): void {

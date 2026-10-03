@@ -1,6 +1,6 @@
 import { CROWD_METHODS, LIMITS } from '../core/board';
 import { colorTwin, sameFill } from '../core/colors';
-import { freshLabels, labelKey } from '../core/list';
+import { freshLabels, labelKey, parseList } from '../core/list';
 import type { BoardView } from '../core/protocol';
 import { dataURLBytes } from '../core/published';
 import { ownerFragment } from '../core/route';
@@ -9,23 +9,23 @@ import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
 import {
   addBusy,
-  type Board,
-  boardState,
   boardURL,
   countsText,
   type FocusMark,
   focusMark,
-  itemOf,
   ownerCall,
   refocus,
   renderDuel,
   renderRanking,
 } from './board';
-import { closeColor, cp, openBoardColor } from './color';
+import { type Board, boardState, itemOf } from './board-state';
+import { closeColor, editingColor, followSwatch, openBoardColor } from './color';
 import { $, $$, ask, castSvg, copyText, doc, toast } from './dom';
 import {
+  addedToast,
   askVotes,
   fileToThumb,
+  type ItemsHost,
   imageFiles,
   imageName,
   paneHTML,
@@ -193,11 +193,7 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
   view.innerHTML = shell(a);
   renderList(a, false);
   // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
-  if (cp.id) {
-    const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
-    if (swatch) cp.anchor = swatch;
-    else closeColor();
-  }
+  followSwatch();
   setTab(S.route.tab);
   addBusy(adding);
   // Once the main pane is drawn too: the focus may have been in the duel.
@@ -205,7 +201,7 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
 }
 
 /** The main pane: the duel (server-assigned pairs, like any voter), or the crowd's ranking with the ways to share. */
-export function renderAuthorMain(): void {
+function renderAuthorMain(): void {
   const b = authored();
   const main = $('#main');
   if (!b || !main) return;
@@ -243,7 +239,7 @@ export async function authorRetitle(input: HTMLInputElement): Promise<void> {
 }
 
 /** The crowd's scoring method, from the score menu (Exact sort can't serve a crowd). */
-export async function authorSetMethod(k: string | undefined): Promise<void> {
+async function authorSetMethod(k: string | undefined): Promise<void> {
   toggleMethodMenu(false);
   const b = authored();
   if (!b || !CROWD_METHODS.includes(k as MethodKey) || k === b.view.settings.method) return;
@@ -327,15 +323,11 @@ export async function authorNewAdminLink(): Promise<void> {
   }
 }
 
-/** The author's fields: title, items, files, settings. True when the change was theirs. */
+/** The author's fields beside the items pane: the title, the settings. True when the change was theirs. */
 export function authorChange(tg: HTMLInputElement): boolean {
   if (!authored()) return false;
   if (tg.id === 'rank-title') void authorRetitle(tg);
-  else if (tg.classList.contains('row-label')) void authorRename(tg);
-  else if (tg.id === 'file-input') {
-    if (tg.files) void authorAddFiles([...tg.files]);
-    tg.value = '';
-  } else if (tg.closest('#b-settings')) {
+  else if (tg.closest('#b-settings')) {
     if (settingsForm) settingsForm.draft = readSettings($('#b-settings') ?? tg, 'b');
   } else return false;
   return true;
@@ -352,14 +344,8 @@ async function sendItems(b: Authored, items: NewBoardItem[], dupes: number, list
   );
   if (!added?.length) return added;
   if (!list) toast(t('itemAdded'));
-  else {
-    const n = added.length;
-    const skipped = dupes + items.length - n;
-    const text = skipped
-      ? t('itemsAddedDupes', { items: plural(n, 'item'), n, dupes: plural(skipped, 'duplicate'), d: skipped })
-      : t('itemsAdded', { items: plural(n, 'item'), n });
-    toast(text, { label: t('undoToast'), run: () => void dropItems(b, added) });
-  }
+  // Items the server refused (a label taken meanwhile, a full board) count with the duplicates.
+  else addedToast(added.length, dupes + items.length - added.length, () => void dropItems(b, added));
   return added;
 }
 
@@ -369,7 +355,6 @@ async function dropItems(b: Authored, items: Item[]): Promise<void> {
   if (authored() === b) toast(t('addUndone'));
 }
 
-/** What was typed or pasted in the add field: one item, or every new label of a list (core/list.ts). */
 /** Items being sent from the add field (typed, pasted, a color): another Enter or click waits for the answer. */
 let adding = false;
 
@@ -386,7 +371,8 @@ async function addOnce<T>(send: () => Promise<T>): Promise<T | null> {
   }
 }
 
-export async function authorAdd(text: string): Promise<boolean> {
+/** What was typed or pasted in the add field: one item, or every new label of a list (core/list.ts). */
+async function authorAdd(text: string): Promise<boolean> {
   const b = authored();
   if (b?.view.status !== 'open' || adding) return false;
   const all = typedItems(text);
@@ -411,7 +397,7 @@ export async function authorAdd(text: string): Promise<boolean> {
 }
 
 /** The color picked beside the add field. */
-export async function authorAddColor(): Promise<void> {
+async function authorAddColor(): Promise<void> {
   const b = authored();
   if (!b || adding) return;
   const color = takeColor();
@@ -433,7 +419,7 @@ function freeNames(names: string[], taken: string[]): string[] {
  * Images dropped, pasted or chosen: added as items that announce a picture, then each picture is sent for the
  * moderator's review (D113). Only when the server reviews pictures; otherwise the author is told why not.
  */
-export async function authorAddFiles(files: FileList | File[]): Promise<void> {
+async function authorAddFiles(files: FileList | File[]): Promise<void> {
   const b = authored();
   if (b?.view.status !== 'open') return;
   const imgs = imageFiles(files);
@@ -464,15 +450,11 @@ export async function authorAddFiles(files: FileList | File[]): Promise<void> {
   const items = labels.map((label): NewBoardItem => ({ label, fill: null, pic: 'pending' }));
   const added = await ownerCall((alias, token) => addBoardItems(alias, token, items));
   if (!added) return;
-  let sent = 0;
-  let failed = 0;
-  for (const it of added) {
-    const data = dataURLBytes(read[labels.indexOf(it.label)]?.data ?? '');
-    if (!data) continue;
-    if (await sendPicture(b.alias, b.owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
-    else failed++;
-  }
-  picturesToast(sent, failed);
+  await sendPictures(
+    b.alias,
+    b.owner,
+    added.map((it) => ({ id: it.id, data: read[labels.indexOf(it.label)]?.data ?? '' })),
+  );
 }
 
 // ─── Pictures the server never received ─────────────────────────────────────
@@ -487,7 +469,7 @@ const picKey = (alias: string, id: string): string => `${alias}/${id}`;
 const retrying = new Set<string>();
 
 /** Sends an item's picture for review; one that fails is kept, and its row offers to send it again. */
-export async function sendPicture(alias: string, owner: string, id: string, jpeg: Blob): Promise<boolean> {
+async function sendPicture(alias: string, owner: string, id: string, jpeg: Blob): Promise<boolean> {
   try {
     await putItemImage(alias, owner, id, jpeg);
     unsent.delete(picKey(alias, id));
@@ -498,8 +480,23 @@ export async function sendPicture(alias: string, owner: string, id: string, jpeg
   }
 }
 
-/** What sending a batch of pictures came to; the list shows which ones didn't go. */
-export function picturesToast(sent: number, failed: number): void {
+/**
+ * Sends items' pictures (JPEG data URLs) for review, one by one, then says what it came to; the list shows which
+ * ones didn't go, and offers to send them again.
+ */
+export async function sendPictures(
+  alias: string,
+  owner: string,
+  pictures: readonly { id: string; data: string | null }[],
+): Promise<void> {
+  let sent = 0;
+  let failed = 0;
+  for (const p of pictures) {
+    const data = dataURLBytes(p.data ?? '');
+    if (!data) continue;
+    if (await sendPicture(alias, owner, p.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
+    else failed++;
+  }
   if (failed) toast(t('picturesUnsent', { pictures: plural(failed, 'picture'), n: failed }));
   else toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
   refreshAuthorList(false);
@@ -533,7 +530,7 @@ export async function authorRetryPicture(id: string | undefined): Promise<void> 
  * A name changed in the list. With votes, the author says what they become (D116): kept (a correction, checked
  * first) or dropped (another choice). Cancelled or refused, the name goes back.
  */
-export async function authorRename(input: HTMLInputElement): Promise<void> {
+async function authorRename(input: HTMLInputElement): Promise<void> {
   const b = authored();
   const id = input.dataset.id;
   const it = id ? itemOf(id) : undefined;
@@ -565,11 +562,11 @@ export async function authorRename(input: HTMLInputElement): Promise<void> {
 }
 
 /** Opens the color editor on a color item of the board (a second click on its swatch closes it). */
-export function authorEditColor(id: string | undefined, anchor: HTMLElement): void {
+function authorEditColor(id: string | undefined, anchor: HTMLElement): void {
   const b = authored();
   const it = id ? itemOf(id) : undefined;
   if (!b || !it?.fill || b.view.status !== 'open') return;
-  if (cp.id === it.id) {
+  if (editingColor() === it.id) {
     closeColor();
     return;
   }
@@ -604,7 +601,7 @@ async function authorRecolor(id: string, fill: Fill): Promise<void> {
  * Removes an item. Without votes it goes at once, and Undo brings it back (as a new item); with votes, or a
  * picture that can't come back, after a confirmation.
  */
-export async function authorRemove(id: string | undefined): Promise<void> {
+async function authorRemove(id: string | undefined): Promise<void> {
   const b = authored();
   const it = id ? itemOf(id) : undefined;
   if (!b || !id || !it) return;
@@ -628,3 +625,20 @@ export async function authorRemove(id: string | undefined): Promise<void> {
     run: () => void ownerCall((alias, token) => addBoardItem(alias, token, back)),
   });
 }
+
+/** The items pane of a published board's author (ItemsHost, editor.ts): every edit goes through the server. */
+export const authorHost: ItemsHost = {
+  add: (input) => void authorAdd(input.value),
+  addList(text) {
+    if (parseList(text).length < 2) return false;
+    void authorAdd(text);
+    return true;
+  },
+  addColor: () => void authorAddColor(),
+  addFiles: (files) => void authorAddFiles(files),
+  remove: (id) => void authorRemove(id),
+  rename: (input) => void authorRename(input),
+  recolor: authorEditColor,
+  setMethod: (k) => void authorSetMethod(k),
+  renderMain: renderAuthorMain,
+};
