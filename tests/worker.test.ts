@@ -14,7 +14,7 @@ import type {
 } from '../src/core/protocol';
 import { PROTOCOL_VERSION } from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
-import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
+import { CARD_LIMIT, CARD_MAX_BYTES, CARD_SIZES } from '../src/core/share';
 import { TEMPLATES } from '../src/core/templates';
 import type { BoardSettings, Ranking } from '../src/core/types';
 import { fakePng } from './helpers/png';
@@ -1117,6 +1117,43 @@ describe('limits', () => {
     expect(statuses[5]).toBe(429);
     // Another address is not affected.
     expect((await api('', { method: 'POST', body, ip: '203.0.113.8' })).status).toBe(201);
+  });
+
+  it('counts a body sent without a length, and refuses it past the limit', async () => {
+    /** A body of spaces sent in chunks (no Content-Length): the Worker counts the bytes as they come. */
+    const chunked = (bytes: number) =>
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          for (let sent = 0; sent < bytes; sent += 64 * 1024) {
+            c.enqueue(new Uint8Array(Math.min(64 * 1024, bytes - sent)).fill(0x20));
+          }
+          c.close();
+        },
+      });
+    const send = (path: string, method: string, type: string, body: ReadableStream<Uint8Array>) =>
+      server.fetch(path, {
+        method,
+        headers: { 'Content-Type': type, 'CF-Connecting-IP': nextIp() },
+        body,
+        duplex: 'half',
+      } as Parameters<typeof server.fetch>[1]);
+    // Within the limit, a chunked body is read as usual.
+    const json = new TextEncoder().encode(JSON.stringify({ title: 'Chunked', items, voter: AUTHOR }));
+    const small = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(json.slice(0, 10));
+        c.enqueue(json.slice(10));
+        c.close();
+      },
+    });
+    const res = await send('/api/boards', 'POST', 'application/json', small);
+    expect(res.status).toBe(201);
+    const { alias } = (await res.json()) as { alias: string };
+    // One byte over: refused, for JSON, a card and a picture alike.
+    expect((await send('/api/boards', 'POST', 'application/json', chunked(512 * 1024 + 1))).status).toBe(413);
+    expect((await send(`/api/boards/${alias}/card`, 'PUT', 'image/png', chunked(CARD_MAX_BYTES + 1))).status).toBe(413);
+    const picture = `/api/boards/${alias}/items/p0/image`;
+    expect((await send(picture, 'PUT', 'image/jpeg', chunked(LIMITS.picture + 1))).status).toBe(413);
   });
 
   it('asks for a Turnstile token once a secret is set', async () => {

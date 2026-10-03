@@ -93,13 +93,41 @@ const bearer = (req: Request): string => req.headers.get('Authorization')?.repla
 
 const clientIp = (req: Request): string => req.headers.get('CF-Connecting-IP') ?? 'unknown';
 
+/**
+ * The body's bytes, or null past `limit`: counted as they arrive, so a body sent without a length (chunked) is cut
+ * short at the limit instead of being read whole first.
+ */
+async function readBody(req: Request, limit: number): Promise<Uint8Array | null> {
+  if (Number(req.headers.get('Content-Length') ?? 0) > limit) return null;
+  if (!req.body) return new Uint8Array(0);
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    bytes.set(c, at);
+    at += c.byteLength;
+  }
+  return bytes;
+}
+
 /** Parsed JSON body, `undefined` when invalid, `null` when too large. */
 async function readJson(req: Request): Promise<unknown> {
-  if (Number(req.headers.get('Content-Length') ?? 0) > MAX_BODY) return null;
-  const text = await req.text();
-  if (text.length > MAX_BODY) return null;
+  const bytes = await readBody(req, MAX_BODY);
+  if (!bytes) return null;
   try {
-    return JSON.parse(text);
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     return undefined;
   }
@@ -169,9 +197,8 @@ async function putCard(req: Request, env: Env, alias: string): Promise<Response>
   const bucket = env.IMAGES;
   if (!bucket) return error('not_found');
   if (!req.headers.get('Content-Type')?.toLowerCase().startsWith('image/png')) return error('unsupported');
-  if (Number(req.headers.get('Content-Length') ?? 0) > CARD_MAX_BYTES) return error('too_large');
-  const bytes = new Uint8Array(await req.arrayBuffer());
-  if (bytes.byteLength > CARD_MAX_BYTES) return error('too_large');
+  const bytes = await readBody(req, CARD_MAX_BYTES);
+  if (!bytes) return error('too_large');
   const unfurl = await env.BOARDS.getByName(alias).unfurl();
   if (!unfurl) return error('not_found');
   const pair = parseDuelQuery(new URL(req.url).search);
@@ -188,9 +215,8 @@ async function putPicture(req: Request, env: Env, alias: string, id: string): Pr
   const bucket = env.IMAGES;
   if (!bucket) return error('not_found');
   if (!req.headers.get('Content-Type')?.toLowerCase().startsWith('image/jpeg')) return error('unsupported');
-  if (Number(req.headers.get('Content-Length') ?? 0) > LIMITS.picture) return error('too_large');
-  const bytes = new Uint8Array(await req.arrayBuffer());
-  if (bytes.byteLength > LIMITS.picture) return error('too_large');
+  const bytes = await readBody(req, LIMITS.picture);
+  if (!bytes) return error('too_large');
   const slot = await env.BOARDS.getByName(alias).pictureSlot(bearer(req), id);
   if (!slot.ok) return error(slot.error);
   const stored = await storePicture(bucket, alias, id, bytes);
