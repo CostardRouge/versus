@@ -3,6 +3,7 @@ import { nextPair, target } from '../core/scoring';
 import type { MethodKey } from '../core/types';
 import { esc, mulberry32 } from '../core/util';
 import { fill, pctText } from '../i18n/text';
+import { readPrefs, rememberLang } from '../prefs';
 import { BoardView, flip } from './board';
 import { crowd, rate, standings, vote } from './crowd';
 import { CROWD, item, PICKS, SETTLING, TOPICS } from './data';
@@ -349,22 +350,8 @@ export function finale(S: Strings, appHref: string, burst: (host: HTMLElement) =
  * browser prefers the other language is offered it, never redirected.
  */
 export function languages(S: Strings): void {
-  const prefs = (): Record<string, unknown> => {
-    try {
-      const v = JSON.parse(localStorage.getItem('versus-prefs') ?? '{}');
-      return v && typeof v === 'object' ? v : {};
-    } catch {
-      return {};
-    }
-  };
   const save = (lang: string, force: boolean) => {
-    try {
-      const p = prefs();
-      if (!force && (p.lang === 'en' || p.lang === 'fr')) return;
-      localStorage.setItem('versus-prefs', JSON.stringify({ ...p, lang }));
-    } catch {
-      /* storage unavailable: the choice lasts for this visit only */
-    }
+    if (lang === 'en' || lang === 'fr') rememberLang(lang, force);
   };
   document.addEventListener('click', (e) => {
     const a = (e.target as Element).closest<HTMLAnchorElement>('a[href]');
@@ -374,7 +361,7 @@ export function languages(S: Strings): void {
   });
   const hint = $('#lang-hint');
   if (!hint) return;
-  const chosen = prefs().lang;
+  const chosen = readPrefs().lang;
   let dismissed = false;
   try {
     dismissed = sessionStorage.getItem('versus-lang-hint') === '1';

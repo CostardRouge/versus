@@ -51,6 +51,7 @@ import { STASH_KEY } from '../src/app/router';
 import { HOME_PATH } from '../src/core/site';
 import { en } from '../src/i18n/en';
 import { fr } from '../src/i18n/fr';
+import { PREFS_KEY } from '../src/prefs';
 
 const URL_ = 'https://versus.example.com/';
 const head = headTags(URL_).join('\n');
@@ -531,6 +532,15 @@ describe('palette', () => {
       expect(tags).toContain(
         `<meta name="theme-color" content="${COLORS.bgDark}" media="(prefers-color-scheme: dark)" />`,
       );
+    }
+  });
+});
+
+describe('shared preferences', () => {
+  it('reads the theme before the first paint under the key every page shares', () => {
+    for (const shell of ['app/index.html', 'admin/index.html']) {
+      const html = readFileSync(resolve(process.cwd(), shell), 'utf8');
+      if (html.includes('localStorage')) expect(html, shell).toContain(`localStorage.getItem('${PREFS_KEY}')`);
     }
   });
 });

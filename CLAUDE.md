@@ -53,6 +53,7 @@ src/main.ts           imports the fonts and styles, starts audience measurement,
 src/audience.ts       audience measurement in the browser (docs/analytics.md): loads Umami only for visitors who don't decline
                       (switch, Do Not Track, GPC), sends views and anonymous events with clean paths; shared by every page
                       (never name a module "analytics": shared chunks take its name and filter lists block it)
+src/prefs.ts          the preferences every page shares (`versus-prefs`): PREFS_KEY, readPrefs, rememberLang
 src/tokens.css        design tokens shared by the app and the home page: light on :root, dark via prefers-color-scheme and [data-theme]
 src/styles.css        the app's styles (imports tokens.css)
 src/sw/sw.ts          service worker (offline app shell, updates on request); own tsconfig (WebWorker types)

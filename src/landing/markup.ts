@@ -5,6 +5,7 @@ import type { MethodKey } from '../core/types.ts';
 import { esc, hueOf, mulberry32 } from '../core/util.ts';
 import type { Lang } from '../i18n/index.ts';
 import { fill, pctText } from '../i18n/text.ts';
+import { PREFS_KEY } from '../prefs.ts';
 import { crowd, rate, standings, vote } from './crowd.ts';
 import {
   CASES,
@@ -83,7 +84,7 @@ export function landingBoot(lang: Lang): string {
           return leave('${root}${APP_PATH}');
         }
         var prefs = {};
-        try { prefs = JSON.parse(localStorage.getItem('versus-prefs') || '{}') || {}; } catch (e) {}
+        try { prefs = JSON.parse(localStorage.getItem('${PREFS_KEY}') || '{}') || {}; } catch (e) {}
         if (!inside && (prefs.lang === 'en' || prefs.lang === 'fr') && prefs.lang !== '${lang}') {
           return leave('${root}' + (prefs.lang === 'fr' ? '${HOME_PATH.fr}' : '${HOME_PATH.en}'));
         }

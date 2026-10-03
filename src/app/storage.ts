@@ -2,9 +2,9 @@ import { VOTER_RE } from '../core/board';
 import { parseJoined } from '../core/joined';
 import type { Joined, Ranking } from '../core/types';
 import type { Lang } from '../i18n';
+import { PREFS_KEY } from '../prefs';
 
 export const STORE_KEY = 'versus-v1';
-export const PREF_KEY = 'versus-prefs';
 /** Keys used by the earlier prototypes; user-made rankings are carried over once. */
 const LEGACY_KEYS = ['elo-rank-v2', 'elo-rank-v1'];
 
@@ -117,13 +117,13 @@ export function saveRanks(ranks: Ranking[]): boolean {
 }
 
 export function loadPrefs(): Prefs {
-  const v = readJSON(PREF_KEY);
+  const v = readJSON(PREFS_KEY);
   return v && typeof v === 'object' ? (v as Prefs) : {};
 }
 
 export function savePrefs(p: Prefs): void {
   try {
-    storage()?.setItem(PREF_KEY, JSON.stringify(p));
+    storage()?.setItem(PREFS_KEY, JSON.stringify(p));
   } catch {
     /* preferences are a convenience; ignore */
   }

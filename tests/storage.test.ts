@@ -5,7 +5,6 @@ import {
   loadLegacyRanks,
   loadPrefs,
   loadRanks,
-  PREF_KEY,
   STORE_KEY,
   saveJoined,
   savePrefs,
@@ -15,6 +14,7 @@ import {
 import { DEFAULT_SETTINGS } from '../src/core/board';
 import { mkItem, mkRank } from '../src/core/model';
 import type { Joined } from '../src/core/types';
+import { PREFS_KEY } from '../src/prefs';
 
 class MemoryStorage {
   private data = new Map<string, string>();
@@ -94,7 +94,7 @@ describe('storage', () => {
   it('keeps preferences separately', () => {
     expect(loadPrefs()).toEqual({});
     savePrefs({ lang: 'fr', hideDemos: true });
-    expect(JSON.parse(localStorage.getItem(PREF_KEY) ?? '{}')).toEqual({ lang: 'fr', hideDemos: true });
+    expect(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ lang: 'fr', hideDemos: true });
     expect(loadPrefs()).toEqual({ lang: 'fr', hideDemos: true });
   });
 

@@ -7,6 +7,7 @@ import { legalFr } from '../i18n/legal-fr.ts';
 import { fill } from '../i18n/text.ts';
 import { footerHTML, navHTML, type PageLinks } from '../landing/markup.ts';
 import { strings } from '../landing/strings.ts';
+import { PREFS_KEY } from '../prefs.ts';
 
 /**
  * The legal notice (publisher, hosting, privacy, audience measurement, licence), rendered at build time in each
@@ -34,7 +35,7 @@ export function legalBoot(): string {
         var d = document.documentElement;
         d.classList.add('js');
         try {
-          var theme = JSON.parse(localStorage.getItem('versus-prefs') || '{}').theme;
+          var theme = JSON.parse(localStorage.getItem('${PREFS_KEY}') || '{}').theme;
           if (theme === 'light' || theme === 'dark') d.dataset.theme = theme;
         } catch (e) {}
       })();
