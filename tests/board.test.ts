@@ -914,8 +914,18 @@ describe('moderation', () => {
     for (const x of bad) expect(errorOf(parseReport(x))).toBe('bad_request');
   });
 
+  it('takes reports from the board’s voters only', () => {
+    const b = board();
+    expect(errorOf(addReport(b, { voter: V2, reason: 'spam', note: '' }, T0))).toBe('forbidden');
+    value(castVote(b, V2, 'i0', 'i1', 1, T0));
+    expect(value(addReport(b, { voter: V2, reason: 'spam', note: '' }, T0 + 1)).voter).toBe(V2);
+    expect(b.reports.size).toBe(1);
+  });
+
   it('keeps one report per voter, up to the limit, and restores them', () => {
     const b = board();
+    const many = Array.from({ length: LIMITS.reports }, (_, i) => `voter-${String(i).padStart(4, '0')}`);
+    for (const v of [V1, V2, 'voter-new-one', ...many]) value(castVote(b, v, 'i0', 'i1', 1, T0));
     value(addReport(b, { voter: V1, reason: 'spam', note: '' }, T0 + 1));
     value(addReport(b, { voter: V2, reason: 'other', note: 'hm' }, T0 + 2));
     const again = value(addReport(b, { voter: V1, reason: 'offensive', note: 'really' }, T0 + 3));
@@ -924,9 +934,7 @@ describe('moderation', () => {
     expect(lastActivity(b)).toBe(T0);
     const copy = restoreBoard(boardMeta(b), b.items, b.votes.values(), b.reports.values());
     expect([...copy.reports.entries()]).toEqual([...b.reports.entries()]);
-    for (let i = 0; i < LIMITS.reports; i++) {
-      addReport(b, { voter: `voter-${String(i).padStart(4, '0')}`, reason: 'spam', note: '' }, T0);
-    }
+    for (const voter of many) addReport(b, { voter, reason: 'spam', note: '' }, T0);
     expect(b.reports.size).toBe(LIMITS.reports);
     expect(errorOf(addReport(b, { voter: 'voter-new-one', reason: 'spam', note: '' }, T0))).toBe('full');
     // A voter already there can still change theirs.

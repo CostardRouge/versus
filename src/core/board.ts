@@ -365,10 +365,12 @@ export function parseReport(x: unknown): Result<ReportInput> {
 }
 
 /**
- * Records a report. One per voter (a new one replaces theirs), LIMITS.reports voters at most: enough to
- * make a board stand out on the admin page, not enough to fill the store. Not an activity for the TTL.
+ * Records a report from a voter of the board: someone who voted at least once (a voter id made up for the occasion
+ * reports nothing). One per voter (a new one replaces theirs), LIMITS.reports voters at most: enough to make a
+ * board stand out on the admin page, not enough to fill the store. Not an activity for the TTL.
  */
 export function addReport(board: SharedBoard, input: ReportInput, now: number): Result<Report> {
+  if (!voteCount(board, input.voter)) return fail('forbidden');
   if (!board.reports.has(input.voter) && board.reports.size >= LIMITS.reports) return fail('full');
   const report: Report = { ...input, t: now };
   board.reports.delete(input.voter);

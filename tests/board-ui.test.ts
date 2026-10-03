@@ -1069,6 +1069,12 @@ describe('reporting', () => {
       body: { voter: expect.any(String), reason: 'personal', note: 'It names my neighbour' },
     });
     expect($('#toast')?.textContent).toBe('Thanks, your report was sent.');
+    // A visitor who hasn't voted yet is told why the report didn't go.
+    respond = () => ({ status: 403, body: { error: 'forbidden' } });
+    click('[data-action="b-report"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('Vote at least once to report this ranking.');
   });
 
   it('shows no report link to the author', () => {

@@ -883,6 +883,15 @@ describe('registry and admin', () => {
   it('takes visitors’ reports, one per voter, and lists reported boards first', async () => {
     const { alias } = await publish();
     const report = (body: unknown) => api(`/${alias}/report`, { method: 'POST', body });
+    // Only from the board's voters: someone who voted at least once.
+    expect((await report({ voter: 'voter-one-1', reason: 'spam' })).status).toBe(403);
+    for (const voter of ['voter-one-1', 'voter-two-2']) {
+      const c = await Client.open(alias, voter);
+      const [a, b] = (await c.next('state')).pairs[0] as [string, string];
+      c.send({ t: 'vote', a, b, s: 1 });
+      expect((await c.next('pairs')).mine).toBe(1);
+      c.close();
+    }
     expect((await report({ voter: 'voter-one-1', reason: 'spam', note: '  Ads everywhere  ' })).status).toBe(200);
     expect((await report({ voter: 'voter-one-1', reason: 'offensive' })).status).toBe(200);
     expect((await report({ voter: 'voter-two-2', reason: 'other', note: 'x'.repeat(400) })).status).toBe(200);

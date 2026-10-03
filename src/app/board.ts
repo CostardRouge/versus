@@ -810,7 +810,9 @@ export async function boardReport(): Promise<void> {
     await reportBoard(b.alias, { voter: S.voter, reason, note });
     toast(t('reported'));
   } catch (e) {
-    toast(t(e instanceof ApiError && e.code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
+    // Reports come from the board's voters: someone who voted at least once.
+    const code = e instanceof ApiError ? e.code : null;
+    toast(t(code === 'forbidden' ? 'reportNeedsVote' : code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
   }
 }
 

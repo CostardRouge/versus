@@ -463,6 +463,7 @@ export const fr: Messages = {
     'Ce classement est un de ceux de Versus, ouvert à tous : montre que tu es une personne, puis vote à nouveau.',
   checkOk: 'Continuer',
   checkMissing: 'Fais la vérification pour voter.',
+  reportNeedsVote: 'Vote au moins une fois pour signaler ce classement.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

@@ -453,6 +453,7 @@ export const en = {
   checkBody: 'This ranking is one of Versus’s own, open to everyone: show you’re a person, then vote again.',
   checkOk: 'Continue',
   checkMissing: 'Complete the check to vote.',
+  reportNeedsVote: 'Vote at least once to report this ranking.',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;
