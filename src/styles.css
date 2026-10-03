@@ -65,10 +65,12 @@ input {
   white-space: nowrap;
 }
 
+/* viewport-fit=cover: in landscape, a notch takes the side's safe area. */
 #app {
   max-width: 1320px;
   margin: 0 auto;
-  padding-inline: clamp(16px, 3vw, 32px);
+  padding-inline: max(clamp(16px, 3vw, 32px), env(safe-area-inset-left, 0px))
+    max(clamp(16px, 3vw, 32px), env(safe-area-inset-right, 0px));
   padding-block: 0 48px;
 }
 .top {
@@ -164,6 +166,8 @@ input {
   color: var(--bad);
 }
 .link {
+  min-width: 24px;
+  min-height: 24px;
   background: none;
   border: 0;
   padding: 0;
@@ -791,7 +795,9 @@ kbd {
 .dl.down {
   color: var(--bad);
 }
+/* Quiet until the row is pointed at or the button focused, never invisible: keyboard, touch and zoom find it. */
 .rm {
+  position: relative;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -800,7 +806,7 @@ kbd {
   border-radius: 50%;
   font-size: 17px;
   line-height: 1;
-  opacity: 0;
+  opacity: 0.7;
   transition: opacity 0.15s;
 }
 .list li:hover .rm,
@@ -1532,8 +1538,8 @@ kbd {
 @media (max-width: 859px) {
   .method-pop {
     position: fixed;
-    left: 16px;
-    right: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
     top: auto;
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     width: auto;
@@ -1605,6 +1611,7 @@ kbd {
 .grad-toggle {
   display: inline-flex;
   align-items: center;
+  min-height: 24px;
   gap: 6px;
   font-size: 13px;
   color: var(--muted);
@@ -1729,6 +1736,8 @@ kbd {
 }
 .lang button,
 .theme button {
+  min-width: 24px;
+  min-height: 24px;
   border: 0;
   background: transparent;
   border-radius: 999px;
@@ -1893,8 +1902,8 @@ kbd {
 }
 @media (max-width: 859px) {
   .cpop {
-    left: 16px;
-    right: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
     top: auto;
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     width: auto;
@@ -1983,7 +1992,7 @@ body.dropping .drop-overlay {
   z-index: 70;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
   background: rgba(8, 10, 14, 0.5);
 }
 .modal-box {
@@ -2125,6 +2134,21 @@ body.dropping .drop-overlay {
   }
   .rm {
     opacity: 1;
+  }
+}
+/* Touch: 44 px targets. The remove and color buttons reach it without moving the row (a wider hit area). */
+@media (pointer: coarse) {
+  .btn.sm {
+    min-height: 44px;
+  }
+  .tab {
+    height: 44px;
+  }
+  .rm::before,
+  .thumb-btn::before {
+    content: "";
+    position: absolute;
+    inset: calc((100% - 44px) / 2);
   }
 }
 @media (prefers-reduced-motion: reduce) {
