@@ -66,10 +66,12 @@ input {
   white-space: nowrap;
 }
 
-/* viewport-fit=cover: in landscape, a notch takes the side's safe area. */
+/* viewport-fit=cover: in landscape, a notch takes the side's safe area. The page never scrolls sideways, but what moves
+   past its margins (a swiped or picked card, its ring) shows up to the screen's edge. */
 #app {
   max-width: 1320px;
   margin: 0 auto;
+  overflow-x: clip;
   padding-inline: max(clamp(16px, 3vw, 32px), env(safe-area-inset-left, 0px))
     max(clamp(16px, 3vw, 32px), env(safe-area-inset-right, 0px));
   padding-block: 0 48px;
@@ -901,7 +903,6 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  overflow-x: clip;
 }
 .duel-top {
   display: flex;
