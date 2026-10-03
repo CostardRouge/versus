@@ -2,7 +2,7 @@ import { ALIAS_RE, LIMITS } from './board.ts';
 import type { BoardView, RankingView } from './protocol.ts';
 import { agreement, ownRanking } from './published.ts';
 import { compute } from './scoring.ts';
-import type { Computed, Duel, Item, ItemStats, MethodKey, Ranking } from './types.ts';
+import type { BoardSettings, BoardStatus, Computed, Duel, Item, ItemStats, MethodKey, Ranking } from './types.ts';
 
 /**
  * Sharing a result as an image (drawn by the app, src/app/share.ts) and the cards that illustrate a board's
@@ -212,6 +212,45 @@ export const duelSpec = (title: string, a: Item, b: Item, url: string, texts: Ca
   url,
   texts,
 });
+
+// ─── Link previews ──────────────────────────────────────────────────────────
+
+/**
+ * Whether a board's link preview may show its ranking: only when anyone may see it, results always visible or the
+ * vote closed. A preview is public: it must never show what the board itself hides.
+ */
+export const previewRanked = (settings: Pick<BoardSettings, 'visibility'>, status: BoardStatus): boolean =>
+  settings.visibility === 'always' || status === 'closed';
+
+/** A board's card for its link preview: as drawn when the ranking may show, else the items in board order, unranked. */
+export function previewSpec(
+  spec: CardSpec,
+  items: readonly Item[],
+  settings: Pick<BoardSettings, 'visibility'>,
+  status: BoardStatus,
+): CardSpec {
+  if (previewRanked(settings, status)) return spec;
+  return { ...spec, rows: items.map((it) => ({ it, meta: '' })), ranked: false, mine: [], agree: null };
+}
+
+/** Who sends a link's card: the board's author (with its token), or anyone else. */
+export type CardSender = 'owner' | 'visitor';
+
+/**
+ * Whether the server stores a card: the board's own card comes from its author only; a duel's card from anyone the
+ * first time (first drawn, first kept), then from the author only, who may draw it again. The site's own boards
+ * (official templates, whose token nobody keeps) take none from visitors.
+ */
+export function cardUpload(
+  by: CardSender,
+  official: boolean,
+  duel: boolean,
+  exists: boolean,
+): 'ok' | 'forbidden' | 'exists' {
+  if (by === 'owner') return 'ok';
+  if (official || !duel) return 'forbidden';
+  return exists ? 'exists' : 'ok';
+}
 
 // ─── Links ──────────────────────────────────────────────────────────────────
 

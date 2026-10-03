@@ -6,10 +6,12 @@ import {
   addItem,
   addItems,
   addReport,
+  admitNewVoter,
   assignPairs,
   boardMeta,
   canSeeRanking,
   castVote,
+  cleanText,
   clearReports,
   createBoard,
   crowd,
@@ -24,6 +26,9 @@ import {
   localCopy,
   makeAlias,
   moderate,
+  NEW_VOTERS_PER_ADDRESS,
+  NEW_VOTERS_WINDOW_MS,
+  needsCheck,
   openSession,
   type PublishInput,
   parseItemEdit,
@@ -96,6 +101,48 @@ describe('makeAlias', () => {
     const bytes = (n: number) => new Uint8Array(n).fill(calls++ === 0 ? 250 : 57);
     expect(makeAlias(bytes)).toBe('zzzzzzzzzz');
     expect(calls).toBe(2);
+  });
+});
+
+describe('cleanText', () => {
+  it('drops what nobody sees, keeps what emoji need, and normalizes', () => {
+    expect(cleanText('  Pizzas  ')).toBe('Pizzas');
+    // Bidi overrides, isolates and marks: a title can't read backwards or hide its end.
+    expect(cleanText('\u202Etxt.exe\u202C')).toBe('txt.exe');
+    expect(cleanText('\u2066Left\u2069\u200E\u200F\u061C')).toBe('Left');
+    expect(cleanText('Zero\u200Bwidth\uFEFF')).toBe('Zerowidth');
+    // C0 and C1 controls go; line breaks and tabs become spaces.
+    expect(cleanText('a\u0000b\u0007c\u009Bd\u007F')).toBe('abcd');
+    expect(cleanText('Line\nbreak\tand\r\ntab')).toBe('Line break and  tab');
+    // Joiners stay: emoji sequences and some scripts need them.
+    expect(cleanText(' 👩\u200D💻 ')).toBe('👩\u200D💻');
+    expect(cleanText('می\u200Cخواهم')).toBe('می\u200Cخواهم');
+    // One way to write each character (NFC): a combining accent becomes the accented letter.
+    expect(cleanText('Cafe\u0301')).toBe('Café');
+    expect(cleanText('Cafe\u0301')).toHaveLength(4);
+    expect(cleanText('\u200B \u202E ')).toBe('');
+  });
+
+  it('applies to titles, labels, item edits and report notes', () => {
+    expect(parseTitle('\u202ESpoof\u202C')).toBe('Spoof');
+    expect(parseTitle('\u200B\u2066 \u2069')).toBeNull();
+    expect(parseTitle(`${'x'.repeat(LIMITS.title)}\u200B`)).toBe('x'.repeat(LIMITS.title));
+    expect(value(parseNewItem({ label: ' Cre\u0300me\u200E ' })).label).toBe('Crème');
+    expect(errorOf(parseNewItem({ label: '\u200B\uFEFF' }))).toBe('bad_request');
+    expect(value(parseItemEdit({ label: '\u2067Moustache\u2069' })).label).toBe('Moustache');
+    expect(errorOf(parseItemEdit({ label: '\u0000' }))).toBe('bad_request');
+    expect(value(parseReport({ voter: V1, reason: 'spam', note: '\u202Ead\nhere ' })).note).toBe('ad here');
+    const pub = value(
+      parsePublish({
+        title: 'T\u0007',
+        voter: V1,
+        items: [
+          { id: 'a', label: 'A\u200F' },
+          { id: 'b', label: 'B' },
+        ],
+      }),
+    );
+    expect([pub.title, ...pub.items.map((i) => i.label)]).toEqual(['T', 'A', 'B']);
   });
 });
 
@@ -665,6 +712,22 @@ describe('sessions', () => {
       openSession(b, V2, false, crowd(b), mulberry32(1), prev);
     expect(again({ lastActionAt: T0, lastAddAt: T0 }).lastAddAt).toBe(T0);
     expect(again({ lastActionAt: T0 })).not.toHaveProperty('lastAddAt');
+    // And a human check passed on this connection.
+    expect(openSession(b, V2, false, crowd(b), mulberry32(1), { lastActionAt: 0, human: true }).human).toBe(true);
+    expect(again({ lastActionAt: T0 })).not.toHaveProperty('human');
+  });
+
+  it('asks for a human check before a first vote on the site’s own boards, when the server checks', () => {
+    const own = createBoard(input(4), T0, { official: true, template: 'pizzas' });
+    const theirs = board(4);
+    const s = openSession(own, V2, false, crowd(own), mulberry32(1));
+    expect(needsCheck(own, s, true)).toBe(true);
+    expect(needsCheck(own, s, false)).toBe(false);
+    expect(needsCheck(theirs, openSession(theirs, V2, false, crowd(theirs), mulberry32(1)), true)).toBe(false);
+    expect(needsCheck(own, { ...s, human: true }, true)).toBe(false);
+    // A voter who already voted there is never asked.
+    value(castVote(own, V2, 'i0', 'i1', 1, T0));
+    expect(needsCheck(own, s, true)).toBe(false);
   });
 
   it('keeps one voter per connection', () => {
@@ -802,6 +865,29 @@ describe('sessions', () => {
   });
 });
 
+describe('new voters per address', () => {
+  it('lets an address bring a few new voters, then waits for the oldest to age out', () => {
+    let times: number[] = [];
+    for (let i = 0; i < NEW_VOTERS_PER_ADDRESS; i++) {
+      const next = admitNewVoter(times, T0 + i * 1000);
+      expect(next).not.toBeNull();
+      times = next ?? [];
+    }
+    expect(times).toHaveLength(NEW_VOTERS_PER_ADDRESS);
+    // One more within the window: refused, and nothing changes.
+    expect(admitNewVoter(times, T0 + NEW_VOTERS_PER_ADDRESS * 1000)).toBeNull();
+    expect(admitNewVoter(times, T0 + NEW_VOTERS_WINDOW_MS - 1)).toBeNull();
+    // The first one ages out: room for one, the old time dropped.
+    const later = admitNewVoter(times, T0 + NEW_VOTERS_WINDOW_MS);
+    expect(later).toHaveLength(NEW_VOTERS_PER_ADDRESS);
+    expect(later?.[0]).toBe(T0 + 1000);
+    expect(later?.at(-1)).toBe(T0 + NEW_VOTERS_WINDOW_MS);
+    // Long after, the window is empty again.
+    expect(admitNewVoter(times, T0 + 10 * NEW_VOTERS_WINDOW_MS)).toEqual([T0 + 10 * NEW_VOTERS_WINDOW_MS]);
+    expect(admitNewVoter([], T0)).toEqual([T0]);
+  });
+});
+
 describe('moderation', () => {
   it('starts neither hidden nor featured, and keeps the flags in its meta', () => {
     const b = board();
@@ -834,8 +920,18 @@ describe('moderation', () => {
     for (const x of bad) expect(errorOf(parseReport(x))).toBe('bad_request');
   });
 
+  it('takes reports from the board’s voters only', () => {
+    const b = board();
+    expect(errorOf(addReport(b, { voter: V2, reason: 'spam', note: '' }, T0))).toBe('forbidden');
+    value(castVote(b, V2, 'i0', 'i1', 1, T0));
+    expect(value(addReport(b, { voter: V2, reason: 'spam', note: '' }, T0 + 1)).voter).toBe(V2);
+    expect(b.reports.size).toBe(1);
+  });
+
   it('keeps one report per voter, up to the limit, and restores them', () => {
     const b = board();
+    const many = Array.from({ length: LIMITS.reports }, (_, i) => `voter-${String(i).padStart(4, '0')}`);
+    for (const v of [V1, V2, 'voter-new-one', ...many]) value(castVote(b, v, 'i0', 'i1', 1, T0));
     value(addReport(b, { voter: V1, reason: 'spam', note: '' }, T0 + 1));
     value(addReport(b, { voter: V2, reason: 'other', note: 'hm' }, T0 + 2));
     const again = value(addReport(b, { voter: V1, reason: 'offensive', note: 'really' }, T0 + 3));
@@ -844,9 +940,7 @@ describe('moderation', () => {
     expect(lastActivity(b)).toBe(T0);
     const copy = restoreBoard(boardMeta(b), b.items, b.votes.values(), b.reports.values());
     expect([...copy.reports.entries()]).toEqual([...b.reports.entries()]);
-    for (let i = 0; i < LIMITS.reports; i++) {
-      addReport(b, { voter: `voter-${String(i).padStart(4, '0')}`, reason: 'spam', note: '' }, T0);
-    }
+    for (const voter of many) addReport(b, { voter, reason: 'spam', note: '' }, T0);
     expect(b.reports.size).toBe(LIMITS.reports);
     expect(errorOf(addReport(b, { voter: 'voter-new-one', reason: 'spam', note: '' }, T0))).toBe('full');
     // A voter already there can still change theirs.

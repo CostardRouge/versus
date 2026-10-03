@@ -1,4 +1,4 @@
-import type { BoardView } from '../../src/core/protocol';
+import type { BoardView, Unfurl } from '../../src/core/protocol';
 import {
   TEMPLATE_INDEX_VOTERS,
   TEMPLATES,
@@ -11,10 +11,18 @@ import {
 import type { BoardLang } from '../../src/core/types';
 import { esc } from '../../src/core/util';
 import { type UnfurlKey, unfurlPlural, unfurlText } from '../../src/i18n/unfurl';
-import { preview } from './cards';
+import { attrValue, preview } from './cards';
 import type { Env } from './env';
+import { log } from './log';
 import { newAlias, newOwnerToken } from './random';
-import { indexableTemplates, type RegistryRow, templateBoard, templateKeys, upsertBoard } from './registry';
+import {
+  deleteBoard,
+  indexableTemplates,
+  type RegistryRow,
+  templateBoard,
+  templateKeys,
+  upsertBoard,
+} from './registry';
 
 /**
  * Official templates (docs/published-boards.md#official-templates): the site's own boards, published by the
@@ -66,9 +74,33 @@ export async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Pr
       return row;
     } catch {
       // Another request published this template meanwhile: this copy goes, theirs stays.
+      log('template_published_twice', { template: t.key, lang, alias });
       await stub.adminDelete();
       return templateBoard(db, t.key, lang);
     }
+  }
+  return null;
+}
+
+/**
+ * The board of a template as its page shows it, published when missing. A registry row that outlived its board (a
+ * delete that failed) goes, and the template is published again.
+ */
+async function liveTemplate(
+  env: Env,
+  t: Template,
+  lang: BoardLang,
+): Promise<{ row: RegistryRow; view: BoardView; unfurl: Unfurl } | null> {
+  const db = env.REGISTRY;
+  if (!db) return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const row = await ensureTemplate(env, t, lang);
+    if (!row) return null;
+    const stub = env.BOARDS.getByName(row.alias);
+    const [view, unfurl] = await Promise.all([stub.view(), stub.unfurl()]);
+    if (view && unfurl) return { row, view, unfurl };
+    log('template_row_stale', { template: t.key, lang, alias: row.alias });
+    await deleteBoard(db, row.alias);
   }
   return null;
 }
@@ -133,7 +165,10 @@ function pageBody(t: Template, lang: BoardLang, view: BoardView, alias: string):
       </section>`;
 }
 
-/** JSON-LD for a template page: the page and its ranking as an ItemList. */
+/**
+ * JSON-LD for a template page: the page and its ranking as an ItemList. Written as the script's raw content: `<`, `>`
+ * and `&` are escaped the JSON way, so no label can close the script or read as markup.
+ */
 function graph(t: Template, lang: BoardLang, view: BoardView, pageURL: string, site: string): string {
   const labels = new Map(view.items.map((it) => [it.id, it.label]));
   const order = view.ranking?.order ?? view.items.map((it) => it.id);
@@ -156,7 +191,10 @@ function graph(t: Template, lang: BoardLang, view: BoardView, pageURL: string, s
     isPartOf: { '@id': `${site}#website` },
     mainEntity: { '@id': `${pageURL}#list` },
   };
-  return JSON.stringify({ '@context': 'https://schema.org', '@graph': [page, list] }).replace(/</g, '\\u003c');
+  return JSON.stringify({ '@context': 'https://schema.org', '@graph': [page, list] })
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
 }
 
 /** The template page named by a language and a slug; `notFound` answers for an unknown slug. */
@@ -173,11 +211,9 @@ export async function templatePage(
   const url = new URL(req.url);
   const path = `/${templatePath(t, lang)}`;
   if (url.pathname !== path) return Response.redirect(`${url.origin}${path}`, 301);
-  const row = await ensureTemplate(env, t, lang);
-  if (!row) return notFound();
-  const stub = env.BOARDS.getByName(row.alias);
-  const [view, unfurl] = await Promise.all([stub.view(), stub.unfurl()]);
-  if (!view || !unfurl) return notFound();
+  const live = await liveTemplate(env, t, lang);
+  if (!live) return notFound();
+  const { row, view, unfurl } = live;
   const p = await preview(env.IMAGES, url.origin, row.alias, unfurl, '');
   const indexable = !row.hidden && view.counts.voters >= indexVoters(env);
   // The shell's addresses are relative to the legal page's folder (`../assets/…`): a <base> keeps them right
@@ -191,7 +227,7 @@ export async function templatePage(
   const pageURL = () => `${site}${templatePath(t, lang)}`;
   const set = (attr: string, value: () => string) => ({
     element(el: Element) {
-      el.setAttribute(attr, value());
+      el.setAttribute(attr, attrValue(value()));
     },
   });
   const rewriter = new HTMLRewriter()
@@ -260,7 +296,7 @@ export async function templatePage(
     .on('meta[property="og:url"]', set('content', pageURL))
     .on('script[type="application/ld+json"]', {
       element(el) {
-        el.setInnerContent(graph(t, lang, view, pageURL(), site));
+        el.setInnerContent(graph(t, lang, view, pageURL(), site), { html: true });
       },
     })
     .on(

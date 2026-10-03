@@ -186,6 +186,8 @@ export interface Session {
   lastActionAt: number;
   /** Last item this connection added. */
   lastAddAt?: number;
+  /** This connection passed a human check (Turnstile), asked before a first vote on the site's own boards. */
+  human?: boolean;
 }
 
 export type ErrorCode =
@@ -203,6 +205,10 @@ export type ErrorCode =
   | 'full'
   | 'too_few'
   | 'captcha'
-  | 'rate_limited';
+  | 'rate_limited'
+  /** The app speaks a protocol the server no longer serves: a new version of the app is needed. */
+  | 'upgrade'
+  /** What the request was about changed since it was read (a picture the author sent again before its review). */
+  | 'changed';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: ErrorCode };

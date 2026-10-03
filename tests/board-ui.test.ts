@@ -216,6 +216,7 @@ describe('publishing', () => {
     expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
       url: `/api/boards/${ALIAS}/card`,
       body: { blob: 'image/png' },
+      auth: `Bearer ${OWNER}`,
     });
     expect(location.pathname).toBe(`/b/${ALIAS}`);
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
@@ -411,6 +412,21 @@ describe('voting', () => {
     ws.receive({ t: 'pairs', pairs: [['p0', 'p2']], mine: 0 });
     expect($('#stage')).not.toBe(stage);
     expect($('#stage .card-a')?.dataset.id).toBe('p0');
+  });
+
+  it('says a new version is out when the server no longer serves this one', () => {
+    FakeSocket.last().receive({ t: 'error', code: 'upgrade' });
+    expect($('#toast')?.textContent).toBe('A new version of Versus is out: reload the page to keep voting.');
+  });
+
+  it('says so when the server turns a vote away for too many new voters', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'rate_limited' });
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    expect($('#toast')?.textContent).toBe('Too many attempts. Try again in a minute.');
+    await vi.advanceTimersByTimeAsync(600);
   });
 });
 
@@ -692,6 +708,41 @@ describe('author', () => {
     expect($('.results')).not.toBeNull();
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
   });
+
+  it('makes a new admin link: the old one stops working, this browser keeps managing the board', async () => {
+    const MINE = 'Nw4dmnLnk7';
+    const NEXT = 'c'.repeat(64);
+    history.pushState(null, '', `/b/${MINE}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({}, true));
+    respond = (c) =>
+      c.url.endsWith('/owner') ? { status: 200, body: { owner: NEXT } } : { status: 200, body: view() };
+    click('[data-action="b-settings"]');
+    click('#b-settings [data-action="b-new-admin-link"]');
+    expect($('#m-title')?.textContent).toBe('Make a new admin link?');
+    calls.length = 0;
+    click('#m-ok');
+    await flush();
+    expect(calls[0]).toMatchObject({ method: 'POST', url: `/api/boards/${MINE}/owner`, auth: `Bearer ${OWNER}` });
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[MINE]).toBe(NEXT);
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`http://localhost:3000/b/${MINE}#owner=${NEXT}`);
+    expect($('#toast')?.textContent).toBe('New admin link copied. The old one no longer works.');
+    // What follows uses the new token: the author's calls, and the next connection's hello.
+    click('[data-action="b-settings"]');
+    click('#b-settings [data-action="b-close"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ url: `/api/boards/${MINE}/close`, auth: `Bearer ${NEXT}` });
+    ws.drop(1006);
+    await vi.advanceTimersByTimeAsync(1500);
+    const again = FakeSocket.last();
+    expect(again).not.toBe(ws);
+    again.open();
+    expect(again.sent[0]).toMatchObject({ t: 'hello', owner: NEXT });
+    again.receive(state({}, true));
+    click('[data-action="back"]');
+  });
 });
 
 describe('links', () => {
@@ -853,7 +904,7 @@ describe('sharing', () => {
     expect(location.search).toBe('');
     const ws = FakeSocket.last();
     ws.open();
-    expect(ws.sent[0]).toEqual({ t: 'hello', voter: expect.any(String), pair: ['p1', 'p2'] });
+    expect(ws.sent[0]).toEqual({ t: 'hello', v: 1, voter: expect.any(String), pair: ['p1', 'p2'] });
     ws.receive({
       ...state(),
       pairs: [
@@ -864,7 +915,7 @@ describe('sharing', () => {
     expect($('.card-a')?.textContent).toContain('Regina');
   });
 
-  it('shares the board as an image and sends its card for the link preview', async () => {
+  it('shares the board as an image; the link’s preview is its author’s to draw', async () => {
     respond = (c) =>
       c.method === 'PUT' ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } } : { status: 404, body: {} };
     expect($('.b-head [data-action="b-make-mine"]')).not.toBeNull();
@@ -876,24 +927,30 @@ describe('sharing', () => {
     expect(msg).toContain('Pizzas · 3 votes · 2 voters');
     expect(msg).toContain('1. Margherita');
     expect(msg).toContain(`Vote too: http://localhost:3000/b/${DUEL}`);
-    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card` });
-    click('#m-ok');
-    // Opening it again draws no new card: one per link and session.
-    calls.length = 0;
-    click('[data-action="share-board"]');
-    await flush();
+    // A visitor sends no card for the board.
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     click('#m-ok');
   });
 
   it('shares the duel on screen, with a link that opens on it', async () => {
+    // The duel's card is drawn by whoever shares it first; the next ones are told it exists, and keep quiet.
+    respond = (c) => (c.method === 'PUT' ? { status: 409, body: { error: 'exists' } } : { status: 404, body: {} });
     click('[data-action="share-duel"]');
     expect($('#m-title')?.textContent).toBe('Share this duel');
     await flush();
     expect($('.share-msg')?.textContent).toBe(
       `Regina or Calzone? Vote too: http://localhost:3000/b/${DUEL}?duel=p1.p2`,
     );
-    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card?duel=p1.p2` });
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: `/api/boards/${DUEL}/card?duel=p1.p2`,
+      auth: null,
+    });
+    click('#m-ok');
+    calls.length = 0;
+    click('[data-action="share-duel"]');
+    await flush();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    expect($('#toast')?.textContent).not.toContain('didn’t work');
     click('#m-ok');
   });
 
@@ -963,6 +1020,109 @@ describe('sharing', () => {
     click('.tab[data-tab="duel"]');
     click('[data-action="back"]');
   });
+
+  it('sends the board’s card with the author’s token when the author shares', async () => {
+    const MINE = 'Au7hEf7hJk';
+    respond = (c) =>
+      c.method === 'PUT' ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } } : { status: 404, body: {} };
+    history.pushState(null, '', `/b/${MINE}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({ settings: { ...view().settings, visibility: 'blind' } }, true));
+    click('.tab[data-tab="results"]');
+    calls.length = 0;
+    click('.b-results [data-action="share-board"]');
+    await flush();
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: `/api/boards/${MINE}/card`,
+      auth: `Bearer ${OWNER}`,
+    });
+    // The author sees the standings in the panel; the preview, public, doesn't show them (core/share.ts).
+    expect($('.share-msg')?.textContent).toContain('1. Margherita');
+    click('#m-ok');
+    click('.tab[data-tab="duel"]');
+    click('[data-action="back"]');
+  });
+});
+
+describe('human check', () => {
+  const OFFICIAL = 'Ch3ckEd7bd';
+  const queue: [string, string][] = [
+    ['p0', 'p1'],
+    ['p1', 'p2'],
+  ];
+
+  it('shows the check when the server holds a first vote, sends its token, then lets the voter vote', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    const render = vi.fn(() => 'w1');
+    const remove = vi.fn();
+    (window as { turnstile?: unknown }).turnstile = { render, getResponse: () => 'human-token', remove };
+    history.pushState(null, '', `/b/${OFFICIAL}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    expect($('#m-title')?.textContent).toBe('One check before your first vote');
+    expect(render).toHaveBeenCalledWith($('#vote-captcha'), { sitekey: 'site-key' });
+    click('#m-ok');
+    await flush();
+    expect(ws.sent.at(-1)).toEqual({ t: 'check', token: 'human-token' });
+    expect(remove).toHaveBeenCalledWith('w1');
+    // Votes wait for the server's answer.
+    await vi.advanceTimersByTimeAsync(600);
+    const sent = ws.sent.length;
+    click('[data-action="b-pick"][data-side="a"]');
+    expect(ws.sent).toHaveLength(sent);
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    click('[data-action="b-pick"][data-side="a"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p0', b: 'p1', s: 1 });
+    ws.receive({ t: 'pairs', pairs: queue.slice(1), mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+  });
+
+  it('says so when the check is refused or left undone', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    click('#m-ok');
+    await flush();
+    expect(ws.sent.at(-1)).toEqual({ t: 'check', token: 'human-token' });
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    expect($('#toast')?.textContent).toBe('The check failed. Try again.');
+    // Confirmed without solving it: nothing is sent.
+    (window as { turnstile?: unknown }).turnstile = { render: () => 'w2', getResponse: () => undefined, remove() {} };
+    await vi.advanceTimersByTimeAsync(600);
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    const sent = ws.sent.length;
+    click('#m-ok');
+    await flush();
+    expect(ws.sent).toHaveLength(sent);
+    expect($('#toast')?.textContent).toBe('Complete the check to vote.');
+    // A build without a site key never shows one.
+    vi.unstubAllEnvs();
+    await vi.advanceTimersByTimeAsync(600);
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    expect($('#modal')?.hidden).toBe(true);
+    expect($('#toast')?.textContent).toBe('The check failed. Try again.');
+    delete (window as { turnstile?: unknown }).turnstile;
+    await vi.advanceTimersByTimeAsync(600);
+    click('.board [data-action="back"]');
+  });
 });
 
 describe('reporting', () => {
@@ -987,6 +1147,12 @@ describe('reporting', () => {
       body: { voter: expect.any(String), reason: 'personal', note: 'It names my neighbour' },
     });
     expect($('#toast')?.textContent).toBe('Thanks, your report was sent.');
+    // A visitor who hasn't voted yet is told why the report didn't go.
+    respond = () => ({ status: 403, body: { error: 'forbidden' } });
+    click('[data-action="b-report"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('Vote at least once to report this ranking.');
   });
 
   it('shows no report link to the author', () => {

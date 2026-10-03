@@ -21,6 +21,9 @@ const API: string | null = configured !== undefined ? configured.replace(/\/+$/,
 
 export const online = (): boolean => API !== null;
 
+/** How long a request may take before it counts as a network failure (a hung connection must not hang the app). */
+export const TIMEOUT_MS = 15_000;
+
 export class ApiError extends Error {
   constructor(readonly code: ErrorCode | 'network') {
     super(code);
@@ -36,6 +39,7 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
     throw new ApiError('network');
@@ -76,6 +80,9 @@ export const editBoardItem = (
 ) => call<number>('PATCH', `/${alias}/items/${encodeURIComponent(id)}`, edit, token);
 /** Deletes the board; the server hands back the author's local copy. */
 export const withdrawBoard = (alias: string, token: string) => call<Ranking>('DELETE', `/${alias}`, undefined, token);
+/** A new owner token for the board; the old one stops working. */
+export const rotateOwner = (alias: string, token: string) =>
+  call<{ owner: string }>('POST', `/${alias}/owner`, undefined, token);
 /** Boards as this voter may see them, for "Your votes"; null for a board that no longer exists. */
 export const fetchSummaries = (voter: string, aliases: string[]) =>
   call<Record<string, BoardSummary | null>>('POST', '', { voter, aliases }, undefined, '/api/summaries');
@@ -116,7 +123,7 @@ async function upload<T>(path: string, body: Blob, token?: string): Promise<T> {
   if (token) headers.Authorization = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`${API ?? ''}${path}`, { method: 'PUT', headers, body });
+    res = await fetch(`${API ?? ''}${path}`, { method: 'PUT', headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch {
     throw new ApiError('network');
   }
@@ -125,11 +132,20 @@ async function upload<T>(path: string, body: Blob, token?: string): Promise<T> {
   return data as T;
 }
 
-/** The card a board's link (or one duel's link) unfurls with: a PNG the app drew. Resolves with its address. */
-export async function putCard(alias: string, png: Blob, pair: readonly [string, string] | null): Promise<string> {
+/**
+ * The card a board's link (or one duel's link) unfurls with: a PNG the app drew, sent with the author's token when
+ * this browser holds it (the board's own card needs it). Resolves with its address.
+ */
+export async function putCard(
+  alias: string,
+  png: Blob,
+  pair: readonly [string, string] | null,
+  token?: string,
+): Promise<string> {
   const data = await upload<{ url?: string }>(
     `/api/boards/${alias}/card${pair ? duelQuery(pair[0], pair[1]) : ''}`,
     png,
+    token,
   );
   if (!data.url) throw new ApiError('network');
   return data.url;
@@ -156,7 +172,7 @@ export class BoardSocket {
 
   constructor(
     private readonly alias: string,
-    private readonly hello: ClientMessage,
+    private hello: ClientMessage,
     private readonly onMessage: (m: ServerMessage) => void,
     private readonly onConnection: (c: Connection) => void,
   ) {
@@ -207,6 +223,11 @@ export class BoardSocket {
     this.tries++;
     this.onConnection('lost');
     this.timer = setTimeout(() => this.connect(), Math.min(15_000, 500 * 2 ** this.tries));
+  }
+
+  /** The owner token the next connections say hello with (the author made a new one). */
+  setOwner(owner: string): void {
+    if (this.hello.t === 'hello') this.hello = { ...this.hello, owner };
   }
 
   /** False when not connected: the caller keeps its state and tells the user. */

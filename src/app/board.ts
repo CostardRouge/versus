@@ -1,6 +1,7 @@
 import { trackEvent } from '../audience';
 import { LIMITS, REPORT_REASONS, revealAt } from '../core/board';
 import type { BoardView, ClientMessage, Counts, RankingView, ServerMessage } from '../core/protocol';
+import { PROTOCOL_VERSION } from '../core/protocol';
 import { agreement, neckAndNeck, totalPairs } from '../core/published';
 import { ownerFragment } from '../core/route';
 import { pairKey } from '../core/scoring';
@@ -37,6 +38,7 @@ import {
 import { routeURL } from './router';
 import { S, save } from './state';
 import { loadOwners, saveOwner, savePrefs } from './storage';
+import { turnstileKey, turnstileWidget } from './turnstile';
 import { effTab } from './workspace';
 
 /**
@@ -80,7 +82,7 @@ export interface Board {
 }
 
 interface Pending {
-  kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add';
+  kind: 'vote' | 'skip' | 'undo' | 'reset' | 'add' | 'check';
   revert?: () => void;
 }
 
@@ -94,9 +96,12 @@ export const boardState = (): Board | null => B;
  * right again. A refused skip says nothing: its pair simply comes back.
  */
 function errorText(code: ErrorCode, kind: Pending['kind'] | undefined): MsgKey | null {
+  if (code === 'upgrade') return 'appOutdated';
+  if (code === 'rate_limited') return 'tooManyTries';
+  // A first vote held for a human check opens the check (humanCheck); a check refused says so.
+  if (code === 'captcha') return kind === 'vote' ? null : 'captchaFailed';
   if (code === 'closed') return 'voteClosed';
   if (code === 'final') return 'finalVotes';
-  if (code === 'rate_limited') return 'tooManyTries';
   if (kind === 'add') {
     const add: Partial<Record<ErrorCode, MsgKey>> = {
       full: 'boardFull',
@@ -174,6 +179,7 @@ export function enterBoard(
 function connect(board: Board, wanted: [string, string] | null = null): void {
   const hello: ClientMessage = {
     t: 'hello',
+    v: PROTOCOL_VERSION,
     voter: S.voter,
     ...(board.owner ? { owner: board.owner } : {}),
     ...(wanted ? { pair: wanted } : {}),
@@ -300,6 +306,7 @@ function onMessage(board: Board, m: ServerMessage): void {
       renderRanking();
     }
     if (head?.kind === 'add') board.sentLabel = null;
+    if (m.code === 'captcha' && head?.kind === 'vote') void humanCheck(board);
     const key = errorText(m.code, head?.kind);
     if (key) toast(t(key));
   }
@@ -488,7 +495,36 @@ export function renderRanking(): void {
 
 // ─── Voting ─────────────────────────────────────────────────────────────────
 
-const canVote = (b: Board | null): b is Board & { view: BoardView } => !!b?.view && !b.busy && b.view.status === 'open';
+const canVote = (b: Board | null): b is Board & { view: BoardView } =>
+  !!b?.view && !b.busy && b.view.status === 'open' && !b.pending.some((p) => p.kind === 'check');
+
+let checking = false;
+
+/**
+ * The server holds a first vote on one of the site's own boards for a human check: the widget in a modal, its token
+ * to the server, and votes wait for the answer; the voter then votes again.
+ */
+async function humanCheck(b: Board): Promise<void> {
+  if (checking) return;
+  if (!turnstileKey()) {
+    toast(t('captchaFailed'));
+    return;
+  }
+  checking = true;
+  const asked = ask({
+    title: t('checkTitle'),
+    html: `<p>${t('checkBody')}</p><div class="pub-captcha" id="vote-captcha"></div>`,
+    ok: t('checkOk'),
+  });
+  const widget = turnstileWidget('#vote-captcha');
+  const ok = await asked;
+  const token = widget.take();
+  checking = false;
+  if (!ok || B !== b) return;
+  if (!token) toast(t('checkMissing'));
+  else if (!b.socket?.send({ t: 'check', token })) toast(t('notSent'));
+  else b.pending.push({ kind: 'check' });
+}
 
 export function boardPick(side: string | undefined): void {
   const b = B;
@@ -822,7 +858,9 @@ export async function boardReport(): Promise<void> {
     await reportBoard(b.alias, { voter: S.voter, reason, note });
     toast(t('reported'));
   } catch (e) {
-    toast(t(e instanceof ApiError && e.code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
+    // Reports come from the board's voters: someone who voted at least once.
+    const code = e instanceof ApiError ? e.code : null;
+    toast(t(code === 'forbidden' ? 'reportNeedsVote' : code === 'rate_limited' ? 'tooManyTries' : 'actionFailed'));
   }
 }
 

@@ -452,6 +452,19 @@ export const en = {
   m_sort_tech: 'Insertion sort',
   m_sort_col: 'Status',
   m_sort_desc: 'Places each item by binary search: the fewest duels possible and a guaranteed end. No ties or skips.',
+  appOutdated: 'A new version of Versus is out: reload the page to keep voting.',
+  checkTitle: 'One check before your first vote',
+  checkBody: 'This ranking is one of Versus’s own, open to everyone: show you’re a person, then vote again.',
+  checkOk: 'Continue',
+  checkMissing: 'Complete the check to vote.',
+  reportNeedsVote: 'Vote at least once to report this ranking.',
+  newAdminLink: 'New admin link',
+  newAdminLinkTitle: 'Make a new admin link?',
+  newAdminLinkBody:
+    'The current admin link stops working, on every device that has it. This browser keeps managing the ranking with the new one.',
+  newAdminLinkOk: 'Make a new link',
+  newAdminLinkCopied: 'New admin link copied. The old one no longer works.',
+  newAdminLinkShow: 'Here is the new admin link. Keep it private: the old one no longer works.',
 } satisfies Record<string, Entry>;
 
 export type MsgKey = keyof typeof en;

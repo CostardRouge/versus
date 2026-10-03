@@ -13,8 +13,9 @@ import { type AdminKey, type AdminLang, adminText } from '../i18n/admin';
 /**
  * The publisher's moderation page (/admin/): the boards of the registry with their counts, flags and reports;
  * per board, the full view and the admin actions (close or reopen, feature, hide, remove an item, clear the
- * reports, take down). Talks to /api/admin with the token typed on the page, kept in this tab only
- * (docs/published-boards.md#moderation). Rendered as HTML strings with delegated events, like the app.
+ * reports, delete its link previews, take down). Talks to /api/admin with the token typed on the page, kept in
+ * memory only: no storage a script could read, and a reload asks again (docs/published-boards.md#moderation).
+ * Rendered as HTML strings with delegated events, like the app.
  */
 
 export interface AdminOpts {
@@ -23,16 +24,15 @@ export interface AdminOpts {
   api: string | null;
   lang: AdminLang;
   fetch: typeof fetch;
-  /** Where the token lives between reloads of this tab; null when storage is unavailable. */
-  storage: Storage | null;
   confirm: (message: string) => boolean;
   /** The app's address for a board. */
   boardURL: (alias: string) => string;
   locale: string;
 }
 
-const TOKEN_KEY = 'versus-admin';
 const PAGE = 50;
+/** How long a request may take before the page says the server didn't answer. */
+const TIMEOUT_MS = 15_000;
 
 const FILTER_KEYS: Record<AdminFilter, AdminKey> = {
   all: 'fAll',
@@ -77,24 +77,9 @@ export function mountAdmin(opts: AdminOpts): void {
   const numbers = new Intl.NumberFormat(opts.locale);
   const n = (x: number) => numbers.format(x);
   const when = (ts: number) => dates.format(new Date(ts));
-  const read = (): string => {
-    try {
-      return opts.storage?.getItem(TOKEN_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  };
-  const write = (token: string): void => {
-    try {
-      if (token) opts.storage?.setItem(TOKEN_KEY, token);
-      else opts.storage?.removeItem(TOKEN_KEY);
-    } catch {
-      /* the token lasts for this page only */
-    }
-  };
 
   const st: State = {
-    token: read(),
+    token: '',
     totals: null,
     list: null,
     filter: 'all',
@@ -115,6 +100,7 @@ export function mountAdmin(opts: AdminOpts): void {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${st.token}` },
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {
       throw new AdminError('network');
@@ -127,10 +113,14 @@ export function mountAdmin(opts: AdminOpts): void {
   /** A refused token goes back to the form, forgotten; anything else keeps the page and says so. */
   const fail = (e: unknown): void => {
     const code = e instanceof AdminError ? e.code : 'network';
-    st.error = code === 'forbidden' ? 'wrongToken' : code === 'network' ? 'offline' : 'failed';
+    const errors: Partial<Record<ErrorCode | 'network', AdminKey>> = {
+      forbidden: 'wrongToken',
+      network: 'offline',
+      changed: 'picChanged',
+    };
+    st.error = errors[code] ?? 'failed';
     if (code === 'forbidden') {
       st.token = '';
-      write('');
       st.totals = null;
       st.list = null;
       st.open = null;
@@ -174,11 +164,15 @@ export function mountAdmin(opts: AdminOpts): void {
     render();
   }
 
-  /** An admin action on the open board, then its details and the list again (the row changed). */
+  /**
+   * An admin action on the open board, then its details and the list again (the row changed). What went wrong stays
+   * on screen once the list is read again.
+   */
   async function act(run: () => Promise<unknown>, then: 'detail' | 'list' = 'detail'): Promise<void> {
     const alias = st.open;
     st.busy = true;
     render();
+    let failed: AdminKey | null = null;
     try {
       await run();
       if (then === 'list' || !alias) {
@@ -187,9 +181,14 @@ export function mountAdmin(opts: AdminOpts): void {
       } else st.detail = await call<AdminBoardView>('GET', `/boards/${alias}`);
     } catch (e) {
       fail(e);
+      failed = st.error;
     }
     st.busy = false;
     await load();
+    if (failed && !st.error) {
+      st.error = failed;
+      render();
+    }
   }
 
   // ─── Rendering ────────────────────────────────────────────────────────────
@@ -258,6 +257,7 @@ export function mountAdmin(opts: AdminOpts): void {
       button('feature', tx(v.mod.featured ? 'unfeature' : 'feature'), `data-on="${!v.mod.featured}"`),
       button('hide', tx(v.mod.hidden ? 'unhideBoard' : 'hideBoard'), `data-on="${!v.mod.hidden}"`),
       v.reports.length ? button('clear-reports', tx('clearReports')) : '',
+      button('delete-cards', tx('deleteCards')),
       button('delete', tx('takeDown'), '', 'ad-btn danger'),
     ].join('');
     const reports = v.reports.length
@@ -327,7 +327,8 @@ export function mountAdmin(opts: AdminOpts): void {
   }
 
   function render(): void {
-    const brand = `<a class="ad-brand" href="../"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h">${tx('title')}</h1>`;
+    // In a tab of its own: leaving this page would forget the token.
+    const brand = `<a class="ad-brand" href="../" target="_blank" rel="noopener"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h">${tx('title')}</h1>`;
     if (opts.api === null) {
       root.innerHTML = `<header class="ad-top">${brand}</header><main class="ad-main"><p class="ad-notice">${tx('noApi')}</p></main>`;
       return;
@@ -350,10 +351,15 @@ export function mountAdmin(opts: AdminOpts): void {
     void loadPictures();
   }
 
-  /** The pictures to review are behind the token: fetched here and shown from object URLs (freed on the next render). */
+  /**
+   * The pictures to review are behind the token: fetched here and shown from object URLs (freed on the next render).
+   * Each one's ETag goes back with an approval, so the server approves the picture shown here and no other.
+   */
   const shown: string[] = [];
+  const etags = new Map<string, string>();
   async function loadPictures(): Promise<void> {
     if (typeof URL.revokeObjectURL === 'function') for (const url of shown.splice(0)) URL.revokeObjectURL(url);
+    etags.clear();
     const alias = st.open;
     if (!alias || typeof URL.createObjectURL !== 'function') return;
     for (const img of root.querySelectorAll<HTMLImageElement>('img[data-pic]')) {
@@ -361,14 +367,13 @@ export function mountAdmin(opts: AdminOpts): void {
       try {
         const res = await opts.fetch(
           `${opts.api ?? ''}/api/admin/boards/${alias}/items/${encodeURIComponent(id)}/image`,
-          {
-            headers: { Authorization: `Bearer ${st.token}` },
-          },
+          { headers: { Authorization: `Bearer ${st.token}` }, signal: AbortSignal.timeout(TIMEOUT_MS) },
         );
         if (!res.ok || st.open !== alias) continue;
         const url = URL.createObjectURL(await res.blob());
         shown.push(url);
         img.src = url;
+        etags.set(id, res.headers.get('ETag') ?? '');
       } catch {
         /* the picture stays blank; the label and the buttons are there */
       }
@@ -384,7 +389,6 @@ export function mountAdmin(opts: AdminOpts): void {
     const data = new FormData(form);
     if (form.dataset.form === 'token') {
       st.token = String(data.get('token') ?? '').trim();
-      write(st.token);
       void load();
     } else if (form.dataset.form === 'search') {
       st.q = String(data.get('q') ?? '').trim();
@@ -401,7 +405,6 @@ export function mountAdmin(opts: AdminOpts): void {
     switch (el.dataset.act) {
       case 'logout':
         st.token = '';
-        write('');
         st.totals = st.list = st.detail = null;
         st.open = null;
         st.error = null;
@@ -449,7 +452,8 @@ export function mountAdmin(opts: AdminOpts): void {
         const id = el.dataset.id;
         const decision = el.dataset.act === 'approve-pic' ? 'ok' : 'refused';
         if (alias && id) {
-          void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, { decision }));
+          const body = decision === 'ok' ? { decision, etag: etags.get(id) ?? '' } : { decision };
+          void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, body));
         }
         break;
       }
@@ -460,6 +464,11 @@ export function mountAdmin(opts: AdminOpts): void {
         }
         break;
       }
+      case 'delete-cards':
+        if (alias && opts.confirm(tx('confirmDeleteCards', { title }))) {
+          void act(() => call('DELETE', `/boards/${alias}/cards`));
+        }
+        break;
       case 'delete':
         if (alias && opts.confirm(tx('confirmTakeDown', { title }))) {
           void act(() => call('DELETE', `/boards/${alias}`), 'list');

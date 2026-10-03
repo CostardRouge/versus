@@ -461,6 +461,20 @@ export const fr: Messages = {
   m_sort_col: 'Statut',
   m_sort_desc:
     'Place chaque élément par dichotomie : le moins de duels possible et une fin garantie. Pas d’égalité ni de « passer ».',
+  appOutdated: 'Une nouvelle version de Versus est sortie : recharge la page pour continuer à voter.',
+  checkTitle: 'Une vérification avant ton premier vote',
+  checkBody:
+    'Ce classement est un de ceux de Versus, ouvert à tous : montre que tu es une personne, puis vote à nouveau.',
+  checkOk: 'Continuer',
+  checkMissing: 'Fais la vérification pour voter.',
+  reportNeedsVote: 'Vote au moins une fois pour signaler ce classement.',
+  newAdminLink: 'Nouveau lien admin',
+  newAdminLinkTitle: 'Créer un nouveau lien admin ?',
+  newAdminLinkBody:
+    'Le lien admin actuel ne marchera plus, sur tous les appareils qui l’ont. Ce navigateur continue de gérer le classement avec le nouveau.',
+  newAdminLinkOk: 'Créer un nouveau lien',
+  newAdminLinkCopied: 'Nouveau lien admin copié. L’ancien ne marche plus.',
+  newAdminLinkShow: 'Voici le nouveau lien admin. Garde-le pour toi : l’ancien ne marche plus.',
 };
 
 export const frPlurals: Record<PluralKey, [string, string]> = {

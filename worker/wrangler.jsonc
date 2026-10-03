@@ -13,15 +13,20 @@
     "bindings": [{ "name": "BOARDS", "class_name": "BoardObject" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BoardObject"] }],
+  // The deployed version's id: part of the edge cache's keys (cache.ts), so a page cached before a deploy, which
+  // names the old build's files, is never served after it.
+  "version_metadata": { "binding": "VERSION" },
   // Board registry for the admin API. Wrangler creates the database on the first deploy.
   "d1_databases": [{ "binding": "REGISTRY", "database_name": "versus-registry", "migrations_dir": "migrations" }],
   // The cards a board's links unfurl with (uploaded by the app, served under /og/). `npm run worker:deploy`
   // creates the bucket when it is missing; the account's R2 must be enabled once in the dashboard.
   "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "versus-images" }],
-  // Per-IP limits (the period is 10 or 60 seconds).
+  // Per-IP limits (the period is 10 or 60 seconds). A "Your votes" refresh wakes up to 24 boards: its own limit.
   "ratelimits": [
     { "name": "PUBLISH_LIMIT", "namespace_id": "1001", "simple": { "limit": 5, "period": 60 } },
-    { "name": "API_LIMIT", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }
+    { "name": "API_LIMIT", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } },
+    { "name": "SUMMARY_LIMIT", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } },
+    { "name": "CSP_LIMIT", "namespace_id": "1004", "simple": { "limit": 10, "period": 60 } }
   ]
   // Secrets, set with `wrangler secret put`: ADMIN_TOKEN (admin API), TURNSTILE_SECRET (publication check).
 }

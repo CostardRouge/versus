@@ -1,7 +1,9 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
+  ACTION_INTERVAL_MS,
   addItems,
   addReport,
+  admitNewVoter,
   awaitsPicture,
   boardMeta,
   canSeeRanking,
@@ -19,7 +21,9 @@ import {
   lastActivity,
   localCopy,
   moderate,
+  NEW_VOTERS_WINDOW_MS,
   type NewItem,
+  needsCheck,
   type Origin,
   openSession,
   type PublishInput,
@@ -53,12 +57,14 @@ import {
   countsOf,
   myDuels,
   parseClientMessage,
+  protocolSupported,
   rankingView,
   type ServerMessage,
   type Unfurl,
   unfurlOf,
 } from '../../src/core/protocol';
 import { pairKey } from '../../src/core/scoring';
+import { type CardSender, cardKey, previewRanked } from '../../src/core/share';
 import type {
   BoardMeta,
   BoardSettings,
@@ -77,8 +83,10 @@ import type {
 } from '../../src/core/types';
 import { deleteCards } from './cards';
 import type { Env } from './env';
+import { errorText, log } from './log';
 import { deletePicture, deletePrefix } from './pictures';
 import { DAY_MS, deleteBoard, type RegistryRow, upsertBoard } from './registry';
+import { verifyTurnstile } from './turnstile';
 
 /** Minimum delay between two ranking broadcasts, and maximum age of the cached crowd ranking. */
 const BROADCAST_MS = 1000;
@@ -86,6 +94,10 @@ const BROADCAST_MS = 1000;
 const GONE = 4004;
 /** Up to this many voters, each new voter refreshes the registry row (then once a day). */
 const FRESH_VOTERS = 100;
+/** A connection's address tag when the platform gives no address (local tools, tests without the header). */
+const NO_ADDRESS = 'local';
+/** Addresses remembered for their new voters before old ones are swept out. */
+const ADDRESSES_SWEPT_AT = 1000;
 
 // One row per voter and pair: a vote is a single upsert, so one row write (no extra index).
 const SCHEMA = `
@@ -149,6 +161,11 @@ export class BoardObject extends DurableObject<Env> {
   private dirty = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private lastBroadcast = 0;
+  /**
+   * First votes on this board by address tag (`addressTag`), for `admitNewVoter`. In memory only, never stored:
+   * the board forgets them when it sleeps, which only ever lets more in.
+   */
+  private newVoters = new Map<string, number[]>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -243,7 +260,13 @@ export class BoardObject extends DurableObject<Env> {
     this.registryVoters = voters;
     const row = this.registryRow(board, now);
     // The registry only serves the admin page and the public lists: a failed write must never fail a vote.
-    this.ctx.waitUntil(upsertBoard(db, row).catch(() => {}));
+    this.later('registry_write_failed', upsertBoard(db, row));
+  }
+
+  /** Work that must not hold or fail the request (the registry, R2 clean-ups): a failure is logged, then forgotten. */
+  private later(event: string, work: Promise<unknown>): void {
+    const alias = this.alias;
+    this.ctx.waitUntil(work.catch((e: unknown) => log(event, { alias, error: errorText(e) })));
   }
 
   /** The board's row in the registry, as of now. */
@@ -349,17 +372,29 @@ export class BoardObject extends DurableObject<Env> {
     return this.board ? unfurlOf(this.board) : null;
   }
 
+  /**
+   * Who the bearer of `token` is on this board, its author or a visitor, and whether the board is one of the site's
+   * own (the Worker decides what they may store with it, `cardUpload`). Null when the board is gone.
+   */
+  async access(token: string): Promise<{ by: CardSender; official: boolean } | null> {
+    const owner = await this.isOwner(token);
+    const board = this.board;
+    return board ? { by: owner ? 'owner' : 'visitor', official: board.official } : null;
+  }
+
   /** The author's settings, and the title when the patch carries one (the registry's lists show it). */
   async updateSettings(token: string, patch: unknown): Promise<Result<BoardSettings>> {
     const board = await this.ownedBoard(token);
     if (!board.ok) return board;
     const title = board.value.title;
+    const shown = previewRanked(board.value.settings, board.value.status);
     updateSettings(board.value, patch, Date.now());
     this.saveMeta(board.value);
     this.dirty = true;
     this.cache = null;
     this.pushState(board.value);
     if (board.value.title !== title) this.touchRegistry(board.value, true);
+    this.previewChanged(board.value, shown);
     return { ok: true, value: board.value.settings };
   }
 
@@ -411,6 +446,20 @@ export class BoardObject extends DurableObject<Env> {
     if (!r.ok) return r;
     if (r.value.item !== before) this.itemsChanged(board.value, r.value.removed);
     return { ok: true, value: r.value.removed.length };
+  }
+
+  /**
+   * Gives the board a new owner token (the old one leaked, a device was lost): the old token stops working at once;
+   * connections already opened as the author keep their session.
+   */
+  async rotateOwner(token: string, next: string): Promise<Result<true>> {
+    if (!TOKEN_RE.test(next)) return { ok: false, error: 'bad_request' };
+    const nextHash = await sha256(next);
+    const board = await this.ownedBoard(token);
+    if (!board.ok) return board;
+    this.ownerHash = nextHash;
+    this.saveMeta(board.value);
+    return { ok: true, value: true };
   }
 
   /** Deletes the board and returns the author's local copy with the crowd's result. */
@@ -506,11 +555,23 @@ export class BoardObject extends DurableObject<Env> {
   }
 
   private applyStatus(board: SharedBoard, status: BoardStatus): Result<BoardStatus> {
+    const shown = previewRanked(board.settings, board.status);
     setStatus(board, status, Date.now());
     this.saveMeta(board);
     this.pushState(board);
     this.touchRegistry(board, true);
+    this.previewChanged(board, shown);
     return { ok: true, value: status };
+  }
+
+  /**
+   * After settings or status changes: when the ranking no longer shows to everyone (results hidden again, a vote
+   * reopened), the board's card goes, since it may show it; its links get the site's card until the author shares.
+   */
+  private previewChanged(board: SharedBoard, shown: boolean): void {
+    const images = this.env.IMAGES;
+    if (!shown || previewRanked(board.settings, board.status) || !images || !this.alias) return;
+    this.later('cards_delete_failed', images.delete(cardKey(this.alias)));
   }
 
   private applyRemove(board: SharedBoard, id: string): Result<number> {
@@ -519,7 +580,7 @@ export class BoardObject extends DurableObject<Env> {
     this.itemsChanged(board, r.value);
     // Its picture, if any, goes with it.
     const images = this.env.IMAGES;
-    if (images && this.alias) this.ctx.waitUntil(deletePicture(images, this.alias, id).catch(() => {}));
+    if (images && this.alias) this.later('picture_delete_failed', deletePicture(images, this.alias, id));
     return { ok: true, value: r.value.length };
   }
 
@@ -561,13 +622,14 @@ export class BoardObject extends DurableObject<Env> {
     }
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    log('board_deleted', { alias: this.alias, reason });
     const db = this.env.REGISTRY;
-    if (db && this.alias) this.ctx.waitUntil(deleteBoard(db, this.alias).catch(() => {}));
+    if (db && this.alias) this.later('registry_delete_failed', deleteBoard(db, this.alias));
     // The cards its links unfurled with go too.
     const images = this.env.IMAGES;
     if (images && this.alias) {
-      this.ctx.waitUntil(deleteCards(images, this.alias).catch(() => {}));
-      this.ctx.waitUntil(deletePrefix(images, `img/${this.alias}/`).catch(() => {}));
+      this.later('cards_delete_failed', deleteCards(images, this.alias));
+      this.later('pictures_delete_failed', deletePrefix(images, `img/${this.alias}/`));
     }
     this.board = null;
     this.cache = null;
@@ -593,8 +655,21 @@ export class BoardObject extends DurableObject<Env> {
       return Response.json({ error: 'bad_request' }, { status: 426 });
     }
     const { 0: client, 1: server } = new WebSocketPair();
-    this.ctx.acceptWebSocket(server);
+    // The address rides with the socket as a tag, so it survives hibernation; hashed with the board's alias.
+    this.ctx.acceptWebSocket(server, [await this.addressTag(request.headers.get('CF-Connecting-IP'))]);
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /** A connection's address as a short hash, salted with the alias: enough to count, not to read back. */
+  private async addressTag(ip: string | null): Promise<string> {
+    return ip ? (await sha256(`${this.alias}:${ip}`)).slice(0, 16) : NO_ADDRESS;
+  }
+
+  /** Remembers a first vote from an address; addresses with nothing recent go once there are many. */
+  private noteNewVoter(tag: string, times: number[], now: number): void {
+    this.newVoters.set(tag, times);
+    if (this.newVoters.size < ADDRESSES_SWEPT_AT) return;
+    for (const [k, v] of this.newVoters) if (now - (v.at(-1) ?? 0) >= NEW_VOTERS_WINDOW_MS) this.newVoters.delete(k);
   }
 
   override async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
@@ -604,6 +679,7 @@ export class BoardObject extends DurableObject<Env> {
     if (!board) return ws.close(GONE, 'not_found');
 
     if (msg.t === 'hello') {
+      if (!protocolSupported(msg.v)) return send(ws, { t: 'error', code: 'upgrade' });
       const owner = msg.owner !== undefined && (await this.isOwner(msg.owner));
       board = this.board;
       if (!board) return ws.close(GONE, 'not_found');
@@ -617,6 +693,8 @@ export class BoardObject extends DurableObject<Env> {
     const session = ws.deserializeAttachment() as Session | null;
     if (!session) return send(ws, { t: 'error', code: 'hello_first' });
     const now = Date.now();
+
+    if (msg.t === 'check') return this.check(ws, board, session, msg.token, now);
 
     if (msg.t === 'add') {
       const input = parseNewItem(msg.item);
@@ -633,9 +711,17 @@ export class BoardObject extends DurableObject<Env> {
     const C = this.crowd(board);
     let r: Result<unknown>;
     if (msg.t === 'vote') {
-      const res = sessionVote(board, session, msg.a, msg.b, msg.s, now, C, Math.random);
-      if (res.ok) this.saveVote(res.value.vote);
-      r = res;
+      // A voter's first vote on the board counts against their address.
+      const tag = voteCount(board, session.voter) ? null : (this.ctx.getTags(ws)[0] ?? NO_ADDRESS);
+      const admitted = tag === null ? null : admitNewVoter(this.newVoters.get(tag) ?? [], now);
+      if (needsCheck(board, session, !!this.env.TURNSTILE_SECRET)) r = { ok: false, error: 'captcha' };
+      else if (tag !== null && !admitted) r = { ok: false, error: 'rate_limited' };
+      else {
+        const res = sessionVote(board, session, msg.a, msg.b, msg.s, now, C, Math.random);
+        if (res.ok) this.saveVote(res.value.vote);
+        if (res.ok && tag !== null && admitted) this.noteNewVoter(tag, admitted, now);
+        r = res;
+      }
     } else if (msg.t === 'skip') {
       r = sessionSkip(board, session, msg.a, msg.b, now, C, Math.random);
     } else if (msg.t === 'undo') {
@@ -652,6 +738,34 @@ export class BoardObject extends DurableObject<Env> {
     // Always resend the queue, so a client that got out of sync recovers.
     send(ws, { t: 'pairs', pairs: session.queue, mine: voteCount(board, session.voter) });
     if (r.ok && msg.t !== 'skip') this.changed();
+  }
+
+  /**
+   * A human check's token, sent after a `captcha` refusal: Turnstile says yes, and the connection may cast its first
+   * vote. Answered with the queue, after an error when refused. Turnstile is asked only when the vote would need
+   * the check, and at most once per ACTION_INTERVAL_MS per connection.
+   */
+  private async check(ws: WebSocket, board: SharedBoard, session: Session, token: string, now: number): Promise<void> {
+    const secret = this.env.TURNSTILE_SECRET;
+    if (secret && needsCheck(board, session, true)) {
+      if (now - session.lastActionAt < ACTION_INTERVAL_MS) send(ws, { t: 'error', code: 'too_fast' });
+      else {
+        session.lastActionAt = now;
+        ws.serializeAttachment(session);
+        const human = await verifyTurnstile(token, null, secret);
+        // Read again after the wait: the connection may have said hello meanwhile.
+        const current = ws.deserializeAttachment() as Session | null;
+        if (!human) send(ws, { t: 'error', code: 'captcha' });
+        else if (current) {
+          current.human = true;
+          ws.serializeAttachment(current);
+        }
+      }
+    }
+    const live = this.board;
+    if (!live) return ws.close(GONE, 'not_found');
+    const current = (ws.deserializeAttachment() as Session | null) ?? session;
+    send(ws, { t: 'pairs', pairs: current.queue, mine: voteCount(live, current.voter) });
   }
 
   override async webSocketClose(): Promise<void> {

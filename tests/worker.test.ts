@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestHarness } from 'wrangler';
-import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS } from '../src/core/board';
+import { ACTION_INTERVAL_MS, ALIAS_RE, LIMITS, NEW_VOTERS_PER_ADDRESS } from '../src/core/board';
 import type {
   AdminBoardView,
   AdminList,
@@ -12,8 +12,9 @@ import type {
   PopularBoard,
   ServerMessage,
 } from '../src/core/protocol';
+import { PROTOCOL_VERSION } from '../src/core/protocol';
 import { pairKey } from '../src/core/scoring';
-import { CARD_LIMIT, CARD_SIZES } from '../src/core/share';
+import { CARD_LIMIT, CARD_MAX_BYTES, CARD_SIZES } from '../src/core/share';
 import { TEMPLATES } from '../src/core/templates';
 import type { BoardSettings, Ranking } from '../src/core/types';
 import { fakePng } from './helpers/png';
@@ -24,7 +25,16 @@ vi.setConfig({ testTimeout: 20_000, hookTimeout: 60_000 });
 
 const CONFIG = 'worker/wrangler.jsonc';
 const ADMIN = 'admin-secret-for-tests';
-const server = createTestHarness({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN } }] });
+// No edge cache: the tests read fresh data right after a vote (one test turns it on).
+const NO_CACHE = { CACHE_SECONDS: '0' };
+const server = createTestHarness({
+  workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: NO_CACHE }],
+});
+/** Reloads the Worker with these variables and secrets (the admin token always, the cache off unless said). */
+const configure = (vars: Record<string, string> = {}, secrets: Record<string, string> = {}) =>
+  server.update({
+    workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN, ...secrets }, vars: { ...NO_CACHE, ...vars } }],
+  });
 let base: URL;
 
 /** The app page's head, as the build writes it (the tags a board's link preview rewrites). */
@@ -136,10 +146,18 @@ class Client {
     );
   }
 
-  static async open(alias: string, voter: string, owner?: string, pair?: [string, string]): Promise<Client> {
+  /** `ip` is the client address the platform would give (CF-Connecting-IP); Node's WebSocket can send headers. */
+  static async open(
+    alias: string,
+    voter: string,
+    owner?: string,
+    pair?: [string, string],
+    ip?: string,
+  ): Promise<Client> {
     const url = new URL(`/api/boards/${alias}`, base);
     url.protocol = 'ws:';
-    const ws = new WebSocket(url);
+    const init = ip ? { headers: { 'CF-Connecting-IP': ip } } : undefined;
+    const ws = new WebSocket(url, init as unknown as string[]);
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve);
       ws.addEventListener('error', reject);
@@ -270,11 +288,16 @@ describe('voting', () => {
     await new Promise((resolve) => ws.addEventListener('open', resolve));
     ws.send(JSON.stringify({ t: 'reset' }));
     ws.send('not json');
-    await vi.waitFor(() => expect(replies).toHaveLength(2));
-    expect(replies).toEqual([
+    // A protocol version must be a whole number from 1; this app's is served.
+    ws.send(JSON.stringify({ t: 'hello', voter: 'voter-one-1', v: 0 }));
+    ws.send(JSON.stringify({ t: 'hello', voter: 'voter-one-1', v: PROTOCOL_VERSION }));
+    await vi.waitFor(() => expect(replies).toHaveLength(4));
+    expect(replies.slice(0, 3)).toEqual([
       { t: 'error', code: 'hello_first' },
       { t: 'error', code: 'bad_request' },
+      { t: 'error', code: 'bad_request' },
     ]);
+    expect(replies[3]?.t).toBe('state');
     ws.close();
     expect((await api(`/${alias}`, { method: 'GET' })).status).toBe(200);
   });
@@ -326,6 +349,41 @@ describe('voting', () => {
   });
 });
 
+describe('new voters per address', () => {
+  it('refuses the first vote of a 31st new voter from one address within 10 minutes', async () => {
+    const { alias } = await publish();
+    /** A new voter from `ip` casts their first vote: what the server answers. */
+    const firstVote = async (voter: string, ip: string) => {
+      const c = await Client.open(alias, voter, undefined, undefined, ip);
+      const [a, b] = (await c.next('state')).pairs[0] as [string, string];
+      c.send({ t: 'vote', a, b, s: 1 });
+      const pairs = await c.next('pairs');
+      return { c, mine: pairs.mine };
+    };
+    for (let i = 0; i < NEW_VOTERS_PER_ADDRESS; i++) {
+      const { c, mine } = await firstVote(`crowd-voter-${i}`, '198.51.100.7');
+      expect(mine).toBe(1);
+      c.close();
+    }
+    const refused = await Client.open(alias, 'crowd-voter-x', undefined, undefined, '198.51.100.7');
+    const [a, b] = (await refused.next('state')).pairs[0] as [string, string];
+    refused.send({ t: 'vote', a, b, s: 1 });
+    expect((await refused.next('error')).code).toBe('rate_limited');
+    expect((await refused.next('pairs')).mine).toBe(0);
+    refused.close();
+    // Another address is not affected, nor a voter of this address who already voted.
+    const other = await firstVote('crowd-voter-y', '198.51.100.8');
+    expect(other.mine).toBe(1);
+    other.c.close();
+    const known = await Client.open(alias, 'crowd-voter-0', undefined, undefined, '198.51.100.7');
+    const [c, d] = (await known.next('state')).pairs[0] as [string, string];
+    known.send({ t: 'vote', a: c, b: d, s: 0 });
+    expect((await known.next('pairs')).mine).toBe(2);
+    known.close();
+    expect((await view(alias)).body.counts.voters).toBe(NEW_VOTERS_PER_ADDRESS + 1);
+  });
+});
+
 describe('your votes', () => {
   it('summarizes boards as this voter may see them, gone boards as null', async () => {
     const { alias, owner } = await publish({ visibility: 'blind' });
@@ -366,10 +424,14 @@ describe('your votes', () => {
 
 describe('link previews', () => {
   const card = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 4096);
-  const upload = (alias: string, bytes: Uint8Array, query = '', type = 'image/png') =>
+  const upload = (alias: string, bytes: Uint8Array, query = '', token = '', type = 'image/png') =>
     server.fetch(`/api/boards/${alias}/card${query}`, {
       method: 'PUT',
-      headers: { 'Content-Type': type, 'CF-Connecting-IP': nextIp() },
+      headers: {
+        'Content-Type': type,
+        'CF-Connecting-IP': nextIp(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: bytes,
     });
   const page = async (path: string) => {
@@ -425,13 +487,29 @@ describe('link previews', () => {
     expect(decode(content(duel, 'og:title'))).toBe(`"><img src=x> vs Regina · ${title}`);
   });
 
+  it('writes ampersands and entities of a title back exactly', async () => {
+    const title = 'Fish & "Chips" &quot;x&amp; &lt;b&gt;';
+    const res = await api('', { method: 'POST', body: { title, items, voter: AUTHOR } });
+    const { alias } = (await res.json()) as { alias: string };
+    const named: Record<string, string> = { quot: '"', lt: '<', gt: '>', amp: '&', '#39': "'" };
+    // Decoded the way a browser does, in one pass.
+    const decode = (s = '') => s.replace(/&(quot|lt|gt|amp|#39);/g, (_, e: string) => named[e] ?? '');
+    const { html } = await page(`/app/b/${alias}`);
+    expect(decode(content(html, 'og:title'))).toBe(`${title} · Versus`);
+    expect(decode(content(html, 'twitter:title'))).toBe(`${title} · Versus`);
+    expect(decode(html.match(/<title>([^<]*)<\/title>/)?.[1])).toBe(`${title} · Versus`);
+  });
+
   it('stores the card the app drew, serves it under /og/ and puts it in the head', async () => {
-    const { alias } = await publish();
-    expect((await upload(alias, card, '', 'text/plain')).status).toBe(415);
-    expect((await upload(alias, fakePng(1080, 1350))).status).toBe(400);
-    expect((await upload('1111111117', card)).status).toBe(404);
+    const { alias, owner } = await publish();
+    expect((await upload(alias, card, '', owner, 'text/plain')).status).toBe(415);
+    expect((await upload(alias, fakePng(1080, 1350), '', owner)).status).toBe(400);
+    expect((await upload('1111111117', card, '', owner)).status).toBe(404);
     expect((await upload(alias, card, '?duel=p0.zz')).status).toBe(400);
-    const stored = await upload(alias, card);
+    // The board's own card is its author's to draw.
+    expect((await upload(alias, card)).status).toBe(403);
+    expect((await upload(alias, card, '', 'f'.repeat(64))).status).toBe(403);
+    const stored = await upload(alias, card, '', owner);
     expect(stored.status).toBe(201);
     const { url } = (await stored.json()) as { url: string };
     expect(url).toMatch(new RegExp(`^${base.origin}/og/b/${alias}/\\d+\\.png$`));
@@ -444,7 +522,7 @@ describe('link previews', () => {
     expect(content(html, 'twitter:image')).toBe(content(html, 'og:image'));
     expect(content(html, 'og:image:alt')).toBe('The ranking “Pizzas” on Versus');
 
-    // A duel card of its own; the board's link keeps the board's card.
+    // A duel card of its own, from whoever shares it first; the board's link keeps the board's card.
     const duelCard = fakePng(CARD_SIZES.landscape.width, CARD_SIZES.landscape.height, 2048);
     expect((await upload(alias, duelCard, '?duel=p1.p0')).status).toBe(201);
     const duel = await page(`/app/b/${alias}?duel=p0.p1`);
@@ -454,6 +532,11 @@ describe('link previews', () => {
     );
     const bytes = await (await server.fetch(content(duel.html, 'og:image') ?? '')).arrayBuffer();
     expect(new Uint8Array(bytes)).toEqual(duelCard);
+    // Another visitor can't replace it; the author can.
+    expect((await upload(alias, card, '?duel=p0.p1')).status).toBe(409);
+    expect((await upload(alias, card, '?duel=p0.p1', owner)).status).toBe(201);
+    const redrawn = content((await page(`/app/b/${alias}?duel=p0.p1`)).html, 'og:image') ?? '';
+    expect(new Uint8Array(await (await server.fetch(redrawn)).arrayBuffer())).toEqual(card);
     // A duel without a card: the board's link preview falls back to the site's card.
     expect(content((await page(`/app/b/${alias}?duel=p3.p4`)).html, 'og:image')).toMatch(/\/og\.png$/);
     // An address that names no stored card gets the site's card.
@@ -475,8 +558,9 @@ describe('link previews', () => {
         stored++;
       }
     }
-    // Drawing a card again for a duel that has one is always fine.
-    expect((await upload(alias, card, '?duel=q0.q1')).status).toBe(201);
+    // Drawing a card again for a duel that has one is its author's to do.
+    expect((await upload(alias, card, '?duel=q0.q1')).status).toBe(409);
+    expect((await upload(alias, card, '?duel=q0.q1', owner)).status).toBe(201);
     const first = content((await page(`/app/b/${alias}?duel=q0.q1`)).html, 'og:image') ?? '';
     expect(first).toContain(`/og/b/${alias}/q0.q1/`);
     await api(`/${alias}`, { method: 'DELETE', token: owner });
@@ -488,6 +572,48 @@ describe('link previews', () => {
       },
       { timeout: 5000, interval: 200 },
     );
+  });
+
+  it('takes no card from visitors on the site’s own boards', async () => {
+    const alias = (await (await server.fetch('/t/pizzas/')).text()).match(/\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/)?.[1];
+    expect(alias).toBeDefined();
+    expect((await upload(alias ?? '', card)).status).toBe(403);
+    const { items: list } = (await view(alias ?? '')).body;
+    expect((await upload(alias ?? '', card, `?duel=${list[0]?.id}.${list[1]?.id}`)).status).toBe(403);
+  });
+
+  it('drops the board’s card once its ranking no longer shows to everyone', async () => {
+    const image = async (alias: string) => content((await page(`/app/b/${alias}`)).html, 'og:image') ?? '';
+    const gone = { timeout: 5000, interval: 200 };
+    // Results hidden again.
+    const open = await publish();
+    expect((await upload(open.alias, card, '', open.owner)).status).toBe(201);
+    expect(await image(open.alias)).toContain(`/og/b/${open.alias}/`);
+    await api(`/${open.alias}`, { method: 'PATCH', token: open.owner, body: { visibility: 'blind' } });
+    await vi.waitFor(async () => expect(await image(open.alias)).toMatch(/\/og\.png$/), gone);
+    // A blind vote reopened after its close showed the ranking to everyone.
+    const blind = await publish({ visibility: 'blind' });
+    await api(`/${blind.alias}/close`, { method: 'POST', token: blind.owner });
+    expect((await upload(blind.alias, card, '', blind.owner)).status).toBe(201);
+    await api(`/${blind.alias}/reopen`, { method: 'POST', token: blind.owner });
+    await vi.waitFor(async () => expect(await image(blind.alias)).toMatch(/\/og\.png$/), gone);
+    // Nothing goes while it stays public.
+    expect((await upload(open.alias, card, '?duel=p0.p1')).status).toBe(201);
+    await api(`/${open.alias}`, { method: 'PATCH', token: open.owner, body: { visibility: 'always' } });
+    expect((await upload(open.alias, card, '', open.owner)).status).toBe(201);
+    await api(`/${open.alias}`, { method: 'PATCH', token: open.owner, body: { allowChange: false } });
+    expect(await image(open.alias)).toContain(`/og/b/${open.alias}/`);
+  });
+
+  it('lets the admin delete a board’s cards', async () => {
+    const { alias, owner } = await publish();
+    expect((await upload(alias, card, '', owner)).status).toBe(201);
+    expect((await upload(alias, card, '?duel=p0.p1')).status).toBe(201);
+    expect((await adminApi(`/boards/${alias}/cards`, { method: 'DELETE', token: 'wrong' })).status).toBe(403);
+    expect(await (await adminApi(`/boards/${alias}/cards`, { method: 'DELETE' })).json()).toBe(2);
+    expect(content((await page(`/app/b/${alias}`)).html, 'og:image')).toMatch(/\/og\.png$/);
+    expect(content((await page(`/app/b/${alias}?duel=p0.p1`)).html, 'og:image')).toMatch(/\/og\.png$/);
+    expect(await (await adminApi(`/boards/${alias}/cards`, { method: 'DELETE' })).json()).toBe(0);
   });
 });
 
@@ -561,6 +687,35 @@ describe('author controls', () => {
     await api(`/${alias}`, { method: 'PATCH', token: owner, body: { title: ' ' } });
     expect((await voter.next('state')).board.title).toBe('Pizzas du vendredi');
     voter.close();
+  });
+
+  it('gives the author a new token, and the old one stops working', async () => {
+    const { alias, owner } = await publish();
+    const author = await Client.open(alias, AUTHOR, owner);
+    expect((await author.next('state')).owner).toBe(true);
+    expect((await api(`/${alias}/owner`, { method: 'POST' })).status).toBe(403);
+    expect((await api(`/${alias}/owner`, { method: 'POST', token: 'f'.repeat(64) })).status).toBe(403);
+    const res = await api(`/${alias}/owner`, { method: 'POST', token: owner });
+    expect(res.status).toBe(200);
+    const next = ((await res.json()) as { owner: string }).owner;
+    expect(next).toMatch(/^[0-9a-f]{64}$/);
+    expect(next).not.toBe(owner);
+    expect((await api(`/${alias}`, { method: 'PATCH', token: owner, body: { allowChange: false } })).status).toBe(403);
+    expect((await api(`/${alias}`, { method: 'PATCH', token: next, body: { allowChange: false } })).status).toBe(200);
+    // The author's open connection keeps its session; a new one says hello with the new token.
+    expect((await author.next('state')).owner).toBe(true);
+    author.close();
+    const old = await Client.open(alias, AUTHOR, owner);
+    expect((await old.next('state')).owner).toBe(false);
+    old.close();
+    const fresh = await Client.open(alias, AUTHOR, next);
+    expect((await fresh.next('state')).owner).toBe(true);
+    fresh.close();
+    // It holds after the board sleeps.
+    await server.getWorker().evictDurableObject('BoardObject', { name: alias });
+    expect((await api(`/${alias}/close`, { method: 'POST', token: next })).status).toBe(200);
+    expect((await api(`/${alias}/owner`, { method: 'POST', token: owner })).status).toBe(403);
+    expect((await api('/1111111119/owner', { method: 'POST', token: next })).status).toBe(404);
   });
 
   it('withdraws a board and hands the author a local copy', async () => {
@@ -766,6 +921,15 @@ describe('registry and admin', () => {
   it('takes visitors’ reports, one per voter, and lists reported boards first', async () => {
     const { alias } = await publish();
     const report = (body: unknown) => api(`/${alias}/report`, { method: 'POST', body });
+    // Only from the board's voters: someone who voted at least once.
+    expect((await report({ voter: 'voter-one-1', reason: 'spam' })).status).toBe(403);
+    for (const voter of ['voter-one-1', 'voter-two-2']) {
+      const c = await Client.open(alias, voter);
+      const [a, b] = (await c.next('state')).pairs[0] as [string, string];
+      c.send({ t: 'vote', a, b, s: 1 });
+      expect((await c.next('pairs')).mine).toBe(1);
+      c.close();
+    }
     expect((await report({ voter: 'voter-one-1', reason: 'spam', note: '  Ads everywhere  ' })).status).toBe(200);
     expect((await report({ voter: 'voter-one-1', reason: 'offensive' })).status).toBe(200);
     expect((await report({ voter: 'voter-two-2', reason: 'other', note: 'x'.repeat(400) })).status).toBe(200);
@@ -890,6 +1054,38 @@ describe('official templates', () => {
     expect(moved.headers.get('Location')).toMatch(/\/t\/game-consoles\/$/);
   });
 
+  it('publishes a template again when its registry row outlived its board', async () => {
+    const first = (await (await server.fetch('/t/computers/')).text()).match(ALIAS_IN_PAGE)?.[1] ?? '';
+    expect(first).not.toBe('');
+    // The board is gone but its row stays (as when the registry delete failed): its storage wiped behind the row.
+    const sql = await server.getWorker().getDurableObjectStorage('BoardObject', { name: first });
+    await sql.exec('DELETE FROM meta');
+    await server.getWorker().evictDurableObject('BoardObject', { name: first });
+    expect((await view(first)).status).toBe(404);
+    const res = await server.fetch('/t/computers/');
+    expect(res.status).toBe(200);
+    const again = (await res.text()).match(ALIAS_IN_PAGE)?.[1] ?? '';
+    expect(again).not.toBe(first);
+    expect((await view(again)).body.title).toBe('Mac or PC: the best computer to work on');
+    // The same board from now on.
+    expect(await (await server.fetch('/t/computers/')).text()).toContain(`/app/b/${again}`);
+  });
+
+  it('writes a template page’s JSON-LD so that it parses back exactly', async () => {
+    const alias = (await (await server.fetch('/t/cameras/')).text()).match(ALIAS_IN_PAGE)?.[1] ?? '';
+    // A label no template has, written straight into the board's storage.
+    const label = 'Fish & <Chips> "</script><script>alert(1)</script>';
+    const sql = await server.getWorker().getDurableObjectStorage('BoardObject', { name: alias });
+    await sql.exec("UPDATE meta SET v = json_set(v, '$[0].label', ?) WHERE k = 'items'", label);
+    await server.getWorker().evictDurableObject('BoardObject', { name: alias });
+    const html = await (await server.fetch('/t/cameras/')).text();
+    const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? '';
+    const graph = JSON.parse(ld) as { '@graph': { '@type': string; itemListElement?: { name: string }[] }[] };
+    const list = graph['@graph'].find((node) => node['@type'] === 'ItemList');
+    expect(list?.itemListElement?.map((e) => e.name)).toContain(label);
+    expect(html).not.toContain('<script>alert(1)');
+  });
+
   it('lists the templates and the featured boards as Popular, never a hidden one', async () => {
     const fr = (await (await server.fetch('/api/popular?lang=fr')).json()) as { boards: PopularBoard[] };
     expect(fr.boards).toHaveLength(TEMPLATES.length);
@@ -929,14 +1125,26 @@ describe('official templates', () => {
     expect((await server.fetch('/api/popular', { method: 'POST' })).status).toBe(404);
   });
 
+  it('reads the Popular list through its own index', async () => {
+    const env = await server
+      .getWorker<{ REGISTRY: { prepare(sql: string): { bind(...v: unknown[]): { all(): Promise<unknown> } } } }>()
+      .getEnv();
+    // The query of popularBoards (worker/src/registry.ts), as it is written there.
+    const plan = await env.REGISTRY.prepare(
+      `EXPLAIN QUERY PLAN SELECT * FROM boards WHERE hidden = 0 AND lang = ? AND (featured = 1 OR template != '')
+       ORDER BY featured DESC, recent DESC, voters DESC, alias LIMIT ?`,
+    )
+      .bind('en', 16)
+      .all();
+    expect(JSON.stringify(plan)).toContain('boards_popular');
+  });
+
   it('adds the template pages that have a crowd to the sitemap, and asks to index them', async () => {
     const before = await (await server.fetch('/sitemap.xml')).text();
     expect(before).toContain('<urlset');
     expect(before).not.toContain('/t/');
     // One voter is a crowd for this test.
-    await server.update({
-      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { TEMPLATE_INDEX_VOTERS: '1' } }],
-    });
+    await configure({ TEMPLATE_INDEX_VOTERS: '1' });
     const page = await (await server.fetch('/t/game-consoles/')).text();
     const alias = page.match(ALIAS_IN_PAGE)?.[1] ?? '';
     const voter = await Client.open(alias, 'voter-tpl-1');
@@ -988,8 +1196,13 @@ describe('pictures for review', () => {
     expect(res.status).toBe(201);
     return (await res.json()) as { alias: string; owner: string };
   };
-  const decide = (alias: string, id: string, decision: string) =>
-    adminApi(`/boards/${alias}/items/${id}/picture`, { method: 'POST', body: { decision } });
+  const decide = (alias: string, id: string, decision: string, etag?: string) =>
+    adminApi(`/boards/${alias}/items/${id}/picture`, { method: 'POST', body: { decision, etag } });
+  /** The picture as the admin sees it, and the ETag an approval sends back. */
+  const look = async (alias: string, id: string) => {
+    const res = await adminApi(`/boards/${alias}/items/${id}/image`);
+    return { status: res.status, etag: res.headers.get('ETag') ?? '', bytes: new Uint8Array(await res.arrayBuffer()) };
+  };
 
   it('refuses announced pictures while they are off, and says so in its config', async () => {
     expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'off' });
@@ -999,9 +1212,7 @@ describe('pictures for review', () => {
   });
 
   it('keeps a picture for review, shows it to the admin only, then to everyone once approved', async () => {
-    await server.update({
-      workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN }, vars: { IMAGES_UPLOAD: 'review' } }],
-    });
+    await configure({ IMAGES_UPLOAD: 'review' });
     expect(await (await server.fetch('/api/config')).json()).toEqual({ images: 'review' });
     const { alias, owner } = await publishPics(announced('p0'));
     const first = (await view(alias)).body.items;
@@ -1021,6 +1232,8 @@ describe('pictures for review', () => {
     const mine = await adminApi(`/boards/${alias}/items/p0/image`);
     expect(mine.status).toBe(200);
     expect(mine.headers.get('Content-Type')).toBe('image/jpeg');
+    const etag = mine.headers.get('ETag') ?? '';
+    expect(etag).not.toBe('');
     expect((await adminApi(`/boards/${alias}/items/p0/image`, { token: 'wrong' })).status).toBe(403);
     expect((await adminApi(`/boards/${alias}/items/p0/other`)).status).toBe(404);
     await vi.waitFor(
@@ -1035,7 +1248,7 @@ describe('pictures for review', () => {
     const voter = await Client.open(alias, 'voter-pic-1');
     await voter.next('state');
     expect((await decide(alias, 'p0', 'maybe')).status).toBe(400);
-    const ok = await decide(alias, 'p0', 'ok');
+    const ok = await decide(alias, 'p0', 'ok', etag);
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ id: 'p0', img: `/img/b/${alias}/p0.jpg` });
     const pushed = await voter.next('state');
@@ -1046,7 +1259,8 @@ describe('pictures for review', () => {
     expect(shown.status).toBe(200);
     expect(shown.headers.get('Content-Type')).toBe('image/jpeg');
     // Decided once; the board leaves the list of pictures to review.
-    expect((await decide(alias, 'p0', 'ok')).status).toBe(400);
+    expect((await decide(alias, 'p0', 'ok', etag)).status).toBe(400);
+    expect((await server.fetch(`/img/b/${alias}/p0.jpg`)).status).toBe(200);
     await vi.waitFor(
       async () => {
         const list = (await (await adminApi('/boards?filter=pictures')).json()) as AdminList;
@@ -1074,6 +1288,44 @@ describe('pictures for review', () => {
     expect((await sendPicture(alias, dunes?.id ?? '', fakeJpeg(), owner)).status).toBe(201);
     expect((await sendPicture(alias, cliffs?.id ?? '', fakeJpeg(), owner)).status).toBe(404);
     expect((await adminApi(`/boards/${alias}/items/${dunes?.id}/image`)).status).toBe(200);
+  });
+
+  it('approves the picture the admin saw, not one sent since', async () => {
+    const { alias, owner } = await publishPics(announced('p0'));
+    const seen = fakeJpeg(1024);
+    const sentSince = fakeJpeg(2048);
+    expect((await sendPicture(alias, 'p0', seen, owner)).status).toBe(201);
+    const first = await look(alias, 'p0');
+    expect(first.bytes).toEqual(seen);
+    expect((await sendPicture(alias, 'p0', sentSince, owner)).status).toBe(201);
+    const stale = await decide(alias, 'p0', 'ok', first.etag);
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({ error: 'changed' });
+    expect((await decide(alias, 'p0', 'ok')).status).toBe(409);
+    expect((await server.fetch(`/img/b/${alias}/p0.jpg`)).status).toBe(404);
+    expect((await view(alias)).body.items[0]).toMatchObject({ id: 'p0', pic: 'pending' });
+    // Looked at again: that one is approved, and it is what everyone sees.
+    const second = await look(alias, 'p0');
+    expect(second.etag).not.toBe(first.etag);
+    expect((await decide(alias, 'p0', 'ok', second.etag)).status).toBe(200);
+    const shown = await server.fetch(`/img/b/${alias}/p0.jpg`);
+    expect(new Uint8Array(await shown.arrayBuffer())).toEqual(sentSince);
+  });
+
+  it('leaves nothing public when the board no longer waits for the picture approved', async () => {
+    const { alias } = await publishPics(announced('p0'));
+    // A picture stored for an item that awaits none (as after the item went meanwhile), straight into R2.
+    const env = await server
+      .getWorker<{ IMAGES: { put(key: string, value: Uint8Array, options: unknown): Promise<unknown> } }>()
+      .getEnv();
+    await env.IMAGES.put(`img/${alias}/p1.jpg`, fakeJpeg(), {
+      httpMetadata: { contentType: 'image/jpeg' },
+      customMetadata: { state: 'pending' },
+    });
+    const { etag } = await look(alias, 'p1');
+    expect((await decide(alias, 'p1', 'ok', etag)).status).toBe(400);
+    expect((await server.fetch(`/img/b/${alias}/p1.jpg`)).status).toBe(404);
+    expect((await look(alias, 'p1')).status).toBe(404);
   });
 
   it('deletes a refused picture, needs one to approve, and drops them all with the board', async () => {
@@ -1113,17 +1365,168 @@ describe('limits', () => {
     expect((await api('', { method: 'POST', body, ip: '203.0.113.8' })).status).toBe(201);
   });
 
+  it('limits "Your votes" refreshes per IP, before waking any board', async () => {
+    const body = { voter: 'voter-one-1', aliases: ['1111111111'] };
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      statuses.push((await api('', { method: 'POST', root: '/api/summaries', body, ip: '203.0.113.9' })).status);
+    }
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200));
+    expect(statuses[10]).toBe(429);
+    expect((await api('', { method: 'POST', root: '/api/summaries', body, ip: '203.0.113.10' })).status).toBe(200);
+  });
+
+  it('counts a body sent without a length, and refuses it past the limit', async () => {
+    /** A body of spaces sent in chunks (no Content-Length): the Worker counts the bytes as they come. */
+    const chunked = (bytes: number) =>
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          for (let sent = 0; sent < bytes; sent += 64 * 1024) {
+            c.enqueue(new Uint8Array(Math.min(64 * 1024, bytes - sent)).fill(0x20));
+          }
+          c.close();
+        },
+      });
+    const send = (path: string, method: string, type: string, body: ReadableStream<Uint8Array>) =>
+      server.fetch(path, {
+        method,
+        headers: { 'Content-Type': type, 'CF-Connecting-IP': nextIp() },
+        body,
+        duplex: 'half',
+      } as Parameters<typeof server.fetch>[1]);
+    // Within the limit, a chunked body is read as usual.
+    const json = new TextEncoder().encode(JSON.stringify({ title: 'Chunked', items, voter: AUTHOR }));
+    const small = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(json.slice(0, 10));
+        c.enqueue(json.slice(10));
+        c.close();
+      },
+    });
+    const res = await send('/api/boards', 'POST', 'application/json', small);
+    expect(res.status).toBe(201);
+    const { alias } = (await res.json()) as { alias: string };
+    // One byte over: refused, for JSON, a card and a picture alike.
+    expect((await send('/api/boards', 'POST', 'application/json', chunked(512 * 1024 + 1))).status).toBe(413);
+    expect(
+      (await send(`/api/boards/${alias}/card?duel=p0.p1`, 'PUT', 'image/png', chunked(CARD_MAX_BYTES + 1))).status,
+    ).toBe(413);
+    const picture = `/api/boards/${alias}/items/p0/image`;
+    expect((await send(picture, 'PUT', 'image/jpeg', chunked(LIMITS.picture + 1))).status).toBe(413);
+  });
+
   it('asks for a Turnstile token once a secret is set', async () => {
-    await server.update({ workers: [{ configPath: CONFIG, secrets: { ADMIN_TOKEN: ADMIN, TURNSTILE_SECRET: 'x' } }] });
+    await configure({}, { TURNSTILE_SECRET: 'x' });
     const res = await api('', { method: 'POST', body: { title: 'Pizzas', items, voter: AUTHOR } });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'captcha' });
   });
 });
 
+describe('human checks', () => {
+  it('asks for one before a first vote on the site’s own boards, once a secret is set', async () => {
+    await configure();
+    const page = await (await server.fetch('/t/superheroes/')).text();
+    const alias = page.match(/\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/)?.[1] ?? '';
+    const vote = async (c: Client) => {
+      const [a, b] = (await c.next('state')).pairs[0] as [string, string];
+      c.send({ t: 'vote', a, b, s: 1 });
+    };
+    const early = await Client.open(alias, 'early-voter-1');
+    await vote(early);
+    expect((await early.next('pairs')).mine).toBe(1);
+    early.close();
+    const { alias: theirs } = await publish();
+    await configure({}, { TURNSTILE_SECRET: 'x' });
+    // A new voter is asked first; the vote isn't recorded.
+    const fresh = await Client.open(alias, 'fresh-voter-1');
+    await vote(fresh);
+    expect((await fresh.next('error')).code).toBe('captcha');
+    expect((await fresh.next('pairs')).mine).toBe(0);
+    // A token Turnstile refuses keeps them out (an empty one is refused without asking Turnstile); checks are
+    // spaced out like votes.
+    fresh.send({ t: 'check', token: '' });
+    fresh.send({ t: 'check', token: '' });
+    expect((await fresh.next('error')).code).toBe('captcha');
+    expect((await fresh.next('pairs')).mine).toBe(0);
+    expect((await fresh.next('error')).code).toBe('too_fast');
+    fresh.close();
+    // A voter who already voted there is never asked, nor is anyone on someone's own board.
+    const back = await Client.open(alias, 'early-voter-1');
+    await vote(back);
+    expect((await back.next('pairs')).mine).toBe(2);
+    back.close();
+    const visitor = await Client.open(theirs, 'fresh-voter-1');
+    await vote(visitor);
+    expect((await visitor.next('pairs')).mine).toBe(1);
+    // A check nobody asked for isn't sent to Turnstile: the queue comes back, no refusal.
+    visitor.send({ t: 'check', token: '' });
+    expect((await visitor.next('pairs')).mine).toBe(1);
+    visitor.send({ t: 'reset' });
+    expect((await visitor.next('pairs')).mine).toBe(0);
+    visitor.close();
+  });
+});
+
+describe('content security policy reports', () => {
+  it('takes a browser’s report with nothing to say back, and nothing else at that address', async () => {
+    const report = {
+      'csp-report': {
+        'document-uri': `${base.origin}/app/`,
+        'violated-directive': 'script-src-elem',
+        'blocked-uri': 'https://evil.example.net/x.js',
+        disposition: 'report',
+      },
+    };
+    const res = await server.fetch('/api/csp-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/csp-report' },
+      body: JSON.stringify(report),
+    });
+    expect(res.status).toBe(204);
+    expect((await server.fetch('/api/csp-report', { method: 'POST', body: 'not json' })).status).toBe(204);
+    expect((await server.fetch('/api/csp-report')).status).toBe(404);
+  });
+});
+
+describe('edge cache', () => {
+  it('keeps a board’s page, the Popular list and a template page a while, by URL', async () => {
+    await configure({ CACHE_SECONDS: '' });
+    const text = async (path: string) => (await server.fetch(path)).text();
+    const { alias } = await publish();
+    const page = await text(`/app/b/${alias}`);
+    expect(page).toContain('0 votes');
+    const voter = await Client.open(alias, 'cache-voter-1');
+    const [a, b] = (await voter.next('state')).pairs[0] as [string, string];
+    voter.send({ t: 'vote', a, b, s: 1 });
+    expect((await voter.next('pairs')).mine).toBe(1);
+    voter.close();
+    // The same link a moment later: the copy kept (one board woken, not two); another link is its own.
+    expect(await text(`/app/b/${alias}`)).toBe(page);
+    expect(await text(`/app/b/${alias}?from=chat`)).toContain('1 vote');
+    // The Popular list doesn't see a board featured meanwhile, nor does a template page see a new vote.
+    const popular = await text('/api/popular?lang=en');
+    const template = await text('/t/pizzas/');
+    await adminApi(`/boards/${alias}`, { method: 'PATCH', body: { featured: true } });
+    const tpl = template.match(/\/app\/b\/([1-9A-HJ-NP-Za-km-z]{10})/)?.[1] ?? '';
+    const fan = await Client.open(tpl, 'cache-voter-2');
+    const [c, d] = (await fan.next('state')).pairs[0] as [string, string];
+    fan.send({ t: 'vote', a: c, b: d, s: 1 });
+    expect((await fan.next('pairs')).mine).toBe(1);
+    fan.close();
+    await sleep(300);
+    expect(await text('/api/popular?lang=en')).toBe(popular);
+    expect(await text('/t/pizzas/')).toBe(template);
+    // Turned off, everything is fresh again.
+    await configure();
+    expect(await text(`/app/b/${alias}`)).toContain('1 vote');
+    expect(await text('/api/popular?lang=en')).toContain(alias);
+  });
+});
+
 describe('cleanup', () => {
   it('deletes a board after the inactivity TTL', async () => {
-    await server.update({ workers: [{ configPath: CONFIG, vars: { BOARD_TTL_SECONDS: '1' } }] });
+    await configure({ BOARD_TTL_SECONDS: '1' });
     const { alias } = await publish();
     expect((await view(alias)).status).toBe(200);
     await vi.waitFor(async () => expect((await view(alias)).status).toBe(404), { timeout: 8000, interval: 250 });

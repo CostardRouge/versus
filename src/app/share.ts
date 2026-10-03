@@ -18,18 +18,20 @@ import {
   duoSpec,
   localSpec,
   OG_FORMAT,
+  previewSpec,
   rankingSpec,
 } from '../core/share';
-import type { Fill, Item, ItemStats, MethodKey, Ranking } from '../core/types';
+import type { BoardSettings, Fill, Item, ItemStats, MethodKey, Ranking } from '../core/types';
 import { esc, initials } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { boardShareData, boardURL, resultView } from './board';
 import { $, ask, copyText, doc, toast } from './dom';
 import { podiumWho } from './finale';
 import { fmtScore } from './format';
-import { putCard } from './remote';
+import { ApiError, putCard } from './remote';
 import { compareWith, rankView } from './results';
 import { siteURL } from './router';
+import { loadOwners } from './storage';
 
 /**
  * Sharing a result as an image: the app draws it on a canvas, in the app's fonts and colors, in three
@@ -994,7 +996,9 @@ const uploaded = new Set<string>();
 
 /**
  * Sends the landscape card to the server, once per link and session, so the link shows it when pasted
- * somewhere. Quiet: a failure changes nothing for the person sharing.
+ * somewhere; with the author's token when this browser holds it (the board's own card needs it, a duel's card
+ * then replaces the one drawn first). Quiet: a failure changes nothing for the person sharing, and a duel that
+ * has its card already (`exists`) is done.
  */
 export function uploadCard(spec: CardSpec, alias: string, pair: readonly [string, string] | null): void {
   const key = `${alias}${pair ? `/${pair[0]}.${pair[1]}` : ''}`;
@@ -1004,15 +1008,23 @@ export function uploadCard(spec: CardSpec, alias: string, pair: readonly [string
     try {
       const canvas = await renderCard(spec, OG_FORMAT, true);
       const blob = canvas ? await toBlob(canvas) : null;
-      if (blob) await putCard(alias, blob, pair);
-    } catch {
-      uploaded.delete(key);
+      if (blob) await putCard(alias, blob, pair, loadOwners()[alias]);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === 'exists')) uploaded.delete(key);
     }
   })();
 }
 
-/** Right after publishing: the board's card from the local ranking (the server has the same items and votes). */
-export function uploadPublishedCard(r: Ranking, alias: string, withVotes: boolean): void {
+/**
+ * Right after publishing: the board's card from the local ranking (the server has the same items and votes), its
+ * standings only when the chosen settings show them to everyone.
+ */
+export function uploadPublishedCard(
+  r: Ranking,
+  alias: string,
+  withVotes: boolean,
+  settings: Pick<BoardSettings, 'visibility'>,
+): void {
   const spec = localSpec(r, '', boardURL(alias), texts(), scoreMeta);
   spec.kind = 'crowd';
   const votes = withVotes ? lastDuelPerPair(r).length : 0;
@@ -1021,7 +1033,7 @@ export function uploadPublishedCard(r: Ranking, alias: string, withVotes: boolea
     spec.rows = r.items.map((it) => ({ it, meta: '' }));
   }
   spec.subtitle = `${plural(r.items.length, 'item')} · ${plural(votes, 'vote')}`;
-  uploadCard(spec, alias, null);
+  uploadCard(previewSpec(spec, r.items, settings, 'open'), alias, null);
 }
 
 // ─── The share panel ────────────────────────────────────────────────────────
@@ -1168,12 +1180,15 @@ export function shareLocal(r: Ranking | undefined): void {
   openShare(views, 'rank', rankView());
 }
 
-/** The board page: the crowd's standings; its landscape card also becomes the link's preview. */
+/**
+ * The board page: the crowd's standings as the sharer sees them. Shared by its author, its landscape card also
+ * becomes the link's preview, the standings only when everyone may see them.
+ */
 export function shareBoard(): void {
   const spec = boardCardSpec();
   const b = boardShareData();
   if (!spec || !b) return;
-  uploadCard(spec, b.alias, null);
+  if (b.isOwner) uploadCard(previewSpec(spec, b.view.items, b.view.settings, b.view.status), b.alias, null);
   openShare(spec, 'board');
 }
 

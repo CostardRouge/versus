@@ -105,7 +105,8 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
   share.ts            share as an image: draws the card on a canvas (tokens, fonts), the share panel (share sheet, copy,
                       download), and sends a board's or a duel's landscape card for its link preview
-  remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
+  remote.ts           API calls (15 s time limit) and the board WebSocket (hello with the protocol version, reconnect, gone)
+  turnstile.ts        Cloudflare Turnstile's widget, when the build has a site key: at publication, before a first vote on an official board
   router.ts           the address bar follows the view (push, replace), app folder from the page's <base>; counts each view
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
@@ -120,21 +121,28 @@ src/landing/          the home page: markup.ts renders it at build time (pure st
 src/legal/            the legal notice (publisher, hosting, privacy, measurement, licence): markup.ts renders it at build time with
                       the home page's header and footer; main.ts + mount.ts count the view and run the measurement switch; legal.css
 src/admin/            the moderation page (/admin/, D107): page.ts renders it and calls /api/admin with the token typed on it (kept in
-                      sessionStorage), admin.ts is the entry (its bundle is named admin-*, kept out of the precache), admin.css; no measurement
+                      the page's memory only), admin.ts is the entry (its bundle is named admin-*, kept out of the precache), admin.css; no measurement
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
                       cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), pictures.ts (items' pictures: sent for review to R2,
                       public under /img/ once approved, the admin's decision), templates.ts (official templates: publication on demand, the
                       /t/<slug>/ pages in the legal shell, the sitemap completed), registry.ts + migrations/ (D1 registry: the admin list's rows,
-                      flags, report and picture counts, template key, recent votes, top labels), random.ts, turnstile.ts; own tsconfig; secrets
-                      ADMIN_TOKEN, TURNSTILE_SECRET; variable IMAGES_UPLOAD (`review` turns pictures on); bindings BOARDS, REGISTRY, IMAGES (R2
-                      bucket versus-images); `run_worker_first` for /sitemap.xml
+                      flags, report and picture counts, template key, recent votes, top labels; 0005 indexes the Popular list), cache.ts +
+                      cache-rules.ts (the edge cache: Popular, template pages, the sitemap, a board's page, keyed by URL and deployed version),
+                      log.ts (one JSON line per event: quiet failures, admin actions, CSP reports; never a token, voter id or address),
+                      env.ts, random.ts, turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET; variables IMAGES_UPLOAD (`review`
+                      turns pictures on), CACHE_SECONDS (caps the edge cache, 0 = off); bindings BOARDS, REGISTRY, IMAGES (R2 bucket
+                      versus-images), VERSION (version metadata), rate limits PUBLISH_LIMIT, API_LIMIT, SUMMARY_LIMIT, CSP_LIMIT;
+                      `run_worker_first` for /sitemap.xml
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + board-ui.test.ts, votes-ui.test.ts, share-ui.test.ts and
                       admin-ui.test.ts (published boards, "Your votes", the share panel and the moderation page against a fake API and a fake
                       canvas, tests/helpers/) + worker.test.ts (end to end in workerd via Wrangler's test harness)
                       + seo.test.ts (heads per page, hreflang, JSON-LD, icons and generated files stay consistent) + pwa.test.ts (precache
                       list, version) + landing.test.ts (home page markup and texts) + landing-ui.test.ts (jsdom smoke test)
                       + audience.test.ts (measurement settings, loading rules, clean payloads) + legal.test.ts (legal pages, switch)
-                      + backup-ui.test.ts (export, import, drop, the iOS home-screen note)
+                      + backup-ui.test.ts (export, import, drop, the iOS home-screen note) + popular-ui.test.ts, finale.test.ts,
+                      storage.test.ts, remote.test.ts (time limits), sw.test.ts (the service worker's install against fake caches),
+                      pictures.test.ts, log.test.ts, cache.test.ts, turnstile.test.ts (Worker modules that run in Node)
+tests/e2e/            Playwright (`npm run e2e`): real Chromium, desktop and phone, the API and the board's WebSocket faked per test
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 

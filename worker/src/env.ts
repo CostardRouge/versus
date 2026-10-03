@@ -8,9 +8,12 @@ export interface Env {
   REGISTRY?: D1Database;
   /** The cards a board's links unfurl with (R2, bucket versus-images). Optional: without it, links get the site's card. */
   IMAGES?: R2Bucket;
-  /** Per-IP limits: publications, and every other API request. Optional in local tools. */
+  /** Per-IP limits: publications, every other API request, and "Your votes" refreshes. Optional in local tools. */
   PUBLISH_LIMIT?: RateLimit;
   API_LIMIT?: RateLimit;
+  SUMMARY_LIMIT?: RateLimit;
+  /** Content security policy reports (`/api/csp-report`), outside API_LIMIT. */
+  CSP_LIMIT?: RateLimit;
   /** Secret for the admin routes. Unset: the admin API is off. */
   ADMIN_TOKEN?: string;
   /** `review`: authors may publish pictures, shown once the admin approved them. Unset or anything else: no pictures. */
@@ -21,4 +24,12 @@ export interface Env {
   BOARD_TTL_SECONDS?: string;
   /** Voters a template page needs before it asks to be indexed (tests lower it). Defaults to TEMPLATE_INDEX_VOTERS. */
   TEMPLATE_INDEX_VOTERS?: string;
+  /**
+   * Longest a response stays in the edge cache, in seconds (`cache.ts`): each has its own (a board's page 60, the
+   * Popular list and the template pages 300, the sitemap 3600), this caps them. `0` turns the cache off (tests,
+   * which read fresh data right after a vote). Unset: the defaults.
+   */
+  CACHE_SECONDS?: string;
+  /** The deployed version (`version_metadata`): its id keys the edge cache. Optional in local tools. */
+  VERSION?: WorkerVersionMetadata;
 }

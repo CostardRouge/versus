@@ -14,7 +14,8 @@ import { adminEn, adminFr, adminText } from '../src/i18n/admin';
 const ALIAS = 'Ab3dEf7hJk';
 type Call = { method: string; url: string; body: unknown; auth: string | null };
 const calls: Call[] = [];
-let respond: (c: Call) => { status: number; body: unknown } = () => ({ status: 404, body: { error: 'not_found' } });
+type Answer = { status: number; body: unknown; headers?: Record<string, string> };
+let respond: (c: Call) => Answer = () => ({ status: 404, body: { error: 'not_found' } });
 
 const items = ['Margherita', 'Regina', 'Calzone'].map((label, i) => ({
   id: `p${i}`,
@@ -101,7 +102,7 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
   };
   calls.push(call);
   const r = respond(call);
-  return new Response(JSON.stringify(r.body), { status: r.status });
+  return new Response(JSON.stringify(r.body), { status: r.status, headers: r.headers });
 });
 
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel);
@@ -116,28 +117,25 @@ const flush = async () => {
 };
 const requests = (method: string) => calls.filter((c) => c.method === method);
 
+/** Mounts the page; with a token, types it in the form as the admin would. */
 function mount(api: string | null = '', token = '') {
   document.body.innerHTML = '<div id="admin"></div>';
   const root = $('#admin') as HTMLElement;
-  const store = new Map<string, string>();
-  if (token) store.set('versus-admin', token);
-  const storage = {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-  } as unknown as Storage;
   const confirm = vi.fn(() => true);
   mountAdmin({
     root,
     api,
     lang: 'en',
     fetch: fetchMock as unknown as typeof fetch,
-    storage,
     confirm,
     boardURL: (alias) => `https://versus.example.com/app/b/${alias}`,
     locale: 'en-GB',
   });
-  return { root, store, confirm };
+  if (token) {
+    ($('#ad-token') as HTMLInputElement).value = token;
+    ($('form[data-form="token"]') as HTMLFormElement).requestSubmit();
+  }
+  return { root, confirm };
 }
 
 afterEach(() => {
@@ -178,20 +176,26 @@ describe('the page', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('asks for the token, refuses a wrong one and keeps a good one in the tab', async () => {
-    const { store } = mount();
+  it('asks for the token, refuses a wrong one and keeps a good one in memory only', async () => {
+    sessionStorage.clear();
+    localStorage.clear();
+    mount();
     expect($('form[data-form="token"]')).not.toBeNull();
+    // Its home link opens elsewhere: leaving the page would forget the token.
+    expect($('.ad-brand')?.getAttribute('target')).toBe('_blank');
+    expect($('.ad-brand')?.getAttribute('rel')).toBe('noopener');
     ($('#ad-token') as HTMLInputElement).value = 'bad';
     ($('form[data-form="token"]') as HTMLFormElement).requestSubmit();
     await flush();
     expect($('.ad-error')?.textContent).toBe(adminEn.wrongToken);
     expect($('form[data-form="token"]')).not.toBeNull();
-    expect(store.has('versus-admin')).toBe(false);
     calls.length = 0;
     ($('#ad-token') as HTMLInputElement).value = 'good';
     ($('form[data-form="token"]') as HTMLFormElement).requestSubmit();
     await flush();
-    expect(store.get('versus-admin')).toBe('good');
+    // Nowhere a script of the site could read it later.
+    expect(sessionStorage.length).toBe(0);
+    expect(localStorage.length).toBe(0);
     expect(requests('GET').length).toBeGreaterThan(1);
     expect(requests('GET').every((c) => c.auth === 'Bearer good')).toBe(true);
     expect($('.ad-error')).toBeNull();
@@ -202,7 +206,10 @@ describe('the page', () => {
     expect(title?.getAttribute('href')).toBe(`https://versus.example.com/app/b/${ALIAS}`);
     expect($('.ad-count')?.textContent).toBe('2');
     click('[data-act="logout"]');
-    expect(store.has('versus-admin')).toBe(false);
+    expect($('form[data-form="token"]')).not.toBeNull();
+    // A reload (the page mounted again) asks again.
+    mount();
+    await flush();
     expect($('form[data-form="token"]')).not.toBeNull();
   });
 
@@ -252,6 +259,10 @@ describe('the page', () => {
     click('[data-act="clear-reports"]');
     await flush();
     expect(requests('DELETE').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}/reports`);
+    click('[data-act="delete-cards"]');
+    await flush();
+    expect(confirm).toHaveBeenLastCalledWith(adminText('en', 'confirmDeleteCards', { title: 'Pizzas' }));
+    expect(requests('DELETE').at(-1)?.url).toBe(`/api/admin/boards/${ALIAS}/cards`);
     click('[data-act="remove-item"][data-id="p0"]');
     await flush();
     expect(confirm).toHaveBeenLastCalledWith(
@@ -267,8 +278,11 @@ describe('the page', () => {
     expect($('.ad-panel')).toBeNull();
   });
 
-  it('lists the pictures to review and sends each decision', async () => {
+  it('lists the pictures to review and sends each decision, an approval with the picture it saw', async () => {
     const withPic = detail({ items: [{ ...(items[0] as (typeof items)[number]), pic: 'pending' }, ...items.slice(1)] });
+    const image = `/api/admin/boards/${ALIAS}/items/p0/image`;
+    let etag = '"e1"';
+    let approve: Answer = { status: 200, body: true };
     respond = (c) => {
       if (c.auth !== 'Bearer good') return ok(c);
       if (/\/boards\?/.test(c.url)) {
@@ -278,8 +292,13 @@ describe('the page', () => {
         };
       }
       if (c.method === 'GET' && c.url === `/api/admin/boards/${ALIAS}`) return { status: 200, body: withPic };
+      if (c.url === image) return { status: 200, body: 'jpeg', headers: { ETag: etag } };
+      if (c.url.endsWith('/picture')) return approve;
       return ok(c);
     };
+    const { createObjectURL, revokeObjectURL } = URL;
+    URL.createObjectURL = () => 'blob:picture';
+    URL.revokeObjectURL = () => {};
     mount('', 'good');
     await flush();
     expect($('.ad-flags')?.textContent).toContain('Pictures to review: 1');
@@ -287,16 +306,27 @@ describe('the page', () => {
     click(`[data-act="inspect"][data-alias="${ALIAS}"]`);
     await flush();
     expect($('.ad-pics li')?.textContent).toContain('Margherita');
-    expect($('img[data-pic="p0"]')).not.toBeNull();
+    expect($('img[data-pic="p0"]')?.getAttribute('src')).toBe('blob:picture');
+    // The author sent another picture meanwhile: the server says so, and the page shows the new one.
+    approve = { status: 409, body: { error: 'changed' } };
+    etag = '"e2"';
     click('[data-act="approve-pic"][data-id="p0"]');
     await flush();
     expect(requests('POST').at(-1)).toMatchObject({
       url: `/api/admin/boards/${ALIAS}/items/p0/picture`,
-      body: { decision: 'ok' },
+      body: { decision: 'ok', etag: '"e1"' },
     });
+    expect($('.ad-error')?.textContent).toBe(adminEn.picChanged);
+    expect(calls.filter((c) => c.url === image).length).toBeGreaterThan(1);
+    approve = { status: 200, body: true };
+    click('[data-act="approve-pic"][data-id="p0"]');
+    await flush();
+    expect(requests('POST').at(-1)?.body).toEqual({ decision: 'ok', etag: '"e2"' });
     click('[data-act="refuse-pic"][data-id="p0"]');
     await flush();
     expect(requests('POST').at(-1)?.body).toEqual({ decision: 'refused' });
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
   });
 
   it('does nothing when a confirmation is refused, and says when the server is away', async () => {
@@ -309,6 +339,12 @@ describe('the page', () => {
     await flush();
     expect(requests('DELETE')).toHaveLength(0);
     fetchMock.mockRejectedValueOnce(new TypeError('offline'));
+    click('[data-act="refresh"]');
+    await flush();
+    expect($('.ad-error')?.textContent).toBe(adminEn.offline);
+    // A request that hangs is cut short, and says the same.
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    fetchMock.mockRejectedValueOnce(new DOMException('The operation timed out.', 'TimeoutError'));
     click('[data-act="refresh"]');
     await flush();
     expect($('.ad-error')?.textContent).toBe(adminEn.offline);
