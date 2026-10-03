@@ -54,7 +54,7 @@ Decisions made while designing Versus (conversation of 2026-09-29, prototyped as
 
 | # | Decision | Status | Notes |
 | --- | --- | --- | --- |
-| D24 | Vite + TypeScript, no framework | Decided | Ported from the single-file prototype; small bundle (~20 kB gzip JS). A POC speed choice, reopened and kept: the web app comes first and stays light (D75). |
+| D24 | Vite + TypeScript, no framework | Decided | Ported from the single-file prototype; small bundle (~20 kB gzip JS at the time; about 69 kB gzip on the app's first load in October 2026, with publishing, the PWA and the published boards, the share panel loading on demand). A POC speed choice, reopened and kept: the web app comes first and stays light (D75). |
 | D25 | Pure `src/core` shared by UI and future backend | Decided | Enables running the same scoring on a Cloudflare Worker. |
 | D26 | Biome, strict TS, Vitest with a 90% coverage floor on `src/core` | Decided | Plus a jsdom smoke test of the whole app. |
 | D27 | Single CI workflow; deploy to GitHub Pages from `main` only after checks pass | Decided | Relative `base: './'`, so the build works under `/versus/`. Dependabot weekly for npm and actions; `@types/node` majors ignored to match Node 22. |
