@@ -1644,7 +1644,6 @@ kbd {
   font: 500 11px / 1.3 var(--f-mono);
   letter-spacing: 0.02em;
   margin-top: 5px;
-  opacity: 0.85;
 }
 .add-color {
   display: flex;
@@ -1977,10 +1976,14 @@ kbd {
   backdrop-filter: blur(4px);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s;
+  visibility: hidden;
+  transition:
+    opacity 0.15s,
+    visibility 0.15s;
 }
 body.dropping .drop-overlay {
   opacity: 1;
+  visibility: visible;
 }
 .drop-overlay div {
   border: 2px dashed var(--a);
@@ -2207,13 +2210,15 @@ body.dropping .drop-overlay {
     inset: calc((100% - 44px) / 2);
   }
 }
+/* Reduced motion: animations jump to their end, transitions don't run (a 0.01 ms one would make every property of
+   every element transition, `all` being the default: colors caught mid-change). Nothing waits for their events. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
 }
 
