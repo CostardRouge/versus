@@ -133,6 +133,24 @@ describe('app', () => {
     expect(document.querySelectorAll('.cmp-table th')).toHaveLength(5);
   });
 
+  it('copies the ranking as text, saying when the browser can’t or won’t', async () => {
+    const toastText = () => $('#toast span')?.textContent ?? $('#toast')?.textContent;
+    click('[data-action="copy"]');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastText()).toBe('Copy isn’t available in this browser');
+    const writeText = vi.fn(async (_: string) => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    click('[data-action="copy"]');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastText()).toBe('Ranking copied');
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^Next destination \(Simple\)\n1\. /);
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    click('[data-action="copy"]');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastText()).toBe('The browser refused the copy');
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  });
+
   it('adds text and hex items from the side panel', () => {
     click('[data-action="back"]');
     click('[data-action="new-rank"]');

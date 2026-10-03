@@ -450,15 +450,11 @@ async function authorAddFiles(files: FileList | File[]): Promise<void> {
   const items = labels.map((label): NewBoardItem => ({ label, fill: null, pic: 'pending' }));
   const added = await ownerCall((alias, token) => addBoardItems(alias, token, items));
   if (!added) return;
-  let sent = 0;
-  let failed = 0;
-  for (const it of added) {
-    const data = dataURLBytes(read[labels.indexOf(it.label)]?.data ?? '');
-    if (!data) continue;
-    if (await sendPicture(b.alias, b.owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
-    else failed++;
-  }
-  picturesToast(sent, failed);
+  await sendPictures(
+    b.alias,
+    b.owner,
+    added.map((it) => ({ id: it.id, data: read[labels.indexOf(it.label)]?.data ?? '' })),
+  );
 }
 
 // ─── Pictures the server never received ─────────────────────────────────────
@@ -473,7 +469,7 @@ const picKey = (alias: string, id: string): string => `${alias}/${id}`;
 const retrying = new Set<string>();
 
 /** Sends an item's picture for review; one that fails is kept, and its row offers to send it again. */
-export async function sendPicture(alias: string, owner: string, id: string, jpeg: Blob): Promise<boolean> {
+async function sendPicture(alias: string, owner: string, id: string, jpeg: Blob): Promise<boolean> {
   try {
     await putItemImage(alias, owner, id, jpeg);
     unsent.delete(picKey(alias, id));
@@ -484,8 +480,23 @@ export async function sendPicture(alias: string, owner: string, id: string, jpeg
   }
 }
 
-/** What sending a batch of pictures came to; the list shows which ones didn't go. */
-export function picturesToast(sent: number, failed: number): void {
+/**
+ * Sends items' pictures (JPEG data URLs) for review, one by one, then says what it came to; the list shows which
+ * ones didn't go, and offers to send them again.
+ */
+export async function sendPictures(
+  alias: string,
+  owner: string,
+  pictures: readonly { id: string; data: string | null }[],
+): Promise<void> {
+  let sent = 0;
+  let failed = 0;
+  for (const p of pictures) {
+    const data = dataURLBytes(p.data ?? '');
+    if (!data) continue;
+    if (await sendPicture(alias, owner, p.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
+    else failed++;
+  }
   if (failed) toast(t('picturesUnsent', { pictures: plural(failed, 'picture'), n: failed }));
   else toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
   refreshAuthorList(false);

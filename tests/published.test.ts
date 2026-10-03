@@ -90,12 +90,20 @@ describe('links', () => {
     expect(parseBoardHash(adminHash(ALIAS, TOKEN))).toEqual({ alias: ALIAS, owner: TOKEN });
   });
 
-  it.each(['', '#', '#/b/', '#/b/short', '#/b/0OIl0OIl0O', `#/b/${ALIAS}?owner=nope`, `#/x/${ALIAS}`])(
-    'ignores %j',
-    (hash) => {
-      expect(parseBoardHash(hash)).toBeNull();
-    },
-  );
+  it.each([
+    '',
+    '#',
+    '#/b/',
+    '#/b/short',
+    '#/b/0OIl0OIl0O',
+    `#/b/${ALIAS}?owner=nope`,
+    `#/b/${ALIAS}?owner=`,
+    `#/b/${ALIAS}?owner=${TOKEN.toUpperCase()}`,
+    `#/b/${ALIAS}?owner=${TOKEN}/x`,
+    `#/x/${ALIAS}`,
+  ])('ignores %j', (hash) => {
+    expect(parseBoardHash(hash)).toBeNull();
+  });
 
   it('makes voter ids the server accepts', () => {
     const id = voterId(Uint8Array.from({ length: 22 }, (_, i) => i * 11));

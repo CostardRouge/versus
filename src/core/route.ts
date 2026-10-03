@@ -1,4 +1,4 @@
-import { ALIAS_RE } from './board.ts';
+import { ALIAS_RE, TOKEN_RE } from './board.ts';
 
 /**
  * The app's addresses (D92): real paths under the app's folder, so every view has a link that can be
@@ -64,5 +64,6 @@ export function parseRoute(path: string): Route | null {
 /** An author's link carries their token in the fragment (`#owner=…`), which never reaches a server. */
 export const ownerFragment = (token: string): string => `#owner=${token}`;
 export function parseOwnerFragment(hash: string): string | null {
-  return /^#owner=([0-9a-f]{64})$/.exec(hash)?.[1] ?? null;
+  const token = /^#owner=(.*)$/.exec(hash)?.[1];
+  return token && TOKEN_RE.test(token) ? token : null;
 }

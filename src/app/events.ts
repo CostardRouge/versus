@@ -162,7 +162,7 @@ function onClick(e: MouseEvent): void {
       undoLast();
       break;
     case 'copy':
-      copyRanking();
+      void copyRanking();
       break;
     case 'share-rank':
       sharing((m) => m.shareLocal(cur()));

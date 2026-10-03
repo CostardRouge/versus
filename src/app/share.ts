@@ -26,7 +26,7 @@ import {
   type StandingsCard,
 } from '../core/share';
 import type { BoardSettings, ItemStats, MethodKey, Ranking } from '../core/types';
-import { esc } from '../core/util';
+import { esc, fileSlug } from '../core/util';
 import { methodText as M, type MsgKey, pct, plural, t } from '../i18n';
 import { boardShareData, boardURL, resultView } from './board';
 import { $, ask, copyText, doc, toast } from './dom';
@@ -533,14 +533,8 @@ async function blobOf(p: Panel): Promise<Blob | null> {
   return canvas ? toBlob(canvas) : null;
 }
 
-const fileName = (p: Panel): string =>
-  `versus-${p.spec.title
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40)}-${p.format}.png`;
+/** `versus-next-destination-post.png`; `versus-post.png` for a title with nothing to keep. */
+const fileName = (p: Panel): string => `${['versus', fileSlug(p.spec.title), p.format].filter(Boolean).join('-')}.png`;
 
 /** The system share sheet, with the image when the browser can share files. */
 export async function shareNative(): Promise<void> {

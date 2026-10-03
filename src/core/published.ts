@@ -1,4 +1,4 @@
-import { ALIAS_RE, LIMITS, totalPairs } from './board.ts';
+import { ALIAS_RE, LIMITS, TOKEN_RE, totalPairs } from './board.ts';
 import { mkRank } from './model.ts';
 import type { RankingView } from './protocol.ts';
 import { compute, methodOf, pairKey, validHistory } from './scoring.ts';
@@ -100,10 +100,11 @@ export function dataURLBytes(dataURL: string): { type: string; bytes: Uint8Array
  * (src/app/rankings.ts) and turned into `b/<alias>` addresses; new links come from src/core/route.ts.
  */
 export function parseBoardHash(hash: string): { alias: string; owner: string | null } | null {
-  const m = /^#\/b\/([^/?]+)(?:\?owner=([0-9a-f]{64}))?$/.exec(hash);
+  const m = /^#\/b\/([^/?]+)(?:\?owner=([^/?]*))?$/.exec(hash);
   const alias = m?.[1];
-  if (!alias || !ALIAS_RE.test(alias)) return null;
-  return { alias, owner: m[2] ?? null };
+  const owner = m?.[2];
+  if (!alias || !ALIAS_RE.test(alias) || (owner !== undefined && !TOKEN_RE.test(owner))) return null;
+  return { alias, owner: owner ?? null };
 }
 
 const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';

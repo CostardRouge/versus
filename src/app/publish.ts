@@ -1,7 +1,6 @@
 import { trackEvent } from '../audience';
 import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS, VISIBILITIES, validSettings } from '../core/board';
 import {
-  dataURLBytes,
   lastDuelPerPair,
   type PublishBlock,
   pictureItems,
@@ -11,7 +10,7 @@ import {
 } from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
 import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
-import { picturesToast, sendPicture } from './author';
+import { sendPictures } from './author';
 import { boardURL } from './board';
 import { $, ask, copyText, toast } from './dom';
 import { errorKey, PUBLISH_ERRORS } from './errors';
@@ -79,22 +78,6 @@ interface Published {
   owner: string;
   chosen: Partial<BoardSettings>;
   withVotes: boolean;
-}
-
-/**
- * Sends the pictures the published items announced, one by one, for the moderator's review. A picture that
- * fails leaves its item as text, and the author's list offers to send it again (author.ts).
- */
-async function sendPictures(r: Ranking, alias: string, owner: string): Promise<void> {
-  let sent = 0;
-  let failed = 0;
-  for (const it of pictureItems(r)) {
-    const data = dataURLBytes(it.img);
-    if (!data) continue;
-    if (await sendPicture(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
-    else failed++;
-  }
-  picturesToast(sent, failed);
 }
 
 export async function publishRanking(r: Ranking | undefined): Promise<void> {
@@ -189,7 +172,12 @@ async function publish(r: Ranking): Promise<void> {
   // The link's preview image, drawn here from the same items and votes the server just received.
   // The drawing code loads with it, in the background.
   void import('./share').then((m) => m.uploadPublishedCard(r, alias, withVotes, used));
-  if (pictures) void sendPictures(r, alias, owner);
+  // The pictures the published items announced, for the moderator's review; one that fails leaves its item as
+  // text, and the author's list offers to send it again (author.ts).
+  if (pictures) {
+    const announced = pictureItems(r).map((it) => ({ id: it.id, data: it.img }));
+    void sendPictures(alias, owner, announced);
+  }
   const copied = await copyText(boardURL(alias));
   openBoard(alias);
   toast(t(copied ? 'published' : 'publishedShare'));

@@ -13,6 +13,7 @@ import {
 import { DEFAULT_SETTINGS } from '../src/core/board';
 import { DEMOS } from '../src/core/demos';
 import type { Item, Joined, Ranking } from '../src/core/types';
+import { fileSlug } from '../src/core/util';
 
 const NOW = Date.UTC(2026, 8, 30, 12);
 const ALIAS = 'Ab3dEf7hJk';
@@ -124,6 +125,14 @@ describe('makeBackup and makeShare', () => {
     expect(shareName('Crème brûlée & café')).toBe('versus-creme-brulee-cafe.json');
     expect(shareName('🍕')).toBe('versus-ranking.json');
     expect(shareName('x'.repeat(80))).toBe(`versus-${'x'.repeat(40)}.json`);
+  });
+
+  it('cuts a title to a file name the same way for a file and a shared image', () => {
+    expect(fileSlug('Crème brûlée & café')).toBe('creme-brulee-cafe');
+    // Never a dash at either end, even where the cut falls on a space.
+    expect(fileSlug(`${'a'.repeat(39)} b`)).toBe('a'.repeat(39));
+    expect(fileSlug(`¿${'b'.repeat(50)}`)).toBe('b'.repeat(40));
+    expect(fileSlug('寿司 ?!')).toBe('');
   });
 });
 

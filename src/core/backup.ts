@@ -14,7 +14,7 @@ import { parseJoined } from './joined.ts';
 import { LABEL_MAX, TITLE_MAX } from './model.ts';
 import { METHOD_KEYS } from './scoring.ts';
 import type { BoardStatus, Duel, Item, Joined, MethodKey, Ranking } from './types.ts';
-import { hueOf } from './util.ts';
+import { fileSlug, hueOf } from './util.ts';
 
 /**
  * Export and import (docs/pwa.md): the rankings of this browser in a JSON file. A backup holds everything, to
@@ -88,16 +88,7 @@ export function backupName(now: number): string {
 }
 
 /** `versus-next-destination.json`: the title without accents or punctuation. */
-export function shareName(title: string): string {
-  const slug = title
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .slice(0, 40)
-    .replace(/^-+|-+$/g, '');
-  return `versus-${slug || 'ranking'}.json`;
-}
+export const shareName = (title: string): string => `versus-${fileSlug(title) || 'ranking'}.json`;
 
 // ─── Reading a file ─────────────────────────────────────────────────────────
 

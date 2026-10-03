@@ -54,6 +54,9 @@ describe('author links', () => {
     expect(parseOwnerFragment(ownerFragment(TOKEN))).toBe(TOKEN);
     expect(parseOwnerFragment('#owner=nope')).toBeNull();
     expect(parseOwnerFragment('')).toBeNull();
+    for (const bad of [TOKEN.toUpperCase(), `${TOKEN}0`, `${TOKEN}\n`, `x${TOKEN}`]) {
+      expect(parseOwnerFragment(`#owner=${bad}`)).toBeNull();
+    }
   });
 
   it('still read the links written before paths', () => {
