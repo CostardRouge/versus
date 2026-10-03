@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEMOS } from '../src/core/demos';
-import { adminHash, parseBoardHash } from '../src/core/published';
+import { parseBoardHash } from '../src/core/published';
 import { ownerFragment, parseOwnerFragment, parseRoute, type Route, routePath, trackedPath } from '../src/core/route';
 
 const ALIAS = 'Ab3dEf7hJk';
 const TOKEN = 'a'.repeat(64);
+/** An author's link as the app wrote it before it had paths (D92). */
+const adminHash = (alias: string, owner: string): string => `#/b/${alias}?owner=${owner}`;
 
 describe('routePath', () => {
   it('gives every view its address under the app', () => {
@@ -52,6 +54,9 @@ describe('author links', () => {
     expect(parseOwnerFragment(ownerFragment(TOKEN))).toBe(TOKEN);
     expect(parseOwnerFragment('#owner=nope')).toBeNull();
     expect(parseOwnerFragment('')).toBeNull();
+    for (const bad of [TOKEN.toUpperCase(), `${TOKEN}0`, `${TOKEN}\n`, `x${TOKEN}`]) {
+      expect(parseOwnerFragment(`#owner=${bad}`)).toBeNull();
+    }
   });
 
   it('still read the links written before paths', () => {

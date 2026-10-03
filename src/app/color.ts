@@ -3,10 +3,13 @@ import {
   fillCode,
   fillCSS,
   fillInk,
+  fillShadow,
+  fillText,
   harmonies,
   hexToHsl,
   hslToHex,
   isHex,
+  namedByCode,
   normHex,
   PRESETS,
 } from '../core/colors';
@@ -14,8 +17,9 @@ import { getItem } from '../core/model';
 import type { Fill, Item } from '../core/types';
 import { esc } from '../core/util';
 import { t } from '../i18n';
-import { $, $$, doc, narrow } from './dom';
+import { $, $$, doc, keepFocus, narrow } from './dom';
 import { cardHTML } from './duel';
+import { relabelRow } from './editor';
 import { cur, save } from './state';
 import { effTab, renderMain, toggleMethodMenu } from './workspace';
 
@@ -24,12 +28,16 @@ import { effTab, renderMain, toggleMethodMenu } from './workspace';
  * Local items change live. A published board's item is edited as a draft, sent only when validated.
  */
 
-export const cp: { id: string | null; active: number; follow: boolean; anchor: HTMLElement | null } = {
+/** The editor on screen: the item it edits (null when closed), its active stop, whether the name follows the color. */
+const cp: { id: string | null; active: number; follow: boolean; anchor: HTMLElement | null } = {
   id: null,
   active: 0,
   follow: false,
   anchor: null,
 };
+
+/** The item whose color is being edited, if any. */
+export const editingColor = (): string | null => cp.id;
 
 /** A published board's item being recolored: the draft, the board's other items, and what validating does. */
 interface BoardEdit {
@@ -69,14 +77,14 @@ function cpHTML(it: Item, f: Fill): string {
       </div>`,
     )
     .join('');
-  return `<p class="cp-label">${t('cpTitle')}</p>
-    <div class="cp-preview" id="cp-preview" style="background:${fillCSS(f)};color:${fillInk(f)}"><span>${fillCode(f)}</span></div>
-    <div class="cp-seg" role="radiogroup">
-      <button type="button" role="radio" aria-checked="${!isG}" data-action="cp-type" data-type="solid">${t('solid')}</button>
-      <button type="button" role="radio" aria-checked="${isG}" data-action="cp-type" data-type="gradient">${t('gradientT')}</button>
+  return `<p class="cp-label" id="cp-title">${t('cpTitle')}</p>
+    <div class="cp-preview" id="cp-preview" style="background:${fillCSS(f)};${fillText(f)}"><span>${fillCode(f)}</span></div>
+    <div class="cp-seg" role="group" aria-label="${t('cpTypeAria')}">
+      <button type="button" aria-pressed="${!isG}" data-action="cp-type" data-type="solid">${t('solid')}</button>
+      <button type="button" aria-pressed="${isG}" data-action="cp-type" data-type="gradient">${t('gradientT')}</button>
     </div>
     <div class="cp-stops">${stops}${isG && f.colors.length < 3 ? `<button class="link" type="button" data-action="cp-add">${t('addStop')}</button>` : ''}</div>
-    <p class="cp-err" id="cp-err" hidden>${t('invalidHex')}</p>
+    <p class="cp-err" id="cp-err" role="alert" hidden></p>
     <p class="cp-err" id="cp-twin" ${twinText(it) ? '' : 'hidden'}>${esc(twinText(it))}</p>
     <p class="cp-label">${t('suggestions')}</p>
     <div class="cp-swatches" id="cp-swatches">${swatchesHTML(act)}</div>
@@ -92,19 +100,26 @@ function show(it: Item, anchor: HTMLElement): void {
   toggleMethodMenu(false);
   cp.id = it.id;
   cp.active = 0;
-  cp.follow = it.label.toUpperCase() === fillCode(it.fill);
+  cp.follow = namedByCode(it.label, it.fill);
   cp.anchor = anchor;
   pop.innerHTML = cpHTML(it, it.fill);
   pop.hidden = false;
   placeColor();
-  if (!narrow.matches) $('.cp-hex', pop)?.focus();
+  // The focus goes in, on phones too: there to the Solid/Gradient switch, so no keyboard covers the editor.
+  (narrow.matches ? $('.cp-seg [aria-pressed="true"]', pop) : $('.cp-hex', pop))?.focus();
 }
-export function openColor(id: string, anchor: HTMLElement): void {
+function openColor(id: string, anchor: HTMLElement): void {
   const r = cur();
   const it = r ? getItem(r, id) : undefined;
   if (!it) return;
   boardEdit = null;
   show(it, anchor);
+}
+/** A local color item's swatch: opens the editor on it, or closes the editor already open on it. */
+export function toggleColor(id: string, anchor: HTMLElement): void {
+  const pop = $('#cpop');
+  if (cp.id === id && pop && !pop.hidden) closeColor();
+  else openColor(id, anchor);
 }
 /** Recolors an item of a published board: nothing changes until `commit` is called with the validated fill. */
 export function openBoardColor(
@@ -134,27 +149,65 @@ export function placeColor(): void {
   pop.style.left = `${left}px`;
   pop.style.top = `${top}px`;
 }
+/**
+ * Closes the editor. A board draft that wasn't validated is dropped; a local item's color, changed live, is saved,
+ * even when another view is replacing this one (rankings.ts).
+ */
 export function closeColor(): void {
   const pop = $('#cpop');
   if (!pop || pop.hidden) return;
   pop.hidden = true;
   const anchorId = cp.id;
   cp.id = null;
-  const r = cur();
-  // A board draft that wasn't validated is dropped.
   if (boardEdit) boardEdit = null;
-  else if (r) {
+  else {
     save();
-    if (effTab() === 'results') renderMain(r);
+    const r = cur();
+    if (r && effTab() === 'results') renderMain(r);
   }
   if (anchorId) $(`.thumb-btn[data-id="${anchorId}"]`)?.focus();
 }
+
+/** The list was drawn anew (a board's author): the editor follows its swatch, or closes when the item has none. */
+export function followSwatch(): void {
+  if (!cp.id) return;
+  const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
+  if (swatch) cp.anchor = swatch;
+  else closeColor();
+}
+
+/** An item renamed while its color is edited: the name given stays, it no longer follows the color. */
+export function keepName(id: string): void {
+  if (cp.id === id) cp.follow = false;
+}
+/** Draws the editor again (a stop added or removed, solid or gradient), the focus kept on its control. */
 function redrawColor(): void {
   const it = cpItem();
   const pop = $('#cpop');
-  if (it?.fill && pop) {
-    pop.innerHTML = cpHTML(it, it.fill);
-    placeColor();
+  if (!it?.fill || !pop) return;
+  const fill = it.fill;
+  keepFocus(
+    () => {
+      pop.innerHTML = cpHTML(it, fill);
+      placeColor();
+    },
+    () => $(`.cp-hex[data-i="${cp.active}"]`, pop),
+  );
+}
+/** The hex field's error: shown and announced, tied to the field (aria-invalid, aria-describedby), or cleared. */
+function hexError(field: HTMLInputElement | null, on: boolean): void {
+  const err = $('#cp-err');
+  if (err) {
+    err.hidden = !on;
+    err.textContent = on ? t('invalidHex') : '';
+  }
+  if (!field) return;
+  if (on) {
+    field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', 'cp-err');
+  } else {
+    field.removeAttribute('aria-invalid');
+    field.removeAttribute('aria-describedby');
   }
 }
 function applyFill(commit: boolean): void {
@@ -166,6 +219,7 @@ function applyFill(commit: boolean): void {
   if (pv) {
     pv.style.background = css;
     pv.style.color = fillInk(it.fill);
+    pv.style.textShadow = fillShadow(it.fill);
     const span = pv.firstElementChild;
     if (span) span.textContent = fillCode(it.fill);
   }
@@ -176,13 +230,9 @@ function applyFill(commit: boolean): void {
   }
   const r = cur();
   if (boardEdit || !r) return;
-  const row = $(`#item-list li[data-id="${it.id}"]`);
-  if (row) {
-    const th = $('.thumb-btn', row);
-    if (th) th.style.background = css;
-    const input = $<HTMLInputElement>('.row-label', row);
-    if (cp.follow && input) input.value = it.label;
-  }
+  const th = $<HTMLElement>(`#item-list .thumb-btn[data-id="${it.id}"]`);
+  if (th) th.style.background = css;
+  if (cp.follow) relabelRow(it);
   const card = $(`.card[data-id="${it.id}"]`);
   if (card) {
     $('#stage')?.classList.remove('enter');
@@ -263,8 +313,7 @@ export function colorInput(tg: HTMLInputElement): boolean {
   if (tg.classList.contains('cp-hex')) {
     const v = tg.value.trim().startsWith('#') ? tg.value.trim() : `#${tg.value.trim()}`;
     if (/^#[0-9a-f]{6}$/i.test(v)) {
-      const err = $('#cp-err');
-      if (err) err.hidden = true;
+      hexError(tg, false);
       setStop(Number(tg.dataset.i), v, false);
     }
     return true;
@@ -281,13 +330,13 @@ export function colorChange(tg: HTMLInputElement): boolean {
   if (tg.classList.contains('cp-hex')) {
     const i = Number(tg.dataset.i);
     const v = tg.value.trim().startsWith('#') ? tg.value.trim() : `#${tg.value.trim()}`;
-    const err = $('#cp-err');
     if (isHex(v)) {
-      if (err) err.hidden = true;
+      hexError(tg, false);
       setStop(i, v, true);
       tg.value = normHex(v).toUpperCase();
     } else {
-      if (err) err.hidden = false;
+      // Put back to the color it had, with the reason, until a valid code is typed.
+      hexError(tg, true);
       const c = cpItem()?.fill?.colors[i];
       if (c) tg.value = normHex(c).toUpperCase();
     }

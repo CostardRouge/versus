@@ -1,8 +1,8 @@
-import { LIMITS } from './board.ts';
+import { ALIAS_RE } from './board.ts';
 import type { BoardView, RankingView } from './protocol.ts';
 import { agreement, ownRanking } from './published.ts';
 import { compute } from './scoring.ts';
-import type { Computed, Duel, Item, ItemStats, MethodKey, Ranking } from './types.ts';
+import type { BoardSettings, BoardStatus, Computed, Duel, Item, ItemStats, MethodKey, Ranking } from './types.ts';
 
 /**
  * Sharing a result as an image (drawn by the app, src/app/share.ts) and the cards that illustrate a board's
@@ -25,12 +25,6 @@ export const CARD_MAX_BYTES = 400_000;
 /** Duel cards stored per board: enough for the duels people share, not for someone filling the bucket. */
 export const CARD_LIMIT = 40;
 
-/**
- * ranking: a ranking's podium and rows; crowd: a board's; duo: the sharer's order facing the crowd's; compare: one
- * ranking by two methods, facing each other; duel: two items.
- */
-export type CardKind = 'ranking' | 'crowd' | 'duo' | 'compare' | 'duel';
-
 export interface CardRow {
   it: Item;
   /** Score or record, as printed on the card (may be empty). */
@@ -51,26 +45,60 @@ export interface CardTexts {
   made: string;
 }
 
-export interface CardSpec {
-  kind: CardKind;
+interface CardBase {
   title: string;
   /** Under the title: items and duels, votes and voters, or why the crowd is hidden. */
   subtitle: string;
-  /** The standings, best first (ranking and crowd: the podium and the rest; duo: the crowd's side). */
+  /** Where the card sends people: a board, or the site for a local ranking. */
+  url: string;
+  /** Made in this browser, not on a board: the card says "Made with Versus" rather than "Vote at". */
+  local: boolean;
+  texts: CardTexts;
+}
+
+/** ranking: a local ranking's standings, or a voter's own on a board; crowd: a board's. */
+export interface StandingsCard extends CardBase {
+  kind: 'ranking' | 'crowd';
+  /** The standings, best first: the podium and the rest. */
   rows: CardRow[];
   /** False when `rows` are the items in board order, not a ranking (no duels yet, or a crowd hidden from the sharer). */
   ranked: boolean;
-  /** duo: the sharer's own order, compare: the ranking's method's, matched with `rows` by item id (the left column). */
+}
+
+/** The sharer's own order (`mine`, left) facing the crowd's (`rows`, right), matched by item id. */
+export interface DuoCard extends CardBase {
+  kind: 'duo';
+  rows: CardRow[];
   mine: CardRow[];
-  /** duo and compare: the columns' names, left then right (the sharer and the crowd by default). */
-  columns?: [string, string];
-  /** duo: agreement with the crowd in percent, when there are enough decisive votes. */
+  /** Agreement with the crowd in percent, when there are enough decisive votes. */
   agree: number | null;
-  /** duel: the two items facing each other. */
-  pair: [Item, Item] | null;
-  /** Where the card sends people: a board, or the site for a local ranking. */
-  url: string;
-  texts: CardTexts;
+}
+
+/** A local ranking by its method (`mine`, left) facing the same duels by another (`rows`, right). */
+export interface CompareCard extends CardBase {
+  kind: 'compare';
+  rows: CardRow[];
+  mine: CardRow[];
+  /** The two methods' names, left then right. */
+  columns: [string, string];
+  /** Whether the ranking has duels yet. */
+  ranked: boolean;
+}
+
+/** One duel of a board: the two items facing each other. */
+export interface DuelCard extends CardBase {
+  kind: 'duel';
+  pair: [Item, Item];
+}
+
+/** What a shared image shows, by kind: standings, two orders facing each other, or one duel. */
+export type CardSpec = StandingsCard | DuoCard | CompareCard | DuelCard;
+
+/** Every item a card shows, for its pictures to load. */
+export function cardItems(spec: CardSpec): Item[] {
+  if (spec.kind === 'duel') return [...spec.pair];
+  const rows = spec.kind === 'duo' || spec.kind === 'compare' ? [...spec.rows, ...spec.mine] : spec.rows;
+  return rows.map((r) => r.it);
 }
 
 type Meta = (m: MethodKey, s: ItemStats) => string;
@@ -78,7 +106,7 @@ type Meta = (m: MethodKey, s: ItemStats) => string;
 const rowsOf = (C: Computed, meta: Meta): CardRow[] =>
   C.order.map((it) => ({ it, meta: C.st[it.id] ? meta(C.m, C.st[it.id] as ItemStats) : '' }));
 
-/** A local ranking, or a voter's own result (`C` from their votes). */
+/** A ranking's standings: a local ranking (`local`), or a voter's own result on a board (`C` from their votes). */
 export function rankingSpec(
   title: string,
   C: Computed,
@@ -86,24 +114,17 @@ export function rankingSpec(
   url: string,
   texts: CardTexts,
   meta: Meta,
-): CardSpec {
-  return {
-    kind: 'ranking',
-    title,
-    subtitle,
-    rows: rowsOf(C, meta),
-    ranked: C.n > 0,
-    mine: [],
-    agree: null,
-    pair: null,
-    url,
-    texts,
-  };
+  local: boolean,
+): StandingsCard {
+  return { kind: 'ranking', title, subtitle, rows: rowsOf(C, meta), ranked: C.n > 0, url, local, texts };
 }
 
 /** A local ranking as the app scores it. */
-export const localSpec = (r: Ranking, subtitle: string, url: string, texts: CardTexts, meta: Meta): CardSpec =>
-  rankingSpec(r.title, compute(r), subtitle, url, texts, meta);
+export const localSpec = (r: Ranking, subtitle: string, url: string, texts: CardTexts, meta: Meta): StandingsCard =>
+  rankingSpec(r.title, compute(r), subtitle, url, texts, meta, true);
+
+/** The items of a board, in board order, unranked. */
+const unranked = (items: readonly Item[]): CardRow[] => items.map((it) => ({ it, meta: '' }));
 
 /**
  * A board as the sharer sees it: the crowd's standings when they may see them, else the items in board order
@@ -116,7 +137,7 @@ export function crowdSpec(
   url: string,
   texts: CardTexts,
   meta: (m: MethodKey, score: RankingView['stats'][string]) => string,
-): CardSpec {
+): StandingsCard {
   const byId = new Map(view.items.map((i) => [i.id, i]));
   const rows: CardRow[] = ranking
     ? ranking.order.flatMap((id) => {
@@ -124,19 +145,25 @@ export function crowdSpec(
         const x = ranking.stats[id];
         return it ? [{ it, meta: x ? meta(ranking.method, x) : '' }] : [];
       })
-    : view.items.map((it) => ({ it, meta: '' }));
-  return {
-    kind: 'crowd',
-    title: view.title,
-    subtitle,
-    rows,
-    ranked: ranking !== null,
-    mine: [],
-    agree: null,
-    pair: null,
-    url,
-    texts,
-  };
+    : unranked(view.items);
+  return { kind: 'crowd', title: view.title, subtitle, rows, ranked: ranking !== null, url, local: false, texts };
+}
+
+/**
+ * A board just published from a local ranking, as the crowd's card: the server has the same items and votes. The
+ * ranking's standings when its votes went with it (`voted`), else its items in order, unranked.
+ */
+export function publishedSpec(
+  r: Ranking,
+  voted: boolean,
+  subtitle: string,
+  url: string,
+  texts: CardTexts,
+  meta: Meta,
+): StandingsCard {
+  const C = compute(r);
+  const rows = voted ? rowsOf(C, meta) : unranked(r.items);
+  return { kind: 'crowd', title: r.title, subtitle, rows, ranked: voted && C.n > 0, url, local: false, texts };
 }
 
 /** The sharer's ranking facing the crowd's: both orders, and the agreement when it can be measured. */
@@ -148,7 +175,7 @@ export function duoSpec(
   subtitle: string,
   url: string,
   texts: CardTexts,
-): CardSpec {
+): DuoCard {
   const byId = new Map(view.items.map((i) => [i.id, i]));
   const rows = crowd.order.flatMap((id) => {
     const it = byId.get(id);
@@ -161,11 +188,10 @@ export function duoSpec(
     title: view.title,
     subtitle,
     rows,
-    ranked: true,
-    mine: own.order.map((it) => ({ it, meta: '' })),
+    mine: unranked(own.order),
     agree: share === null ? null : Math.round(share * 100),
-    pair: null,
     url,
+    local: false,
     texts,
   };
 }
@@ -181,37 +207,72 @@ export function compareSpec(
   subtitle: string,
   url: string,
   texts: CardTexts,
-): CardSpec {
+): CompareCard {
   const own = compute(r);
   const alt = compute({ ...r, method: other });
   return {
     kind: 'compare',
     title: r.title,
     subtitle,
-    rows: alt.order.map((it) => ({ it, meta: '' })),
-    ranked: own.n > 0,
-    mine: own.order.map((it) => ({ it, meta: '' })),
+    rows: unranked(alt.order),
+    mine: unranked(own.order),
     columns: names,
-    agree: null,
-    pair: null,
+    ranked: own.n > 0,
     url,
+    local: true,
     texts,
   };
 }
 
 /** One duel of a board: the two items, and the link that opens the board on that duel. */
-export const duelSpec = (title: string, a: Item, b: Item, url: string, texts: CardTexts): CardSpec => ({
+export const duelSpec = (title: string, a: Item, b: Item, url: string, texts: CardTexts): DuelCard => ({
   kind: 'duel',
   title,
   subtitle: '',
-  rows: [],
-  ranked: false,
-  mine: [],
-  agree: null,
   pair: [a, b],
   url,
+  local: false,
   texts,
 });
+
+// ─── Link previews ──────────────────────────────────────────────────────────
+
+/**
+ * Whether a board's link preview may show its ranking: only when anyone may see it, results always visible or the
+ * vote closed. A preview is public: it must never show what the board itself hides.
+ */
+export const previewRanked = (settings: Pick<BoardSettings, 'visibility'>, status: BoardStatus): boolean =>
+  settings.visibility === 'always' || status === 'closed';
+
+/** A board's card for its link preview: as drawn when the ranking may show, else the items in board order, unranked. */
+export function previewSpec(
+  spec: StandingsCard,
+  items: readonly Item[],
+  settings: Pick<BoardSettings, 'visibility'>,
+  status: BoardStatus,
+): StandingsCard {
+  if (previewRanked(settings, status)) return spec;
+  return { ...spec, rows: unranked(items), ranked: false };
+}
+
+/** Who sends a link's card: the board's author (with its token), or anyone else. */
+export type CardSender = 'owner' | 'visitor';
+
+/**
+ * Whether the server stores a card: the board's own card comes from its author only; a duel's card from anyone the
+ * first time (first drawn, first kept), then from the author only, who may draw it again. The site's own boards
+ * (official templates, whose token nobody keeps) take none from visitors.
+ */
+export function cardUpload(
+  by: CardSender,
+  official: boolean,
+  duel: boolean,
+  exists: boolean,
+): 'ok' | 'forbidden' | 'exists' {
+  if (by === 'owner') return 'ok';
+  if (official || !duel) return 'forbidden';
+  return exists ? 'exists' : 'ok';
+}
 
 // ─── Links ──────────────────────────────────────────────────────────────────
 
@@ -247,7 +308,7 @@ export const cardPath = (alias: string, pair: readonly [string, string] | null, 
 /** Reads a card address back: `og/b/<alias>[/<a>.<b>]/<version>.png`, split on `/`. */
 export function parseCardPath(parts: readonly string[]): { alias: string; pair: [string, string] | null } | null {
   const [og, b, alias, ...rest] = parts;
-  if (og !== 'og' || b !== 'b' || !alias || rest.length < 1 || rest.length > 2) return null;
+  if (og !== 'og' || b !== 'b' || !alias || !ALIAS_RE.test(alias) || rest.length < 1 || rest.length > 2) return null;
   const version = rest[rest.length - 1] ?? '';
   if (!/^\d+\.png$/.test(version)) return null;
   if (rest.length === 1) return { alias, pair: null };
@@ -283,5 +344,3 @@ export function isCardImage(bytes: Uint8Array): boolean {
 
 /** Rows a card shows, by format: the podium and as many of the rest as fit. */
 export const CARD_ROWS: Record<CardFormat, number> = { post: 12, story: 20, landscape: 5 };
-
-export { LIMITS };

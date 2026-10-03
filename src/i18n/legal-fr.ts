@@ -5,7 +5,7 @@ export const legalFr: LegalMessages = {
   title: 'Mentions légales et confidentialité',
   intro:
     'Qui publie Versus, qui l’héberge, et ce qu’il sait de toi : très peu. Tes classements ne quittent jamais ton navigateur, sauf si tu en publies un.',
-  updated: 'Dernière mise à jour le 30 septembre 2026.',
+  updated: 'Dernière mise à jour le 3 octobre 2026.',
   tocAria: 'Sur cette page',
 
   pubTitle: 'Éditeur',
@@ -28,7 +28,7 @@ export const legalFr: LegalMessages = {
   device1:
     'Tes classements, leurs éléments (images comprises), tes duels et tes préférences (langue, thème, choix d’affichage) sont gardés dans le stockage local de ton navigateur, sur cet appareil seulement. S’y trouvent aussi, si tu utilises les classements publiés, un identifiant de votant anonyme (une suite de caractères au hasard), les clés des classements que tu as publiés et les cartes de « Tes votes ».',
   device2:
-    'L’app installée garde aussi ses propres fichiers dans le cache du navigateur pour marcher hors ligne : des fichiers, jamais tes données. Rien de tout cela n’est envoyé nulle part, sauf ce que tu publies. Pour l’effacer, supprime tes classements dans l’app, ou efface les données de ce site dans les réglages de ton navigateur.',
+    'Ouvrir l’app range aussi ses propres fichiers dans le cache du navigateur, pour qu’elle marche hors ligne : des fichiers, jamais tes données. Rien de tout cela n’est envoyé nulle part, sauf ce que tu publies. Pour l’effacer, supprime tes classements dans l’app, ou efface les données de ce site dans les réglages de ton navigateur.',
 
   boardsTitle: 'Classements publiés',
   boards1:
@@ -42,7 +42,7 @@ export const legalFr: LegalMessages = {
   count1:
     'Les visites sont comptées avec <a href="https://umami.is">Umami</a>, auto-hébergé sur un serveur de l’éditeur à l’adresse <code>insight.steevepommier.com</code> : aucun tiers ne reçoit les données, et rien ne sert à la publicité.',
   count2:
-    '<b>Ce qui est compté :</b> les pages vues, où ce qui identifie un classement ou un classement publié est remplacé par un repère (<code>/app/r/:id</code>) ; le site d’où tu viens ; quelques événements anonymes (un classement créé ou terminé, un classement publié, un premier vote sur un classement publié et toutes ses paires votées, un résultat ou un duel partagé en image et par quel moyen, une installation, un camp choisi dans le débat de la chocolatine) ; ton navigateur, ton système, le type d’appareil, la taille d’écran, la langue et le pays.',
+    '<b>Ce qui est compté :</b> les pages vues, où ce qui identifie un classement ou un classement publié est remplacé par un repère (<code>/app/r/:id</code>) ; le site d’où tu viens ; quelques événements anonymes (un classement créé ou terminé, un classement publié, un premier vote sur un classement publié et toutes ses paires votées, un résultat ou un duel partagé en image et par quel moyen, des classements exportés dans un fichier ou importés d’un fichier (combien), une installation, un camp choisi dans le débat de la chocolatine) ; ton navigateur, ton système, le type d’appareil, la taille d’écran, la langue et le pays.',
   count3:
     '<b>Ce qui ne l’est jamais :</b> le contenu de tes classements, leurs titres ou leurs éléments, l’adresse d’un classement publié, la clé de l’auteur, ton adresse IP (elle donne le pays, puis est oubliée), ni rien qui puisse te suivre d’un site à l’autre. Aucun cookie n’est déposé.',
   count4:
@@ -56,11 +56,11 @@ export const legalFr: LegalMessages = {
 
   cookiesTitle: 'Cookies',
   cookies1:
-    'Versus ne dépose aucun cookie, donc pas de bandeau de consentement : il n’y a rien à accepter. Quand la publication demande une vérification anti-robots, Cloudflare Turnstile s’exécute dans ton navigateur, selon la politique de confidentialité de Cloudflare.',
+    'Versus ne dépose aucun cookie, donc pas de bandeau de consentement : il n’y a rien à accepter. Quand la publication, ou un premier vote sur un des classements du site, demande une vérification anti-robots, Cloudflare Turnstile s’exécute dans ton navigateur, selon la politique de confidentialité de Cloudflare.',
 
   logsTitle: 'Hébergement et abus',
   logs1:
-    'Comme tout hébergeur, Cloudflare (et GitHub pour la copie) traite ton adresse IP pour délivrer les pages et protéger le site : voir la <a href="https://www.cloudflare.com/privacypolicy/">politique de confidentialité de Cloudflare</a>. Versus s’en sert, sans la garder, pour limiter la fréquence à laquelle une même adresse peut publier ou appeler le serveur, et garde quelques jours des journaux techniques des appels au serveur pour corriger les erreurs.',
+    'Comme tout hébergeur, Cloudflare (et GitHub pour la copie) traite ton adresse IP pour délivrer les pages et protéger le site : voir la <a href="https://www.cloudflare.com/privacypolicy/">politique de confidentialité de Cloudflare</a>. Versus s’en sert pour limiter la fréquence à laquelle une même adresse peut publier ou appeler le serveur, et le nombre de nouveaux votants et de suggestions qu’elle peut amener à un classement : pour ce dernier compte, un classement publié garde dix minutes une courte empreinte de l’adresse, qui ne permet pas de la retrouver et change d’un classement à l’autre. Versus garde quelques jours des journaux techniques des appels au serveur pour corriger les erreurs.',
 
   rightsTitle: 'Tes droits',
   rights1:

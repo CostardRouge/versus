@@ -1,6 +1,7 @@
-import { fillCode, sameFill } from './colors';
-import { mkRank } from './model';
-import { compute, pairKey } from './scoring';
+import { fillCode, namedByCode, sameFill } from './colors.ts';
+import { labelKey } from './list.ts';
+import { mkRank } from './model.ts';
+import { compute, pairKey } from './scoring.ts';
 import type {
   BoardLang,
   BoardMeta,
@@ -23,8 +24,8 @@ import type {
   SharedBoard,
   Visibility,
   Vote,
-} from './types';
-import { hueOf } from './util';
+} from './types.ts';
+import { hueOf } from './util.ts';
 
 /**
  * Published boards: one voice per voter and pair, server-assigned pairs, results visibility.
@@ -33,7 +34,7 @@ import { hueOf } from './util';
 
 /** Methods a crowd can use: binary insertion needs one sequence of comparisons, not concurrent voters. */
 export const CROWD_METHODS: readonly MethodKey[] = ['bt', 'elo', 'win'];
-const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
+export const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
 
 export const LIMITS = {
   title: 120,
@@ -53,19 +54,21 @@ export const LIMITS = {
 };
 
 /**
- * Whether published items may carry pictures: not at all (the default), sent to the moderator for review and
- * shown once approved, or as given (the site's own boards, whose pictures are the site's).
+ * Whether published items may carry pictures: not at all (the default), or sent to the moderator for review and
+ * shown once approved.
  */
-export type ImagePolicy = 'off' | 'review' | 'direct';
-
-/** Where an approved picture may live: on this site under /img/, or an https address (official templates). */
-export const IMAGE_URL_RE = /^(?:\/img\/[\w./-]+|https:\/\/[^\s"'<>]+)$/;
+export type ImagePolicy = 'off' | 'review';
 /** Undoing the very last vote stays possible this long when votes are final (mis-taps). */
 export const UNDO_GRACE_MS = 10_000;
 /** Minimum delay between two votes or skips of one connection (each one triggers pair assignment). */
 export const ACTION_INTERVAL_MS = 150;
 /** Minimum delay between two items added by one connection. */
 export const ADD_INTERVAL_MS = 5_000;
+/** New voters one address may bring to a board within NEW_VOTERS_WINDOW_MS (`admitNewVoter`). */
+export const NEW_VOTERS_PER_ADDRESS = 30;
+export const NEW_VOTERS_WINDOW_MS = 10 * 60_000;
+/** Items visitors from one address may suggest to a board within NEW_VOTERS_WINDOW_MS (`admitSuggestion`). */
+export const SUGGESTIONS_PER_ADDRESS = 10;
 /** Inactive published boards are deleted after this many days without activity. */
 export const TTL_DAYS = 60;
 
@@ -97,6 +100,23 @@ const fail = <T>(error: ErrorCode): Result<T> => ({ ok: false, error });
 export const isRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 export const isOutcome = (x: unknown): x is Outcome => x === 0 || x === 0.5 || x === 1;
+
+/**
+ * Characters nobody sees or types on purpose: controls, format characters (zero-width spaces, the byte order mark,
+ * the soft hyphen, the bidi marks, embeddings and isolates that can reorder what follows them, tags), and the fillers
+ * and blanks that draw nothing (Hangul fillers, the empty braille pattern). The zero-width joiner and non-joiner stay
+ * (emoji and scripts need them), and so do the tags of a flag (🏴 and its region), kept by the first alternative.
+ */
+const INVISIBLE_RE =
+  /(\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F})|(?![\u200C\u200D])[\p{Cc}\p{Cf}\u115F\u1160\u3164\uFFA0\u2800]/gu;
+
+/** Text from untrusted input as boards keep it: line breaks and tabs as spaces, invisible characters out, NFC, trimmed. */
+export const cleanText = (s: string): string =>
+  s
+    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
+    .replace(INVISIBLE_RE, (_, flag?: string) => flag ?? '')
+    .normalize('NFC')
+    .trim();
 
 /** Short shareable alias in base58 (no 0, O, I, l), drawn without modulo bias. */
 export function makeAlias(randomBytes: (n: number) => Uint8Array): string {
@@ -133,27 +153,22 @@ export interface NewItem {
 }
 
 /**
- * An item's content: a label, a fill for colors, and, by policy, a picture: none (`off`), announced and sent
- * for review (`pic: 'pending'`, `review`), or its address as given (`direct`, the site's own boards).
+ * An item's content: a label, a fill for colors, and, by policy, a picture: none (`off`), or announced and sent
+ * for review (`pic: 'pending'`, `review`). A picture never comes as an address: the server gives it one once approved.
  */
 export function parseNewItem(x: unknown, images: ImagePolicy = 'off'): Result<NewItem> {
   if (!isRecord(x) || typeof x.label !== 'string') return fail('bad_request');
-  let img: string | null = null;
-  if (x.img !== null && x.img !== undefined) {
-    if (images !== 'direct' || typeof x.img !== 'string' || !IMAGE_URL_RE.test(x.img))
-      return fail('images_not_allowed');
-    img = x.img;
-  }
+  if (x.img !== null && x.img !== undefined) return fail('images_not_allowed');
   let pic: 'pending' | undefined;
   if (x.pic !== undefined) {
-    if (x.pic !== 'pending' || images === 'off' || img) return fail('images_not_allowed');
+    if (x.pic !== 'pending' || images === 'off') return fail('images_not_allowed');
     pic = 'pending';
   }
   const fill = parseFill(x.fill);
   if (fill === undefined) return fail('bad_request');
-  const label = x.label.trim();
+  const label = cleanText(x.label);
   if (label.length > LIMITS.label || (!label && !fill)) return fail('bad_request');
-  return ok({ label, fill, img, ...(pic ? { pic } : {}) });
+  return ok({ label, fill, img: null, ...(pic ? { pic } : {}) });
 }
 
 function parseItem(x: unknown, images: ImagePolicy): Result<Item> {
@@ -165,20 +180,26 @@ function parseItem(x: unknown, images: ImagePolicy): Result<Item> {
   return ok({ id: x.id, label, img, fill, h, ...(pic ? { pic } : {}) });
 }
 
-/** Applies the valid fields of `patch`; anything else keeps its current value. */
-export function patchSettings(current: BoardSettings, patch: unknown): BoardSettings {
-  const next = { ...current };
-  if (!isRecord(patch)) return next;
+/** The valid fields of `patch`, and only those (a settings form, a request). */
+export function validSettings(patch: unknown): Partial<BoardSettings> {
+  const out: Partial<BoardSettings> = {};
+  if (!isRecord(patch)) return out;
   const { method, visibility, revealAfter, allowChange, visitorsAddItems } = patch;
-  if (CROWD_METHODS.includes(method as MethodKey)) next.method = method as MethodKey;
-  if (VISIBILITIES.includes(visibility as Visibility)) next.visibility = visibility as Visibility;
+  if (CROWD_METHODS.includes(method as MethodKey)) out.method = method as MethodKey;
+  if (VISIBILITIES.includes(visibility as Visibility)) out.visibility = visibility as Visibility;
   if (Number.isInteger(revealAfter) && (revealAfter as number) >= 1 && (revealAfter as number) <= LIMITS.revealAfter) {
-    next.revealAfter = revealAfter as number;
+    out.revealAfter = revealAfter as number;
   }
-  if (typeof allowChange === 'boolean') next.allowChange = allowChange;
-  if (typeof visitorsAddItems === 'boolean') next.visitorsAddItems = visitorsAddItems;
-  return next;
+  if (typeof allowChange === 'boolean') out.allowChange = allowChange;
+  if (typeof visitorsAddItems === 'boolean') out.visitorsAddItems = visitorsAddItems;
+  return out;
 }
+
+/** Applies the valid fields of `patch`; anything else keeps its current value. */
+export const patchSettings = (current: BoardSettings, patch: unknown): BoardSettings => ({
+  ...current,
+  ...validSettings(patch),
+});
 
 export interface PublishInput {
   title: string;
@@ -342,15 +363,17 @@ export function parseReport(x: unknown): Result<ReportInput> {
   if (!isRecord(x) || typeof x.voter !== 'string' || !VOTER_RE.test(x.voter)) return fail('bad_request');
   if (!REPORT_REASONS.includes(x.reason as ReportReason)) return fail('bad_request');
   if (x.note !== undefined && typeof x.note !== 'string') return fail('bad_request');
-  const note = (x.note ?? '').trim().slice(0, LIMITS.note);
+  const note = cleanText(x.note ?? '').slice(0, LIMITS.note);
   return ok({ voter: x.voter, reason: x.reason as ReportReason, note });
 }
 
 /**
- * Records a report. One per voter (a new one replaces theirs), LIMITS.reports voters at most: enough to
- * make a board stand out on the admin page, not enough to fill the store. Not an activity for the TTL.
+ * Records a report from a voter of the board: someone who voted at least once (a voter id made up for the occasion
+ * reports nothing). One per voter (a new one replaces theirs), LIMITS.reports voters at most: enough to make a
+ * board stand out on the admin page, not enough to fill the store. Not an activity for the TTL.
  */
 export function addReport(board: SharedBoard, input: ReportInput, now: number): Result<Report> {
+  if (!voteCount(board, input.voter)) return fail('forbidden');
   if (!board.reports.has(input.voter) && board.reports.size >= LIMITS.reports) return fail('full');
   const report: Report = { ...input, t: now };
   board.reports.delete(input.voter);
@@ -402,9 +425,9 @@ export function setStatus(board: SharedBoard, status: BoardStatus, now: number):
   board.touched = now;
 }
 
-/** A title from untrusted input: trimmed, 1 to LIMITS.title characters; null otherwise. */
+/** A title from untrusted input: cleaned (`cleanText`), 1 to LIMITS.title characters; null otherwise. */
 export function parseTitle(x: unknown): string | null {
-  const title = typeof x === 'string' ? x.trim() : '';
+  const title = typeof x === 'string' ? cleanText(x) : '';
   return title && title.length <= LIMITS.title ? title : null;
 }
 
@@ -421,12 +444,12 @@ const ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 /** Id for an item added after publication, drawn by the server. */
 export const itemId = (bytes: Uint8Array): string => Array.from(bytes, (b) => ID_CHARS[b & 63]).join('');
 
-/** Adds an item to an open board. Refused when full or when the same label is already there. */
+/** Adds an item to an open board. Refused when full or when the same label is already there (`labelKey`). */
 export function addItem(board: SharedBoard, input: NewItem, id: string, now: number): Result<Item> {
   if (board.status !== 'open') return fail('closed');
   if (board.items.length >= LIMITS.items) return fail('full');
-  const key = input.label.toLowerCase();
-  if (board.items.some((i) => i.label.toLowerCase() === key)) return fail('exists');
+  const key = labelKey(input.label);
+  if (board.items.some((i) => labelKey(i.label) === key)) return fail('exists');
   const item: Item = {
     id,
     label: input.label,
@@ -461,6 +484,9 @@ export function addItems(
 }
 
 // ─── Pictures (docs/published-boards.md#images) ────────────────────────────
+
+/** The public address of an item's picture once approved, relative to the site's root (served by the Worker). */
+export const picturePath = (alias: string, id: string): string => `/img/b/${alias}/${id}.jpg`;
 
 /** Items whose picture waits for the moderator. */
 export const pendingPictures = (board: SharedBoard): number => board.items.filter((i) => i.pic === 'pending').length;
@@ -511,7 +537,7 @@ export function parseItemEdit(x: unknown): Result<ItemEdit> {
   if (!isRecord(x)) return fail('bad_request');
   const out: ItemEdit = { reset: false };
   if (x.label !== undefined) {
-    const label = typeof x.label === 'string' ? x.label.trim() : '';
+    const label = typeof x.label === 'string' ? cleanText(x.label) : '';
     if (!label || label.length > LIMITS.label) return fail('bad_request');
     out.label = label;
   }
@@ -542,11 +568,11 @@ export function editItem(
   if (board.status !== 'open') return fail('closed');
   if (edit.fill && !it.fill) return fail('bad_request');
   const fill = edit.fill && it.fill && !sameFill(edit.fill, it.fill) ? edit.fill : it.fill;
-  const follows = !!it.fill && !!fill && it.label.toUpperCase() === fillCode(it.fill);
+  const follows = !!it.fill && !!fill && namedByCode(it.label, it.fill);
   const label = edit.label ?? (follows && fill ? fillCode(fill) : it.label);
   if (label === it.label && fill === it.fill) return ok({ item: it, removed: [] });
-  const key = label.toLowerCase();
-  if (board.items.some((i) => i.id !== id && i.label.toLowerCase() === key)) return fail('exists');
+  const key = labelKey(label);
+  if (board.items.some((i) => i.id !== id && labelKey(i.label) === key)) return fail('exists');
   const item: Item = { ...it, label, fill };
   board.items = board.items.map((i) => (i.id === id ? item : i));
   const removed = edit.reset ? [...board.votes.values()].filter((v) => v.a === id || v.b === id) : [];
@@ -614,6 +640,20 @@ export const totalPairs = (n: number): number => (n * (n - 1)) / 2;
  */
 export const revealAt = (revealAfter: number, items: number): number =>
   Math.max(1, Math.min(revealAfter, totalPairs(items)));
+
+/**
+ * Until when the crowd's ranking stays hidden from a voter who can't see it yet: the vote's end, or their `need`-th
+ * vote (`done` of them cast).
+ */
+export function hiddenUntil(
+  settings: Pick<BoardSettings, 'visibility' | 'revealAfter'>,
+  items: number,
+  count: number,
+): { until: 'closed' } | { until: 'votes'; need: number; done: number } {
+  if (settings.visibility !== 'after') return { until: 'closed' };
+  const need = revealAt(settings.revealAfter, items);
+  return { until: 'votes', need, done: Math.min(count, need) };
+}
 
 /** Whether this viewer may see the crowd ranking. Enforced by the server, never by hiding UI. */
 export function canSeeRanking(board: SharedBoard, voter: string | null, owner: boolean): boolean {
@@ -696,12 +736,23 @@ export function assignPairs(
   return picked;
 }
 
-/** Tops up the session's queue. Skipped pairs come back only once nothing else is left. */
+/** The crowd's stats with every item at the same position. */
+const unranked = (C: Computed): Computed => ({
+  ...C,
+  st: Object.fromEntries(Object.entries(C.st).map(([id, s]) => [id, { ...s, pos: 0 }])),
+});
+
+/**
+ * Tops up the session's queue. Skipped pairs come back only once nothing else is left. Close positions make a duel
+ * informative, but they are the crowd's ranking: for a voter who may not see it, pairs are chosen without them, or
+ * the pairs served would spell it out.
+ */
 export function refill(board: SharedBoard, session: Session, C: Computed, rng: Rng): void {
   if (board.status !== 'open') {
     session.queue = [];
     return;
   }
+  const crowd = canSeeRanking(board, session.voter, session.owner) ? C : unranked(C);
   const ids = new Set(board.items.map((i) => i.id));
   const mine = board.voters.get(session.voter);
   // Drop pairs that became invalid meanwhile (voted from another tab, item removed).
@@ -710,7 +761,7 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
     const need = LIMITS.queue - session.queue.length;
     if (need <= 0) return;
     const exclude = new Set([...session.queue.map(([a, b]) => pairKey(a, b)), ...skipped]);
-    session.queue.push(...assignPairs(board, session.voter, C, exclude, session.queue.flat(), need, rng));
+    session.queue.push(...assignPairs(board, session.voter, crowd, exclude, session.queue.flat(), need, rng));
   };
   fill(session.skipped);
   if (session.queue.length < LIMITS.queue && session.skipped.length) {
@@ -719,24 +770,44 @@ export function refill(board: SharedBoard, session: Session, C: Computed, rng: R
   }
 }
 
-/**
- * A new session; `lastActionAt` carries over when a connection says hello again, so it can't dodge the limit.
- * `wanted` is the duel a shared link asked for: it comes first when this voter can still vote on it.
- */
-export function openSession(
-  board: SharedBoard,
-  voter: string,
-  owner: boolean,
-  C: Computed,
-  rng: Rng,
-  lastActionAt = 0,
-  wanted: readonly [string, string] | null = null,
-): Session {
-  const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt };
+/** Who opens a session, and what carries over (`openSession`). */
+export interface SessionStart {
+  voter: string;
+  /** The connection said hello with the owner token. */
+  owner?: boolean;
+  /**
+   * The connection's session when it says hello again: its last vote and last item added carry over, so a new hello
+   * can't dodge the limits, and so does a human check it passed.
+   */
+  prev?: Pick<Session, 'lastActionAt' | 'lastAddAt' | 'human'> | null;
+  /**
+   * The duel a shared link asked for: it comes first when this voter can still vote on it, on a connection's first
+   * hello only (a later one can't pick the next pair at will).
+   */
+  wanted?: readonly [string, string] | null;
+}
+
+/** Whether a connection may say hello again: a new hello draws new pairs, so it counts as an action. */
+export const helloAgain = (prev: Pick<Session, 'lastActionAt'> | null, now: number): boolean =>
+  prev === null || now - prev.lastActionAt >= ACTION_INTERVAL_MS;
+
+/** A new session for a connection, its queue filled. */
+export function openSession(board: SharedBoard, C: Computed, rng: Rng, start: SessionStart): Session {
+  const { voter, owner = false, prev, wanted } = start;
+  const session: Session = { voter, owner, queue: [], skipped: [], lastActionAt: prev?.lastActionAt ?? 0 };
+  if (prev?.lastAddAt !== undefined) session.lastAddAt = prev.lastAddAt;
+  if (prev?.human) session.human = true;
   refill(board, session, C, rng);
-  if (wanted) preferPair(board, session, wanted[0], wanted[1]);
+  if (wanted && !prev) preferPair(board, session, wanted[0], wanted[1]);
   return session;
 }
+
+/**
+ * Whether a connection may say hello as `voter`: it keeps the voter of its first hello. The app opens a new
+ * connection for each voter; one connection changing voters would vote as many people.
+ */
+export const keepsVoter = (prev: Pick<Session, 'voter'> | null, voter: string): boolean =>
+  prev === null || prev.voter === voter;
 
 /**
  * Puts a pair first in the session's queue (the duel a shared link names). Nothing happens when the pair isn't
@@ -756,6 +827,53 @@ const queueIndex = (session: Session, a: string, b: string): number => {
   const k = pairKey(a, b);
   return session.queue.findIndex(([x, y]) => pairKey(x, y) === k);
 };
+
+/**
+ * Whether a vote must wait for a human check (Turnstile): a voter's first vote on one of the site's own boards (the
+ * official templates, open to everyone and listed publicly), when the server checks at all (`checks`), on a
+ * connection that hasn't passed one. Voters who already voted there are never asked.
+ */
+export const needsCheck = (board: SharedBoard, session: Session, checks: boolean): boolean =>
+  checks && board.official && !session.human && voteCount(board, session.voter) === 0;
+
+/**
+ * What limits count an address by: an IPv4 address as it is (an IPv4 address mapped into IPv6 too), an IPv6 address by
+ * its /64 prefix. A machine or a household gets a whole /64: counted by full address, it could change at will.
+ */
+export function addressKey(ip: string): string {
+  const addr = ip.trim().toLowerCase().replace(/%.*$/, '');
+  if (!addr.includes(':')) return addr;
+  const mapped = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(addr);
+  if (mapped) return mapped[1] as string;
+  const [head = '', tail] = addr.split('::');
+  const before = head ? head.split(':') : [];
+  const after = tail ? tail.split(':') : [];
+  const zeros = tail === undefined ? [] : Array<string>(Math.max(0, 8 - before.length - after.length)).fill('0');
+  const groups = [...before, ...zeros, ...after].slice(0, 4).map((g) => g.replace(/^0+(?=.)/, ''));
+  return `${groups.join(':')}::/64`;
+}
+
+/** Times an address did something, `now` added: null when it did it `limit` times within `windowMs` already. */
+function admitFromAddress(times: readonly number[], now: number, limit: number, windowMs: number): number[] | null {
+  const recent = times.filter((t) => now - t < windowMs);
+  return recent.length < limit ? [...recent, now] : null;
+}
+
+/**
+ * A voter's first vote on a board, from an address whose earlier first votes there were at `times` (oldest first):
+ * the times to keep once this vote is cast, or null when the address brought NEW_VOTERS_PER_ADDRESS voters within
+ * NEW_VOTERS_WINDOW_MS already. A voter is a browser (a private window is another one): an address can bring a
+ * household or a classroom, not a crowd. Times older than the window are dropped.
+ */
+export const admitNewVoter = (times: readonly number[], now: number): number[] | null =>
+  admitFromAddress(times, now, NEW_VOTERS_PER_ADDRESS, NEW_VOTERS_WINDOW_MS);
+
+/**
+ * A visitor's suggestion, from an address whose earlier ones were at `times`: like `admitNewVoter`, with
+ * SUGGESTIONS_PER_ADDRESS. The delay between two additions is a connection's; this holds when there are many.
+ */
+export const admitSuggestion = (times: readonly number[], now: number): number[] | null =>
+  admitFromAddress(times, now, SUGGESTIONS_PER_ADDRESS, NEW_VOTERS_WINDOW_MS);
 
 /** A vote from a connection: rate limited, and only on a pair the server assigned to it. */
 export function sessionVote(

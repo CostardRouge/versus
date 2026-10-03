@@ -1,10 +1,11 @@
 import { compute, nextPair, pushDuel, stability } from '../core/scoring';
 import type { Outcome, Ranking, Rng } from '../core/types';
+import { pctText } from '../i18n/text';
 import { burst } from './confetti';
 import { duelOutcome } from './crowd';
 import type { VCursor } from './cursor';
 import { item } from './data';
-import { cardHTML, eyebrow, forecast, nDuels, pctOf, podiumHTML, rowsHTML, scoreHTML, stabilityPct } from './frame';
+import { cardHTML, eyebrow, forecast, nDuels, podiumHTML, rowsHTML, scoreHTML, stabilityPct } from './frame';
 import { calm, type Run, STOP, sleep } from './motion';
 import type { Strings } from './strings';
 
@@ -272,7 +273,7 @@ export class BoardView {
     const bar = this.q<HTMLElement>('.pane.duel .stab .bar i');
     if (bar) bar.style.width = `${s}%`;
     const txt = this.q('.f-stab');
-    if (txt) txt.textContent = pctOf(s, this.S.lang);
+    if (txt) txt.textContent = pctText(s, this.S.lang);
     const count = this.q('.f-count');
     if (count) count.textContent = nDuels(this.rank.history.length, this.S);
   }

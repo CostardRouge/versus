@@ -1,4 +1,6 @@
-// Imports carry their extension and stay type-only: build/seo.ts renders this module while Vite loads its config.
+// Imports carry their extension: build/seo.ts renders this module while Vite loads its config (D90).
+import { METHOD_KEYS } from '../core/scoring.ts';
+import { HOME_PATH, LEGAL_PATH, LINKS } from '../core/site.ts';
 import type { MethodKey } from '../core/types.ts';
 import type { MsgKey } from '../i18n/en.ts';
 import type { Lang } from '../i18n/index.ts';
@@ -9,20 +11,6 @@ import type { Lang } from '../i18n/index.ts';
  * run JavaScript; the app replaces it with the gallery, where this section comes back in the visitor's
  * language one level down, "Your rankings" being the h1 there.
  */
-
-/** Where the section links to; build/site.ts takes the author and repository from here too. */
-export const LINKS = {
-  author: { name: 'Steeve Pommier', url: 'https://steevepommier.com/' },
-  source: 'https://github.com/CostardRouge/versus',
-} as const;
-
-/** The legal notice of each language, relative to the site's root (the pages in build/site.ts). */
-export const LEGAL_PATH: Record<Lang, string> = { en: 'legal/', fr: 'fr/mentions-legales/' };
-
-/** The home page of each language, relative to the site's root: the way back to the showcase from the app. */
-export const HOME_PAGE_PATH: Record<Lang, string> = { en: '', fr: 'fr/' };
-
-const METHODS: readonly MethodKey[] = ['bt', 'elo', 'win', 'sort'];
 
 /** `t()` in the app, the English messages at build time. */
 export type Text = (key: MsgKey) => string;
@@ -44,13 +32,13 @@ export function aboutHTML(tx: Text, opts: { h1: boolean; publish: boolean; lang:
         <div>
           <${sub}>${tx('aboutMethodsTitle')}</${sub}>
           <p>${tx('aboutMethodsIntro')}</p>
-          <dl class="about-methods">${METHODS.map(method).join('')}</dl>
+          <dl class="about-methods">${METHOD_KEYS.map(method).join('')}</dl>
         </div>
         <div>
           <${sub}>${tx('aboutPrivateTitle')}</${sub}>
           <p>${tx('aboutPrivate')}</p>${opts.publish ? `\n          <${sub}>${tx('aboutPublishTitle')}</${sub}>\n          <p>${tx('aboutPublish')}</p>` : ''}
         </div>
       </div>
-      <p class="about-foot"><a href="../${HOME_PAGE_PATH[opts.lang]}">${tx('aboutHome')}</a> · ${tx('aboutBy')} <a href="${LINKS.author.url}">${LINKS.author.name}</a> · <a href="${LINKS.source}">${tx('aboutSource')}</a> · <a href="../${LEGAL_PATH[opts.lang]}">${tx('aboutLegal')}</a></p>
+      <p class="about-foot"><a href="../${HOME_PATH[opts.lang]}">${tx('aboutHome')}</a> · ${tx('aboutBy')} <a href="${LINKS.author.url}">${LINKS.author.name}</a> · <a href="${LINKS.source}">${tx('aboutSource')}</a> · <a href="../${LEGAL_PATH[opts.lang]}">${tx('aboutLegal')}</a></p>
     </section>`;
 }

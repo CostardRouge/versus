@@ -13,6 +13,7 @@ import {
 import { DEFAULT_SETTINGS } from '../src/core/board';
 import { DEMOS } from '../src/core/demos';
 import type { Item, Joined, Ranking } from '../src/core/types';
+import { fileSlug } from '../src/core/util';
 
 const NOW = Date.UTC(2026, 8, 30, 12);
 const ALIAS = 'Ab3dEf7hJk';
@@ -125,6 +126,14 @@ describe('makeBackup and makeShare', () => {
     expect(shareName('🍕')).toBe('versus-ranking.json');
     expect(shareName('x'.repeat(80))).toBe(`versus-${'x'.repeat(40)}.json`);
   });
+
+  it('cuts a title to a file name the same way for a file and a shared image', () => {
+    expect(fileSlug('Crème brûlée & café')).toBe('creme-brulee-cafe');
+    // Never a dash at either end, even where the cut falls on a space.
+    expect(fileSlug(`${'a'.repeat(39)} b`)).toBe('a'.repeat(39));
+    expect(fileSlug(`¿${'b'.repeat(50)}`)).toBe('b'.repeat(40));
+    expect(fileSlug('寿司 ?!')).toBe('');
+  });
 });
 
 describe('parseBackup', () => {
@@ -235,6 +244,21 @@ describe('parseBackup', () => {
     expect(b.joined[0]?.settings.revealAfter).toBe(DEFAULT_SETTINGS.revealAfter);
   });
 
+  it("keeps a card whose board shows an approved picture, from that board's own address only", () => {
+    const picture = `/img/b/${ALIAS}/p0.jpg`;
+    const b = read(
+      file({
+        joined: [
+          card(ALIAS, { items: [item('p0', 'Margherita', { img: picture }), item('p1')] }),
+          card('Zz3dEf7hJk', { items: [item('p0', 'Margherita', { img: picture }), item('p1')] }),
+          card('Yy3dEf7hJk', { items: [item('p0', 'Margherita', { img: '/img/b/Yy3dEf7hJk/p1.jpg' }), item('p1')] }),
+        ],
+      }),
+    );
+    expect(b.joined.map((j) => j.alias)).toEqual([ALIAS]);
+    expect(b.joined[0]?.items[0]?.img).toBe(picture);
+  });
+
   it('keeps the first of two rankings with the same id', () => {
     const b = read(file({ rankings: [rank('r1', { title: 'First' }), rank('r1', { title: 'Second' })] }));
     expect(b.rankings.map((r) => r.title)).toEqual(['First']);
@@ -299,5 +323,8 @@ describe('mergeBackup', () => {
     const published = rank('r1', { pub: { alias: 'Zz3dEf7hJk' } });
     expect(mergeBackup(local({ ranks: [published] }), f, opts).local.voter).toBe('local-voter');
     expect(mergeBackup(local(), file({ joined: [card(ALIAS)] }), opts).local.voter).toBe('local-voter');
+    // A file of rankings alone (a shared one, or one made up) never sets it.
+    expect(mergeBackup(local(), file({ rankings: [rank('r9')], voter: VOTER }), opts).local.voter).toBe('local-voter');
+    expect(mergeBackup(local(), file({ owners: { [ALIAS]: TOKEN }, voter: VOTER }), opts).local.voter).toBe(VOTER);
   });
 });

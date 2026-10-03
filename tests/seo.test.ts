@@ -1,10 +1,14 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   aboutStatic,
+  CSP_REPORT_PATH,
+  contentPolicy,
   generatedFiles,
   graph,
+  headersFile,
   headTags,
   jsonLd,
   legalGraph,
@@ -16,11 +20,14 @@ import {
   ROBOTS_ADMIN,
   ROBOTS_APP,
   rootFrom,
+  scriptHashes,
   sitePath,
   siteUrl,
 } from '../build/seo';
+import { preloadFonts } from '../build/seo-plugin';
 import {
   ADMIN_TITLE,
+  COLORS,
   DEFAULT_SITE_URL,
   DESCRIPTION,
   DESCRIPTIONS,
@@ -39,10 +46,12 @@ import {
   TITLE,
   TITLES,
 } from '../build/site';
-import { aboutHTML, HOME_PAGE_PATH } from '../src/app/about';
+import { aboutHTML } from '../src/app/about';
 import { STASH_KEY } from '../src/app/router';
+import { HOME_PATH } from '../src/core/site';
 import { en } from '../src/i18n/en';
 import { fr } from '../src/i18n/fr';
+import { PREFS_KEY } from '../src/prefs';
 
 const URL_ = 'https://versus.example.com/';
 const head = headTags(URL_).join('\n');
@@ -283,7 +292,7 @@ describe('page text', () => {
   });
 
   it('links back to the home page of the app’s language, from the app’s folder', () => {
-    for (const lang of LANGUAGES) expect(PAGES[HOMES[lang]].path).toBe(HOME_PAGE_PATH[lang]);
+    for (const lang of LANGUAGES) expect(PAGES[HOMES[lang]].path).toBe(HOME_PATH[lang]);
     const foot = (lang: 'en' | 'fr') =>
       aboutHTML((k) => String((lang === 'fr' ? fr : en)[k]), { h1: false, publish: false, lang }).match(
         /<p class="about-foot">[\s\S]*?<\/p>/,
@@ -389,6 +398,39 @@ describe('generated files', () => {
     expect(html).toContain(`href="${URL_}app/"`);
   });
 
+  it('preloads the display font on the home pages only, the body font everywhere', () => {
+    const bricolage = 'assets/bricolage-grotesque-latin-opsz-normal-Cre6nC2_.woff2';
+    const figtree = 'assets/figtree-latin-wght-normal-D_ZTVpCC.woff2';
+    expect(preloadFonts('home').map((re) => re.test(bricolage) || re.test(figtree))).toEqual([true, true]);
+    for (const kind of ['app', 'legal', 'admin']) {
+      expect(
+        preloadFonts(kind).some((re) => re.test(bricolage)),
+        kind,
+      ).toBe(false);
+      expect(
+        preloadFonts(kind).some((re) => re.test(figtree)),
+        kind,
+      ).toBe(true);
+    }
+  });
+
+  it('sends a deep path to its app folder once, and never loops on a folder that doesn’t exist', () => {
+    const script = notFoundHtml(URL_).match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
+    const run = (pathname: string) => {
+      const stash = new Map<string, string>();
+      const replaced: string[] = [];
+      const location = { pathname, search: '', hash: '', replace: (to: string) => replaced.push(to) };
+      const sessionStorage = { setItem: (k: string, v: string) => stash.set(k, v) };
+      new Function('location', 'sessionStorage', script)(location, sessionStorage);
+      return { to: replaced[0] ?? null, kept: stash.get(STASH_KEY) ?? null };
+    };
+    expect(run('/versus/app/demo/destinations')).toEqual({ to: '/versus/app/', kept: 'demo/destinations' });
+    expect(run('/fr/app/x')).toEqual({ to: '/fr/app/', kept: 'x' });
+    // That folder isn't the app's either: the page stays, instead of reloading itself forever.
+    expect(run('/fr/app/')).toEqual({ to: null, kept: null });
+    expect(run('/elsewhere')).toEqual({ to: null, kept: null });
+  });
+
   it('adds the Cloudflare headers to the Worker build only', () => {
     expect(files._headers).toBeUndefined();
     const worker = generatedFiles(URL_, { lastmod: '2026-09-30', worker: true });
@@ -401,5 +443,106 @@ describe('generated files', () => {
     expect(worker._headers?.body).toContain('/admin/*\n  X-Robots-Tag: noindex');
     expect(worker._headers?.body).toContain('/sitemap.xml\n  Content-Type: application/xml; charset=utf-8');
     expect(worker._headers?.body).toContain('/404\n  Content-Type: text/html; charset=utf-8');
+  });
+});
+
+describe('content security policy', () => {
+  const sha = (code: string) => `'sha256-${createHash('sha256').update(code).digest('base64')}'`;
+
+  it('hashes the inline scripts a page runs, not its bundles or its data', () => {
+    const page = [
+      '<script>document.documentElement.dataset.theme = "dark";</script>',
+      '<script type="module" crossorigin src="/assets/app-1.js"></script>',
+      '<script type="application/ld+json">{"@type":"WebSite"}</script>',
+      '<script defer src="https://insight.example.com/s.js" data-website-id="x"></script>',
+      '<script type="module">\n  start();\n</script>',
+    ].join('\n');
+    expect(scriptHashes(page)).toEqual([
+      sha('document.documentElement.dataset.theme = "dark";'),
+      sha('\n  start();\n'),
+    ]);
+    expect(scriptHashes(notFoundHtml(URL_))).toHaveLength(1);
+  });
+
+  it('allows this site, the hashed scripts, the tracker and Turnstile, and nothing else runs or frames', () => {
+    const policy = contentPolicy({
+      scripts: ["'sha256-b'", "'sha256-a'", "'sha256-b'"],
+      analytics: 'https://insight.example.com/s.js',
+      api: 'https://api.example.com/api',
+    });
+    const rule = (name: string) => policy.split('; ').find((r) => r.startsWith(`${name} `));
+    expect(rule('script-src')).toBe(
+      "script-src 'self' 'sha256-a' 'sha256-b' https://insight.example.com https://challenges.cloudflare.com",
+    );
+    expect(rule('connect-src')).toBe("connect-src 'self' https://insight.example.com https://api.example.com");
+    expect(rule('object-src')).toBe("object-src 'none'");
+    expect(rule('frame-ancestors')).toBe("frame-ancestors 'none'");
+    expect(rule('report-uri')).toBe(`report-uri ${CSP_REPORT_PATH}`);
+    // A same-origin API (a relative address) and no tracker add nothing.
+    const plain = contentPolicy({ scripts: [], analytics: null, api: '/api' });
+    expect(plain).toContain("connect-src 'self';");
+    expect(plain).toContain("script-src 'self' https://challenges.cloudflare.com;");
+  });
+
+  it('is reported only, on every path, when the build gives it', () => {
+    expect(headersFile()).not.toContain('Content-Security-Policy');
+    const withPolicy = headersFile("default-src 'self'");
+    expect(withPolicy).toMatch(/^\/\*\n(?: {2}.+\n)*? {2}Content-Security-Policy-Report-Only: default-src 'self'\n/);
+    expect(withPolicy).not.toContain('Content-Security-Policy:');
+    expect(withPolicy).toContain('  Referrer-Policy: strict-origin-when-cross-origin');
+    // Nothing frames the site, whether the policy is enforced yet or not.
+    expect(headersFile()).toContain('  X-Frame-Options: DENY');
+  });
+});
+
+describe('palette', () => {
+  const tokens = readFileSync(resolve(process.cwd(), 'src/tokens.css'), 'utf8');
+  /** A token's value in the first block that `selector` opens. */
+  const token = (selector: string, name: string) => {
+    const block = tokens.slice(tokens.indexOf(selector));
+    return block
+      .slice(0, block.indexOf('}'))
+      .match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, 'i'))?.[1]
+      ?.toLowerCase();
+  };
+  const light = (name: string) => token(':root {', name);
+  const dark = (name: string) => token(':root:not([data-theme="light"]) {', name);
+
+  it('keeps the build’s colors equal to the design tokens, in both themes', () => {
+    const pairs: [string | undefined, string][] = [
+      [light('bg'), COLORS.bg],
+      [light('surface'), COLORS.surface],
+      [light('ink'), COLORS.ink],
+      [light('muted'), COLORS.muted],
+      [light('line'), COLORS.line],
+      [light('a'), COLORS.a],
+      [light('b'), COLORS.b],
+      [light('on-accent'), COLORS.onAccent],
+      [dark('bg'), COLORS.bgDark],
+      [dark('ink'), COLORS.inkDark],
+      [dark('muted'), COLORS.mutedDark],
+    ];
+    for (const [css, built] of pairs) expect(css).toBe(built.toLowerCase());
+  });
+
+  it('gives every page the browser bar of its theme', () => {
+    for (const page of Object.keys(PAGES) as PageKey[]) {
+      const tags = headTags(URL_, page).join('\n');
+      expect(tags).toContain(
+        `<meta name="theme-color" content="${COLORS.bg}" media="(prefers-color-scheme: light)" />`,
+      );
+      expect(tags).toContain(
+        `<meta name="theme-color" content="${COLORS.bgDark}" media="(prefers-color-scheme: dark)" />`,
+      );
+    }
+  });
+});
+
+describe('shared preferences', () => {
+  it('reads the theme before the first paint under the key every page shares', () => {
+    for (const shell of ['app/index.html', 'admin/index.html']) {
+      const html = readFileSync(resolve(process.cwd(), shell), 'utf8');
+      if (html.includes('localStorage')) expect(html, shell).toContain(`localStorage.getItem('${PREFS_KEY}')`);
+    }
   });
 });

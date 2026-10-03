@@ -1,9 +1,11 @@
-import { LEGAL_PATH } from '../app/about.ts';
 import { simulate } from '../core/demos.ts';
 import { compute, nextPair, pushDuel } from '../core/scoring.ts';
+import { APP_PATH, HOME_PATH, LEGAL_PATH } from '../core/site.ts';
 import type { MethodKey } from '../core/types.ts';
 import { esc, hueOf, mulberry32 } from '../core/util.ts';
 import type { Lang } from '../i18n/index.ts';
+import { fill, pctText } from '../i18n/text.ts';
+import { PREFS_KEY, THEME_BAR_JS } from '../prefs.ts';
 import { crowd, rate, standings, vote } from './crowd.ts';
 import {
   CASES,
@@ -19,7 +21,7 @@ import {
   TOPICS,
   type UseCase,
 } from './data.ts';
-import { fmt, frameHTML, isText, mediaHTML, nDuels, pctOf, rankOf, scoreHTML, thumbHTML } from './frame.ts';
+import { frameHTML, isText, mediaHTML, nDuels, rankOf, scoreHTML, thumbHTML } from './frame.ts';
 import { SPRITE } from './sprite.ts';
 import { type Strings, strings } from './strings.ts';
 
@@ -29,9 +31,6 @@ import { type Strings, strings } from './strings.ts';
  * and for a first paint without layout shift. src/landing/main.ts then brings it to life.
  */
 
-/** Where each language's home page lives, relative to the site's root. */
-export const HOME_PATH: Record<Lang, string> = { en: '', fr: 'fr/' };
-export const APP_PATH = 'app/';
 const other = (lang: Lang): Lang => (lang === 'en' ? 'fr' : 'en');
 /** From a home page back to the site's root. */
 const rootOf = (lang: Lang): string => (HOME_PATH[lang] ? '../' : './');
@@ -85,11 +84,15 @@ export function landingBoot(lang: Lang): string {
           return leave('${root}${APP_PATH}');
         }
         var prefs = {};
-        try { prefs = JSON.parse(localStorage.getItem('versus-prefs') || '{}') || {}; } catch (e) {}
+        try { prefs = JSON.parse(localStorage.getItem('${PREFS_KEY}') || '{}') || {}; } catch (e) {}
         if (!inside && (prefs.lang === 'en' || prefs.lang === 'fr') && prefs.lang !== '${lang}') {
           return leave('${root}' + (prefs.lang === 'fr' ? '${HOME_PATH.fr}' : '${HOME_PATH.en}'));
         }
-        if (prefs.theme === 'light' || prefs.theme === 'dark') d.dataset.theme = prefs.theme;
+        var theme = prefs.theme;
+        if (theme === 'light' || theme === 'dark') {
+          d.dataset.theme = theme;
+          ${THEME_BAR_JS}
+        }
       })();
     </script>`;
 }
@@ -143,12 +146,13 @@ export function navHTML(lang: Lang, S: Strings, links: PageLinks = homeLinks(lan
   </header>`;
 }
 
+/** The other language's offer, in that language: a landmark of its own, before the header. */
 function langHint(lang: Lang): string {
   const to = other(lang);
   const T = strings(to);
-  return `<div class="lang-hint" id="lang-hint" lang="${to}" hidden>
+  return `<aside class="lang-hint" id="lang-hint" lang="${to}" aria-label="${esc(T.suggestAria)}" hidden>
     <div class="wrap lang-hint-in"><p>${esc(T.suggestText)}</p><a class="btn sm" href="${rootOf(lang)}${HOME_PATH[to]}" hreflang="${to}" data-lang="${to}">${esc(T.suggestGo)}</a><button type="button" class="icon-btn" id="lang-hint-close" aria-label="${esc(T.suggestClose)}">${svg('<path d="M6 6l12 12M18 6 6 18"/>')}</button></div>
-  </div>`;
+  </aside>`;
 }
 
 function hero(lang: Lang, S: Strings): string {
@@ -228,7 +232,7 @@ function how(lang: Lang, S: Strings): string {
           <div class="vig v2" aria-hidden="true">
             <div class="v2-stage">${mini(a, 'a')}<span class="mvs">vs</span>${mini(b, 'b')}</div>
             <div class="v2-keys"><kbd data-k="a">←</kbd><kbd data-k="draw">↓</kbd><kbd data-k="b">→</kbd></div>
-            <p class="v2-say">${esc(fmt(S.v2Wins, { label: winner.label[lang] }))}</p>
+            <p class="v2-say">${esc(fill(S.v2Wins, { label: winner.label[lang] }))}</p>
           </div>
           <h3><span class="n" aria-hidden="true">2</span>${esc(S.step2Title)}</h3>
           <p>${esc(S.step2)}</p>
@@ -236,7 +240,7 @@ function how(lang: Lang, S: Strings): string {
         <li class="step">
           <div class="vig v3" aria-hidden="true">
             <ol class="v3-list">${settle}</ol>
-            <div class="v3-stab"><span>${esc(S.stability)}</span><span class="bar"><i style="width:100%"></i></span><span class="mono">${pctOf(100, lang)}</span></div>
+            <div class="v3-stab"><span>${esc(S.stability)}</span><span class="bar"><i style="width:100%"></i></span><span class="mono">${pctText(100, lang)}</span></div>
             <span class="chip v3-done on">${esc(S.v3Stable)}</span>
           </div>
           <h3><span class="n" aria-hidden="true">3</span>${esc(S.step3Title)}</h3>
@@ -294,7 +298,7 @@ function methods(lang: Lang, S: Strings, data: PageData['methods']): string {
           ${descs}
         </div>
         <div class="m-board">
-          <div class="m-head"><h3>${esc(PASTRY_TITLE[lang])}</h3><span class="mono" id="m-meta">${esc(fmt(S.itemsN, { n: PASTRIES.length }))} · ${nDuels(data.duels, S)}</span></div>
+          <div class="m-head"><h3>${esc(PASTRY_TITLE[lang])}</h3><span class="mono" id="m-meta">${esc(fill(S.itemsN, { n: PASTRIES.length }))} · ${nDuels(data.duels, S)}</span></div>
           <div class="m-cols" aria-hidden="true"><span>#</span><span></span><span>${esc(S.colItem)}</span><span>${esc(S.colVs)}</span><span id="m-col">${esc(S.m_bt_col)}</span></div>
           <ol class="m-list" id="m-list" aria-live="polite">${rows}</ol>
           <p class="m-foot" id="m-foot">${esc(S.mFootBt)}</p>
@@ -310,7 +314,7 @@ function crowdSection(lang: Lang, S: Strings): string {
     .map((id, k) => {
       const it = item(id);
       const r = rate(c.tally.get(id) ?? { w: 0, g: 0 });
-      return `<li data-id="${id}"><span class="pos">${k + 1}</span>${thumbHTML(it, lang)}<span class="cb-name">${esc(it.label[lang])}<span class="bar"><i style="width:${(r * 100).toFixed(1)}%"></i></span></span><span class="cb-pct">${pctOf(Math.round(r * 100), lang)}</span></li>`;
+      return `<li data-id="${id}"><span class="pos">${k + 1}</span>${thumbHTML(it, lang)}<span class="cb-name">${esc(it.label[lang])}<span class="bar"><i style="width:${(r * 100).toFixed(1)}%"></i></span></span><span class="cb-pct">${pctText(Math.round(r * 100), lang)}</span></li>`;
     })
     .join('');
   const faces = mulberry32(CROWD.seed + 1);
@@ -336,7 +340,7 @@ function crowdSection(lang: Lang, S: Strings): string {
           <div class="cb-head"><p class="cb-title">${esc(S.crowdBoard)}</p><span class="livechip"><i></i>${esc(S.crowdLive)}</span></div>
           <div class="cb-meta"><span><b id="cb-votes">${c.votes}</b> ${esc(S.crowdVotes)} · <b id="cb-voters">${CROWD.voters}</b> ${esc(S.crowdVoters)}</span><span class="voters" id="voters">${voters}</span></div>
           <ol class="cb-list" id="cb-list">${rows}</ol>
-          <div class="agree"><b>${esc(S.crowdYou)}</b><span>${esc(fmt(S.crowdAgree, { n, total }))}</span><span class="bar"><i style="width:${Math.round((n / total) * 100)}%"></i></span></div>
+          <div class="agree"><b>${esc(S.crowdYou)}</b><span>${esc(fill(S.crowdAgree, { n, total }))}</span><span class="bar"><i style="width:${Math.round((n / total) * 100)}%"></i></span></div>
         </div>
       </div>
     </section>`;
@@ -396,7 +400,7 @@ export function footerHTML(
     <div class="wrap foot-in">
       <p class="foot-brand"><span class="brand"><span class="brand-mark" aria-hidden="true">vs</span>Versus</span><span>${esc(S.tagline)}</span></p>
       <p class="foot-links"><a href="${root}${APP_PATH}">${esc(S.footApp)}</a><a href="${source}">${esc(S.footSource)}</a><span>${esc(S.aboutBy)} <a href="${author.url}">${esc(author.name)}</a></span><a href="${root}${LEGAL_PATH[lang]}">${esc(S.footLegal)}</a></p>
-      <nav class="foot-langs" aria-label="${esc(S.langAria)}">${lang2('en')}${lang2('fr')}</nav>
+      <nav class="foot-langs" aria-label="${esc(S.footLangAria)}">${lang2('en')}${lang2('fr')}</nav>
     </div>
   </footer>`;
 }

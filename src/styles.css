@@ -1,4 +1,5 @@
 @import "./tokens.css";
+@import "./stage.css";
 
 /* Base reset (the prototype got these from its host page) */
 html {
@@ -65,10 +66,12 @@ input {
   white-space: nowrap;
 }
 
+/* viewport-fit=cover: in landscape, a notch takes the side's safe area. */
 #app {
   max-width: 1320px;
   margin: 0 auto;
-  padding-inline: clamp(16px, 3vw, 32px);
+  padding-inline: max(clamp(16px, 3vw, 32px), env(safe-area-inset-left, 0px))
+    max(clamp(16px, 3vw, 32px), env(safe-area-inset-right, 0px));
   padding-block: 0 48px;
 }
 .top {
@@ -112,7 +115,7 @@ input {
   gap: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 10px 16px;
   font-weight: 600;
   font-size: 14px;
@@ -164,6 +167,8 @@ input {
   color: var(--bad);
 }
 .link {
+  min-width: 24px;
+  min-height: 24px;
   background: none;
   border: 0;
   padding: 0;
@@ -192,14 +197,14 @@ kbd {
   letter-spacing: 0.07em;
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 2px 8px;
   white-space: nowrap;
 }
 .bar {
   flex: 1;
   height: 6px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
   min-width: 60px;
@@ -252,13 +257,26 @@ kbd {
   transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
+/* The card's face opens it: its title is the link (a real one, for a new tab), stretched over the face. */
+.rcard-face {
+  position: relative;
+}
 .rcard-main {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
-  padding: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.rcard-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.rcard-main:focus-visible {
+  outline: none;
+}
+.rcard-main:focus-visible::after {
+  outline: 2px solid var(--a);
+  outline-offset: -2px;
 }
 .mosaic {
   position: relative;
@@ -377,7 +395,7 @@ kbd {
   letter-spacing: 0.07em;
   background: var(--surface);
   color: var(--ink);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 3px 8px;
 }
 .rcard.fresh {
@@ -404,9 +422,19 @@ kbd {
   font-size: 12.5px;
   font-weight: 600;
 }
+/* A gone board's tiles fade under a veil; their words and numbers stay above it, readable. */
 .rcard.gone .mosaic {
   filter: grayscale(1);
-  opacity: 0.45;
+}
+.rcard.gone .tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--surface);
+  opacity: 0.55;
+}
+.rcard.gone .tile b {
+  position: relative;
 }
 .rcard.gone h3 {
   color: var(--muted);
@@ -434,6 +462,35 @@ kbd {
   gap: 6px 14px;
   margin: 18px 0 0;
   font-size: 13px;
+}
+/* The Popular section's place while its list loads: about a row of cards, so nothing jumps when it comes */
+.g-wait {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  margin: 0;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-lg);
+  color: var(--muted);
+  font-size: 14px;
+}
+/* An address that led nowhere: a word at the top of the gallery, until closed */
+.g-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-top: 22px;
+  padding: 14px 18px;
+  border: 1px solid var(--field);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  font-size: 14px;
+}
+.g-notice p {
+  margin: 0;
+  flex: 1 1 32ch;
 }
 /* The iOS home-screen app starts empty: how to bring the rankings from Safari */
 .g-note {
@@ -522,8 +579,16 @@ kbd {
 .back:hover {
   color: var(--ink);
 }
-.title-input {
+.ws-title {
   flex: 1 1 240px;
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+  border-radius: 10px;
+}
+.title-input {
+  flex: 1;
   min-width: 0;
   font: 700 clamp(24px, 3.2vw, 34px) / 1.1 var(--f-display);
   letter-spacing: -0.03em;
@@ -543,7 +608,7 @@ kbd {
 .tabs {
   display: inline-flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 4px;
   gap: 2px;
 }
@@ -555,7 +620,7 @@ kbd {
   border: 0;
   background: transparent;
   padding: 0 16px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-weight: 600;
   font-size: 14px;
   color: var(--muted);
@@ -612,7 +677,7 @@ kbd {
 #add-input {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   background: var(--bg);
   border-radius: 12px;
   padding: 10px 12px;
@@ -700,7 +765,7 @@ kbd {
   font-weight: 700;
 }
 .list li.in-b .pos {
-  color: var(--b);
+  color: var(--b-ink);
   font-weight: 700;
 }
 .list li.in-a .thumb {
@@ -735,9 +800,9 @@ kbd {
   font-weight: 500;
   text-overflow: ellipsis;
 }
+/* Focused, the global focus ring shows: a 1 px line of --line would hardly be seen. */
 .row-label:focus {
   background: var(--surface);
-  outline: 1px solid var(--line);
 }
 /* A name that can't change (a closed vote), and a word under a name (picture under review, same color). */
 .row-text {
@@ -763,6 +828,12 @@ kbd {
   color: var(--bad);
   font-weight: 600;
 }
+/* What to do about the note (a picture to send again): a link in its color. */
+.row-act {
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+}
 .ed-frozen {
   display: flex;
   flex-wrap: wrap;
@@ -786,12 +857,14 @@ kbd {
   text-align: right;
 }
 .dl.up {
-  color: var(--good);
+  color: var(--good-ink);
 }
 .dl.down {
   color: var(--bad);
 }
+/* Quiet until the row is pointed at or the button focused, never invisible: keyboard, touch and zoom find it. */
 .rm {
+  position: relative;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -800,7 +873,7 @@ kbd {
   border-radius: 50%;
   font-size: 17px;
   line-height: 1;
-  opacity: 0;
+  opacity: 0.7;
   transition: opacity 0.15s;
 }
 .list li:hover .rm,
@@ -891,28 +964,6 @@ kbd {
     opacity 0.4s,
     box-shadow 0.25s;
 }
-.card-a {
-  justify-self: end;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pa, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pa, 0) * 6px) var(--a),
-    var(--shadow);
-  opacity: calc(1 - var(--pb, 0) * 0.4);
-}
-.card-b {
-  justify-self: start;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pb, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pb, 0) * 6px) var(--b),
-    var(--shadow);
-  opacity: calc(1 - var(--pa, 0) * 0.4);
-}
-.stage.dragging .card {
-  transition: none;
-  cursor: grabbing;
-}
 .card img {
   position: absolute;
   inset: 0;
@@ -949,12 +1000,6 @@ kbd {
   font: 800 13px var(--f-display);
   color: var(--on-accent);
 }
-.card-a .side-tag {
-  background: var(--a);
-}
-.card-b .side-tag {
-  background: var(--b);
-}
 .txt {
   padding: 22px 22px 26px;
   font-family: var(--f-display);
@@ -981,13 +1026,6 @@ kbd {
   letter-spacing: -0.01em;
   font-weight: 600;
 }
-.vs {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  transition: opacity 0.2s;
-}
 .vs-dot {
   width: 50px;
   height: 50px;
@@ -1001,12 +1039,6 @@ kbd {
 }
 .p {
   font-size: 15px;
-}
-.pa {
-  color: var(--a);
-}
-.pb {
-  color: var(--b);
 }
 .vs-lbl {
   font-size: 10px;
@@ -1032,64 +1064,14 @@ kbd {
   right: 25%;
   transform: translateX(50%);
 }
-.float.up {
-  color: var(--good);
-}
-.float.down {
-  color: var(--bad);
-}
-.float.eq {
-  color: var(--muted);
-}
 .stage.picked .float {
   animation: rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-.stage.picked .vs {
-  opacity: 0;
-}
-.stage.pick-a .card-a {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--a),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-a .card-b {
-  transform: translateX(35%) rotate(8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-b .card-b {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--b),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-b .card-a {
-  transform: translateX(-35%) rotate(-8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-draw .card {
-  transform: scale(0.94);
-  opacity: 0.5;
 }
 .stage.enter .card-a {
   animation: inA 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .stage.enter .card-b {
   animation: inB 0.5s 0.06s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes inA {
-  from {
-    opacity: 0;
-    translate: -26px 12px;
-  }
-}
-@keyframes inB {
-  from {
-    opacity: 0;
-    translate: 26px 12px;
-  }
 }
 @keyframes rise {
   0% {
@@ -1104,12 +1086,6 @@ kbd {
     translate: 0 -44px;
   }
 }
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
 .ctl {
   display: inline-flex;
   align-items: center;
@@ -1117,7 +1093,7 @@ kbd {
   gap: 8px;
   padding: 12px 18px;
   min-height: 48px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
   font-weight: 600;
@@ -1137,25 +1113,17 @@ kbd {
   color: var(--on-accent);
 }
 .ctl-b {
-  border-color: var(--b);
-  color: var(--b);
+  border-color: var(--b-ink);
+  color: var(--b-ink);
 }
 .ctl-b:hover {
-  background: var(--b);
+  background: var(--b-ink);
   color: var(--on-accent);
 }
 .ctl:hover kbd {
   background: transparent;
   color: inherit;
   border-color: currentColor;
-}
-.duel-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px 16px;
-  font-size: 13px;
 }
 .empty-duel {
   display: grid;
@@ -1181,7 +1149,7 @@ kbd {
 .ghost-card {
   width: 84px;
   aspect-ratio: 4 / 5;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   display: grid;
   place-items: center;
   font: 800 22px var(--f-display);
@@ -1343,7 +1311,7 @@ kbd {
 .rbar {
   display: block;
   height: 8px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
 }
@@ -1380,7 +1348,7 @@ kbd {
   height: 44px;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 0 14px;
   font-size: 14px;
   white-space: nowrap;
@@ -1520,9 +1488,12 @@ kbd {
 .cmp-table .on {
   background: color-mix(in oklab, var(--surface) 90%, var(--a));
 }
+/* A difference shows without color too: underlined (and said: results.ts). */
 .cmp-table td.diff {
-  color: var(--b);
+  color: var(--b-ink);
   font-weight: 600;
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 4px;
 }
 .cmp-table td:first-child,
 .cmp-table th:first-child {
@@ -1532,8 +1503,8 @@ kbd {
 @media (max-width: 859px) {
   .method-pop {
     position: fixed;
-    left: 16px;
-    right: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
     top: auto;
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     width: auto;
@@ -1585,7 +1556,6 @@ kbd {
   font: 500 11px / 1.3 var(--f-mono);
   letter-spacing: 0.02em;
   margin-top: 5px;
-  opacity: 0.85;
 }
 .add-color {
   display: flex;
@@ -1597,7 +1567,7 @@ kbd {
   width: 44px;
   height: 36px;
   padding: 2px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 10px;
   background: var(--bg);
   cursor: pointer;
@@ -1605,6 +1575,7 @@ kbd {
 .grad-toggle {
   display: inline-flex;
   align-items: center;
+  min-height: 24px;
   gap: 6px;
   font-size: 13px;
   color: var(--muted);
@@ -1625,12 +1596,13 @@ kbd {
   height: 44px;
   padding: 0 20px 0 16px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--on-accent);
   font-weight: 700;
   font-size: 14px;
   white-space: nowrap;
-  background: linear-gradient(100deg, var(--a), color-mix(in oklab, var(--a) 50%, var(--b)) 50%, var(--b));
+  /* Its words stay on the coral's text variant: white on it reads at 4.5:1 (tokens.css). */
+  background: linear-gradient(100deg, var(--a), color-mix(in oklab, var(--a) 50%, var(--b-ink)) 50%, var(--b-ink));
   background-size: 160% 100%;
   background-position: 0% 50%;
   box-shadow:
@@ -1723,15 +1695,17 @@ kbd {
   min-width: 0;
   display: inline-flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
 .lang button,
 .theme button {
+  min-width: 24px;
+  min-height: 24px;
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 5px 10px;
   font: 500 12px / 1 var(--f-mono);
   color: var(--muted);
@@ -1801,7 +1775,7 @@ kbd {
 .cp-seg {
   display: flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
@@ -1809,13 +1783,13 @@ kbd {
   flex: 1;
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 6px 10px;
   font-weight: 600;
   font-size: 13px;
   color: var(--muted);
 }
-.cp-seg button[aria-checked="true"] {
+.cp-seg button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -1844,7 +1818,7 @@ kbd {
   width: 40px;
   height: 32px;
   padding: 2px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 8px;
   background: var(--bg);
   cursor: pointer;
@@ -1852,7 +1826,7 @@ kbd {
 .cp-hex {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   background: var(--surface);
   border-radius: 8px;
   padding: 6px 8px;
@@ -1893,8 +1867,8 @@ kbd {
 }
 @media (max-width: 859px) {
   .cpop {
-    left: 16px;
-    right: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
     top: auto;
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     width: auto;
@@ -1914,10 +1888,14 @@ kbd {
   backdrop-filter: blur(4px);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s;
+  visibility: hidden;
+  transition:
+    opacity 0.15s,
+    visibility 0.15s;
 }
 body.dropping .drop-overlay {
   opacity: 1;
+  visibility: visible;
 }
 .drop-overlay div {
   border: 2px dashed var(--a);
@@ -1928,6 +1906,7 @@ body.dropping .drop-overlay {
   letter-spacing: -0.02em;
   text-align: center;
 }
+/* A live region that stays in the accessibility tree: hidden by its opacity, and emptied once faded (dom.ts). */
 .toast {
   position: fixed;
   left: 50%;
@@ -1939,29 +1918,30 @@ body.dropping .drop-overlay {
   background: var(--ink);
   color: var(--bg);
   padding: 10px 18px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font-weight: 600;
   font-size: 14px;
   max-width: calc(100% - 32px);
   text-align: center;
-  visibility: hidden;
   transition:
     opacity 0.2s,
-    transform 0.2s,
-    visibility 0s 0.2s;
+    transform 0.2s;
+}
+.toast:empty {
+  padding: 0;
 }
 .toast.show {
   opacity: 1;
   transform: translate(-50%, 0);
-  visibility: visible;
-  transition-delay: 0s;
 }
 .toast.has-act {
   display: flex;
   align-items: center;
   gap: 14px;
-  pointer-events: auto;
   text-align: left;
+}
+.toast.show.has-act {
+  pointer-events: auto;
 }
 .toast-act {
   flex-shrink: 0;
@@ -1983,7 +1963,7 @@ body.dropping .drop-overlay {
   z-index: 70;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
   background: rgba(8, 10, 14, 0.5);
 }
 .modal-box {
@@ -1996,7 +1976,7 @@ body.dropping .drop-overlay {
   padding: 22px;
   box-shadow: var(--shadow);
 }
-.modal-box h3 {
+.modal-box h2 {
   margin: 0 0 8px;
   font: 700 21px / 1.2 var(--f-display);
   letter-spacing: -0.02em;
@@ -2010,6 +1990,12 @@ body.dropping .drop-overlay {
 }
 .m-body p:last-child {
   margin-bottom: 0;
+}
+/* What went wrong, in a dialog that stays open for another try (a publication refused, settings not saved). */
+.m-body .m-error {
+  margin-top: 12px;
+  color: var(--bad);
+  font-weight: 600;
 }
 .modal-actions {
   display: flex;
@@ -2127,13 +2113,30 @@ body.dropping .drop-overlay {
     opacity: 1;
   }
 }
+/* Touch: 44 px targets. The remove and color buttons reach it without moving the row (a wider hit area). */
+@media (pointer: coarse) {
+  .btn.sm {
+    min-height: 44px;
+  }
+  .tab {
+    height: 44px;
+  }
+  .rm::before,
+  .thumb-btn::before {
+    content: "";
+    position: absolute;
+    inset: calc((100% - 44px) / 2);
+  }
+}
+/* Reduced motion: animations jump to their end, transitions don't run (a 0.01 ms one would make every property of
+   every element transition, `all` being the default: colors caught mid-change). Nothing waits for their events. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
 }
 
@@ -2159,7 +2162,7 @@ body.dropping .drop-overlay {
   align-items: center;
   gap: 6px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   color: var(--ink);
   padding: 7px 12px 7px 10px;
@@ -2182,7 +2185,7 @@ body.dropping .drop-overlay {
   gap: 8px;
   margin-top: 12px;
   padding: 6px 6px 6px 16px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   box-shadow: var(--shadow);
   font-size: 14px;
@@ -2227,7 +2230,7 @@ body.dropping .drop-overlay {
 .opt-n {
   width: 68px;
   padding: 4px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 8px;
   background: var(--surface);
 }
@@ -2261,7 +2264,7 @@ body.dropping .drop-overlay {
   margin-top: 10px;
 }
 .chip-live {
-  color: var(--good);
+  color: var(--good-ink);
   border-color: currentColor;
 }
 .b-head .b-title {
@@ -2376,6 +2379,11 @@ body.dropping .drop-overlay {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* A new admin link, shown when the clipboard can't take it. */
+.b-admin-url {
+  width: 100%;
+  margin-top: 10px;
+}
 /* What an edit does to an item's votes (D116): keep them or start again from zero. */
 .votes-set {
   margin: 14px 0 0;
@@ -2465,7 +2473,7 @@ body.dropping .drop-overlay {
 .share-fmts {
   display: flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
@@ -2473,7 +2481,7 @@ body.dropping .drop-overlay {
   flex: 1;
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 6px 10px;
   font-weight: 600;
   font-size: 13px;
@@ -2536,7 +2544,7 @@ body.dropping .drop-overlay {
   font: inherit;
   color: inherit;
   padding: 8px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field);
   border-radius: 10px;
   background: var(--bg);
   resize: vertical;
@@ -2596,7 +2604,7 @@ body.dropping .drop-overlay {
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: color-mix(in oklab, var(--surface) 60%, transparent);
 }
 .fin-views button,
@@ -2606,18 +2614,18 @@ body.dropping .drop-overlay {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--muted);
   transition:
     background 0.15s,
     color 0.15s;
 }
-.fin-views button,
+.fin-views button:hover,
 .res-views button:hover {
   color: var(--ink);
 }
-.fin-views button,
+.fin-views button[aria-pressed="true"],
 .res-views button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);
@@ -2626,7 +2634,7 @@ body.dropping .drop-overlay {
 .fin-bar {
   display: block;
   height: 8px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
 }
@@ -2777,14 +2785,14 @@ body.dropping .drop-overlay {
 .fin-who {
   display: inline-flex;
   background: var(--surface-2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 3px;
   gap: 2px;
 }
 .fin-who button {
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 5px 12px;
   font-weight: 600;
   font-size: 13px;
@@ -3103,7 +3111,7 @@ svg[data-slope-svg] path {
 }
 .fin-ph-bar {
   height: 12px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, transparent 6px 10px);
 }
@@ -3181,7 +3189,7 @@ svg[data-slope-svg] path {
   }
   .fin-tile {
     padding: 8px;
-    border-radius: 14px;
+    border-radius: var(--r-md);
   }
   .fin-duo {
     padding: 12px 10px 8px;
@@ -3386,7 +3394,7 @@ svg[data-slope-svg] path {
   color: var(--muted);
 }
 
-/* End of a local ranking: the announcement in the duel pane, then the Ranking tab by itself */
+/* End of a local ranking: the announcement in the duel pane, and the way to the Ranking tab */
 .end {
   position: relative;
   overflow: hidden;
@@ -3433,33 +3441,6 @@ svg[data-slope-svg] path {
   max-width: 44ch;
   color: var(--muted);
 }
-.end-count {
-  width: min(360px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.end-count b {
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.end-bar {
-  height: 6px;
-  border-radius: 99px;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-.end-bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--a), var(--b));
-  transform-origin: right;
-  animation: end-drain linear forwards;
-}
 .end-acts {
   display: flex;
   flex-wrap: wrap;
@@ -3498,7 +3479,6 @@ svg[data-slope-svg] path {
 }
 .end-h,
 .end-body,
-.end-count,
 .end-acts {
   animation: end-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -3508,22 +3488,11 @@ svg[data-slope-svg] path {
 .end-body {
   animation-delay: 0.25s;
 }
-.end-count {
-  animation-delay: 0.35s;
-}
 .end-acts {
   animation-delay: 0.45s;
 }
 .res-enter {
   animation: end-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes end-drain {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
-  }
 }
 @keyframes end-burst {
   0% {
@@ -3576,13 +3545,13 @@ svg[data-slope-svg] path {
   flex-wrap: wrap;
   gap: 2px;
   padding: 2px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
 }
 .slope-picks button {
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 4px 10px;
   font-weight: 600;
   font-size: 12.5px;
@@ -3625,6 +3594,10 @@ svg[data-slope-svg] path {
   transition:
     opacity 0.2s,
     background 0.2s;
+}
+/* A row is a toggle (slope.ts): tapped, or Enter and Space, it keeps its item highlighted. */
+:is(.slope, .fin-duo) li[role="button"] {
+  cursor: pointer;
 }
 .slope-l li {
   grid-template-columns: minmax(0, 1fr) 30px 18px;
@@ -3700,5 +3673,29 @@ svg[data-slope-svg] path {
   }
   .slope .nm {
     font-size: 13.5px;
+  }
+}
+
+/* Selected tabs and segments: a border too, not only a lighter background (WCAG 1.4.11). */
+.tab[aria-selected="true"],
+.lang button[aria-pressed="true"],
+.theme button[aria-pressed="true"],
+.cp-seg button[aria-pressed="true"],
+.share-fmts button[aria-pressed="true"],
+.fin-views button[aria-pressed="true"],
+.res-views button[aria-pressed="true"],
+.fin-who button[aria-pressed="true"],
+.slope-picks button[aria-pressed="true"] {
+  box-shadow:
+    inset 0 0 0 1px var(--field),
+    0 1px 3px rgba(0, 0, 0, 0.12);
+}
+/* Forced colors (Windows contrast themes) drop backgrounds and shadows: the selected state gets an outline. */
+@media (forced-colors: active) {
+  [aria-selected="true"],
+  [aria-pressed="true"],
+  [aria-checked="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
   }
 }

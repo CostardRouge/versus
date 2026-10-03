@@ -3,9 +3,7 @@ import { LIMITS, VOTER_RE } from '../src/core/board';
 import { mkItem, mkRank } from '../src/core/model';
 import type { RankingView } from '../src/core/protocol';
 import {
-  adminHash,
   agreement,
-  boardHash,
   crowdCheck,
   lastDuelPerPair,
   neckAndNeck,
@@ -18,6 +16,10 @@ import {
   voterId,
 } from '../src/core/published';
 import type { MethodKey, Ranking } from '../src/core/types';
+
+/** Links as the app wrote them before it had paths (D92): the board in the fragment, `?owner=` for its author. */
+const boardHash = (alias: string): string => `#/b/${alias}`;
+const adminHash = (alias: string, owner: string): string => `${boardHash(alias)}?owner=${owner}`;
 
 const ALIAS = 'Ab3dEf7hJk';
 const TOKEN = 'a'.repeat(64);
@@ -88,12 +90,20 @@ describe('links', () => {
     expect(parseBoardHash(adminHash(ALIAS, TOKEN))).toEqual({ alias: ALIAS, owner: TOKEN });
   });
 
-  it.each(['', '#', '#/b/', '#/b/short', '#/b/0OIl0OIl0O', `#/b/${ALIAS}?owner=nope`, `#/x/${ALIAS}`])(
-    'ignores %j',
-    (hash) => {
-      expect(parseBoardHash(hash)).toBeNull();
-    },
-  );
+  it.each([
+    '',
+    '#',
+    '#/b/',
+    '#/b/short',
+    '#/b/0OIl0OIl0O',
+    `#/b/${ALIAS}?owner=nope`,
+    `#/b/${ALIAS}?owner=`,
+    `#/b/${ALIAS}?owner=${TOKEN.toUpperCase()}`,
+    `#/b/${ALIAS}?owner=${TOKEN}/x`,
+    `#/x/${ALIAS}`,
+  ])('ignores %j', (hash) => {
+    expect(parseBoardHash(hash)).toBeNull();
+  });
 
   it('makes voter ids the server accepts', () => {
     const id = voterId(Uint8Array.from({ length: 22 }, (_, i) => i * 11));

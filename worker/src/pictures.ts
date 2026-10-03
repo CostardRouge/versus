@@ -10,10 +10,7 @@ import { isJpeg } from '../../src/core/share';
 
 const ITEM_ID_RE = /^[\w-]{1,32}$/;
 
-export const pictureKey = (alias: string, id: string): string => `img/${alias}/${id}.jpg`;
-
-/** The public address of an item's picture, relative to the site's root. */
-export const picturePath = (alias: string, id: string): string => `/img/b/${alias}/${id}.jpg`;
+const pictureKey = (alias: string, id: string): string => `img/${alias}/${id}.jpg`;
 
 /** Reads a public picture address back: `img/b/<alias>/<item>.jpg`, split on `/`. */
 export function parsePicturePath(parts: readonly string[]): { alias: string; id: string } | null {
@@ -38,8 +35,8 @@ export async function storePicture(bucket: R2Bucket, alias: string, id: string, 
 }
 
 /**
- * The picture of an item: for visitors only once approved, for the moderator whatever its state (to review it).
- * Null when there is none to show.
+ * The picture of an item: for visitors only once approved, for the moderator whatever its state (to review it), with
+ * its ETag, which the moderator's decision sends back (`approvePicture`). Null when there is none to show.
  */
 export async function readPicture(
   bucket: R2Bucket | undefined,
@@ -55,28 +52,41 @@ export async function readPicture(
     headers: {
       'Content-Type': 'image/jpeg',
       'Cache-Control': admin ? 'no-store' : 'public, max-age=86400',
+      ETag: object.httpEtag,
       'X-Content-Type-Options': 'nosniff',
     },
   });
 }
 
-/** Marks a stored picture approved (R2 rewrites the object to change its metadata). False when there is none. */
-export async function approvePicture(bucket: R2Bucket, alias: string, id: string): Promise<boolean> {
+/**
+ * Marks a stored picture approved (R2 rewrites the object to change its metadata), provided it is still the one the
+ * moderator looked at: `etag` is the ETag they were served. `changed` when the author sent another one since,
+ * `not_found` when there is none, `bad_request` when it was approved already.
+ */
+export async function approvePicture(
+  bucket: R2Bucket,
+  alias: string,
+  id: string,
+  etag: string,
+): Promise<'ok' | 'not_found' | 'changed' | 'bad_request'> {
   const key = pictureKey(alias, id);
   const object = await bucket.get(key);
-  if (!object) return false;
+  if (!object) return 'not_found';
+  if (object.customMetadata?.state === 'ok') return 'bad_request';
+  if (etag !== object.httpEtag && etag !== object.etag) return 'changed';
+  // The bytes written back are the ones just compared: whatever arrives meanwhile, what is approved is what was seen.
   await bucket.put(key, object.body, {
     httpMetadata: { contentType: 'image/jpeg' },
     customMetadata: { state: 'ok' },
   });
-  return true;
+  return 'ok';
 }
 
 export const deletePicture = (bucket: R2Bucket, alias: string, id: string): Promise<void> =>
   bucket.delete(pictureKey(alias, id));
 
-/** Deletes every object under a prefix (a board's cards or pictures, when the board goes). */
-export async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<void> {
+/** Deletes every object under a prefix (a board's cards or pictures, when the board goes); returns how many went. */
+export async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<number> {
   const keys: string[] = [];
   let cursor: string | undefined;
   do {
@@ -85,4 +95,5 @@ export async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<vo
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   if (keys.length) await bucket.delete(keys);
+  return keys.length;
 }

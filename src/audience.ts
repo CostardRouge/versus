@@ -6,10 +6,12 @@
  * ranking, a board or an author's key. Without settings in the page (development, tests, a build without
  * measurement), everything here does nothing.
  *
- * Shared by the home pages, the legal pages and the app; no import, so the build can read CONFIG_ID too. Not
+ * Shared by the home pages, the legal pages and the app; it imports only src/core/site.ts, which the build loads too. Not
  * named "analytics": the bundler names shared chunks after a module, and filter lists block files called that,
  * which would take the whole app down for anyone with a blocker.
  */
+
+import { MEASUREMENT_ID } from './core/site.ts';
 
 /** Settings written by the build (build/analytics.ts). */
 interface Config {
@@ -35,7 +37,7 @@ export type EventData = Record<string, string | number | boolean>;
 export type Measurement = 'none' | 'signal' | 'off' | 'on';
 
 /** The element holding the settings in the head. */
-export const CONFIG_ID = 'analytics';
+export const CONFIG_ID = MEASUREMENT_ID;
 /** Umami's own opt-out key: the tracker checks it before every send too. */
 export const OPT_OUT_KEY = 'umami.disabled';
 /** Views and events waiting for the tracker; a tracker that never loads (offline, blocked) can't grow it past this. */
@@ -166,13 +168,19 @@ function externalReferrer(): string {
 }
 
 /**
+ * The title every view and event reports: the page's own, as the build wrote it, read before anything changes it.
+ * Never `document.title` later: the app names its tab after the ranking on screen, which is the visitor's own.
+ */
+const pageTitle = typeof document === 'undefined' ? '' : document.title;
+
+/**
  * A page view, at `path` on the site (`/fr/`, `/app/demo/destinations`). The same path twice in a row counts
  * once; the previous view is the next one's referrer, as a page load would report it.
  */
 export function trackView(path: string): void {
   if (path === last) return;
   const referrer = last ?? externalReferrer();
-  const title = document.title;
+  const title = pageTitle;
   last = path;
   send((umami) => umami.track((base) => ({ ...base, url: path, referrer, title })));
 }
@@ -183,6 +191,6 @@ export const trackPage = (): void => trackView(pagePath());
 /** An event on the current view, with anonymous facts only (docs/analytics.md lists them). */
 export function trackEvent(name: string, data?: EventData): void {
   const url = last ?? pagePath();
-  const title = document.title;
+  const title = pageTitle;
   send((umami) => umami.track((base) => ({ ...base, url, title, name, ...(data ? { data } : {}) })));
 }

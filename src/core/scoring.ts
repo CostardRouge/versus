@@ -76,7 +76,7 @@ function bradleyTerryScores(r: Ranking, H: Duel[], st: Record<string, ItemStats>
   r.items.forEach((it, i) => {
     ix[it.id] = i;
   });
-  const wins = new Array<number>(n).fill(0.5);
+  const wins = new Float64Array(n).fill(0.5);
   const adj = r.items.map(() => new Map<number, number>());
   for (const h of H) {
     const a = ix[h.a] as number;
@@ -86,39 +86,92 @@ function bradleyTerryScores(r: Ranking, H: Duel[], st: Record<string, ItemStats>
     adj[a]?.set(b, (adj[a]?.get(b) ?? 0) + 1);
     adj[b]?.set(a, (adj[b]?.get(a) ?? 0) + 1);
   }
-  let p = new Array<number>(n).fill(1);
+  // Each item's opponents and duel counts in flat arrays, in the order they were met (the sums below add up in the
+  // same order as before, so the scores don't change by a bit); the iterations then allocate nothing.
+  const start = new Int32Array(n + 1);
+  adj.forEach((m, i) => {
+    start[i + 1] = (start[i] as number) + m.size;
+  });
+  const nbr = new Int32Array(start[n] as number);
+  const cnt = new Float64Array(start[n] as number);
+  adj.forEach((m, i) => {
+    let k = start[i] as number;
+    m.forEach((c, j) => {
+      nbr[k] = j;
+      cnt[k++] = c;
+    });
+  });
+  let p = new Float64Array(n).fill(1);
+  let next = new Float64Array(n);
   for (let iter = 0; iter < 400; iter++) {
-    const prev = p;
-    const next = prev.map((pi, i) => {
-      let den = 1 / (pi + 1);
-      adj[i]?.forEach((c, j) => {
-        den += c / (pi + (prev[j] as number));
-      });
-      return (wins[i] as number) / den;
-    });
     let diff = 0;
-    next.forEach((v, i) => {
-      diff = Math.max(diff, Math.abs(Math.log(v / (prev[i] as number))));
-    });
-    p = next;
+    for (let i = 0; i < n; i++) {
+      const pi = p[i] as number;
+      let den = 1 / (pi + 1);
+      for (let k = start[i] as number; k < (start[i + 1] as number); k++) {
+        den += (cnt[k] as number) / (pi + (p[nbr[k] as number] as number));
+      }
+      next[i] = (wins[i] as number) / den;
+    }
+    for (let i = 0; i < n; i++) diff = Math.max(diff, Math.abs(Math.log((next[i] as number) / (p[i] as number))));
+    [p, next] = [next, p];
     if (diff < 1e-7) break;
   }
   r.items.forEach((item, i) => {
     const pi = p[i] as number;
     let info = pi / (pi + 1) ** 2;
-    adj[i]?.forEach((c, j) => {
-      const pj = p[j] as number;
-      info += (c * pi * pj) / (pi + pj) ** 2;
-    });
+    for (let k = start[i] as number; k < (start[i + 1] as number); k++) {
+      const pj = p[nbr[k] as number] as number;
+      info += ((cnt[k] as number) * pi * pj) / (pi + pj) ** 2;
+    }
     const s = st[item.id] as ItemStats;
     s.score = ELO_START + LOG * Math.log(pi);
     s.se = LOG / Math.sqrt(info);
   });
 }
 
-/** Scores, order and win/loss records for a ranking, using its scoring method. */
+/** One computation kept for a ranking's history: what it was computed from, by reference. */
+interface Memo {
+  m: MethodKey;
+  upto: number;
+  /** The last duel taken into account: the history only grows or shrinks at its end, so the duels before it match. */
+  at: Duel | undefined;
+  items: readonly Item[];
+  refs: Item[];
+  C: Computed;
+}
+
+/** Computations kept per history array (a ranking and its `{ ...r, method }` copies share it). */
+const memos = new WeakMap<Duel[], Memo[]>();
+/** Computations kept per history: the methods a page compares, and the duels before the last ones. */
+const MEMO_SIZE = 8;
+
+const same = (e: Memo, r: Ranking, m: MethodKey, upto: number): boolean =>
+  e.m === m &&
+  e.upto === upto &&
+  e.at === r.history[upto - 1] &&
+  e.items === r.items &&
+  e.refs.length === r.items.length &&
+  e.refs.every((it, i) => it === r.items[i]);
+
+/**
+ * Scores, order and win/loss records for a ranking, using its scoring method. The result is shared and must not
+ * be changed: the same duels, items and method give back the same object without computing it again (a duel
+ * renders the list, the duel and the ranking from one computation). Duels and items are compared by reference, so
+ * a duel added or undone, an item added, removed or replaced computes afresh.
+ */
 export function compute(r: Ranking, upto = r.history.length): Computed {
   const m = methodOf(r);
+  const kept = memos.get(r.history) ?? [];
+  const hit = kept.find((e) => same(e, r, m, upto));
+  if (hit) return hit.C;
+  const C = computeFresh(r, m, upto);
+  const memo: Memo = { m, upto, at: r.history[upto - 1], items: r.items, refs: [...r.items], C };
+  memos.set(r.history, [memo, ...kept].slice(0, MEMO_SIZE));
+  return C;
+}
+
+function computeFresh(r: Ranking, m: MethodKey, upto: number): Computed {
   const H = validHistory(r, upto);
   const st: Record<string, ItemStats> = {};
   r.items.forEach((it, i) => {

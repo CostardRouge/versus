@@ -1,7 +1,6 @@
 import { trackEvent } from '../audience';
-import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS } from '../core/board';
+import { CROWD_METHODS, DEFAULT_SETTINGS, LIMITS, VISIBILITIES, validSettings } from '../core/board';
 import {
-  dataURLBytes,
   lastDuelPerPair,
   type PublishBlock,
   pictureItems,
@@ -11,17 +10,17 @@ import {
 } from '../core/published';
 import type { BoardSettings, MethodKey, Ranking, Visibility } from '../core/types';
 import { getLang, methodText as M, type MsgKey, plural, t } from '../i18n';
+import { sendPictures } from './author';
 import { boardURL } from './board';
-import { $, ask, copyText, doc, toast } from './dom';
+import { $, ask, copyText, toast } from './dom';
+import { errorKey, PUBLISH_ERRORS } from './errors';
 import { openBoard } from './rankings';
-import { ApiError, fetchConfig, publishBoard, putItemImage } from './remote';
-import { uploadPublishedCard } from './share';
+import { fetchConfig, publishBoard } from './remote';
 import { S, save } from './state';
 import { saveOwner } from './storage';
+import { turnstileKey, turnstileWidget } from './turnstile';
 
 /** Publishing a local ranking, and the settings form shared by the publish modal and the board's settings. */
-
-const VISIBILITIES: readonly Visibility[] = ['always', 'after', 'blind'];
 
 const radio = (prefix: string, name: string, value: string, checked: boolean): string =>
   `<input type="radio" name="${prefix}-${name}" value="${value}" ${checked ? 'checked' : ''}>`;
@@ -39,7 +38,7 @@ export function visibilityHTML(prefix: string, s: BoardSettings): string {
 }
 
 /** Results visibility and scoring method. Exact sort is listed but can't be picked, with the reason. */
-export function settingsHTML(prefix: string, s: BoardSettings): string {
+function settingsHTML(prefix: string, s: BoardSettings): string {
   const method = (k: MethodKey) =>
     `<label class="opt">${radio(prefix, 'm', k, s.method === k)} <b>${M(k).name}</b> <span class="muted mono">${M(k).tech}</span></label>`;
   return `${visibilityHTML(prefix, s)}
@@ -53,21 +52,16 @@ export const optionsHTML = (prefix: string, s: BoardSettings): string =>
   `<label class="opt"><input type="checkbox" id="${prefix}-change" ${s.allowChange ? 'checked' : ''}> ${t('allowChange')}</label>
   <label class="opt"><input type="checkbox" id="${prefix}-visitors" ${s.visitorsAddItems ? 'checked' : ''}> ${t('visitorsAdd')}</label>`;
 
-/** The settings a form holds; the server validates them again. */
+/** The valid settings a form holds (the fields it has); the server validates them again. */
 export function readSettings(root: ParentNode, prefix: string): Partial<BoardSettings> {
   const input = (sel: string) => root.querySelector<HTMLInputElement>(sel);
-  const out: Partial<BoardSettings> = {};
-  const vis = input(`input[name="${prefix}-vis"]:checked`)?.value;
-  if (VISIBILITIES.includes(vis as Visibility)) out.visibility = vis as Visibility;
-  const n = Number(input(`#${prefix}-n`)?.value);
-  if (Number.isInteger(n) && n >= 1 && n <= LIMITS.revealAfter) out.revealAfter = n;
-  const m = input(`input[name="${prefix}-m"]:checked`)?.value;
-  if (CROWD_METHODS.includes(m as MethodKey)) out.method = m as MethodKey;
-  const change = input(`#${prefix}-change`);
-  if (change) out.allowChange = change.checked;
-  const visitors = input(`#${prefix}-visitors`);
-  if (visitors) out.visitorsAddItems = visitors.checked;
-  return out;
+  return validSettings({
+    method: input(`input[name="${prefix}-m"]:checked`)?.value,
+    visibility: input(`input[name="${prefix}-vis"]:checked`)?.value,
+    revealAfter: Number(input(`#${prefix}-n`)?.value),
+    allowChange: input(`#${prefix}-change`)?.checked,
+    visitorsAddItems: input(`#${prefix}-visitors`)?.checked,
+  });
 }
 
 const BLOCKS: Record<PublishBlock, MsgKey> = {
@@ -78,59 +72,29 @@ const BLOCKS: Record<PublishBlock, MsgKey> = {
 
 let publishing = false;
 
-// ─── Turnstile (only when a site key is configured; the server checks the token) ──
-
-interface TurnstileApi {
-  render(el: HTMLElement, opts: { sitekey: string }): string;
-  getResponse(id: string): string | undefined;
-  remove(id: string): void;
-}
-
-const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
-let turnstileScript: Promise<TurnstileApi | undefined> | null = null;
-
-function loadTurnstile(): Promise<TurnstileApi | undefined> {
-  turnstileScript ??= new Promise((resolve) => {
-    const script = doc.createElement('script');
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    script.async = true;
-    script.onload = () => resolve((window as { turnstile?: TurnstileApi }).turnstile);
-    script.onerror = () => {
-      turnstileScript = null;
-      resolve(undefined);
-    };
-    doc.head.append(script);
-  });
-  return turnstileScript;
-}
-
-const PUBLISH_ERRORS: Partial<Record<string, MsgKey>> = {
-  captcha: 'captchaFailed',
-  rate_limited: 'tooManyTries',
-  images_not_allowed: 'blockImages',
-};
-
-/**
- * Sends the pictures the published items announced, one by one, for the moderator's review. A picture that
- * fails leaves its item as text: the author panel says it waits, and nothing else breaks.
- */
-async function sendPictures(r: Ranking, alias: string, owner: string): Promise<void> {
-  let sent = 0;
-  for (const it of pictureItems(r)) {
-    const data = dataURLBytes(it.img);
-    if (!data) continue;
-    try {
-      await putItemImage(alias, owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }));
-      sent++;
-    } catch {
-      /* this item stays as text */
-    }
-  }
-  toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+/** What the server answered a publication with, and what was sent. */
+interface Published {
+  alias: string;
+  owner: string;
+  chosen: Partial<BoardSettings>;
+  withVotes: boolean;
 }
 
 export async function publishRanking(r: Ranking | undefined): Promise<void> {
   if (!r || r.pub || publishing) return;
+  publishing = true;
+  try {
+    await publish(r);
+  } finally {
+    publishing = false;
+  }
+}
+
+/**
+ * The publish dialog: settings, then Publish, which keeps the dialog open and busy until the server answers. What
+ * goes wrong shows in it, the settings as chosen; once published, the board opens.
+ */
+async function publish(r: Ranking): Promise<void> {
   let block = publishBlock(r);
   // Pictures travel only when the server reviews them (docs/published-boards.md#images).
   let pictures = 0;
@@ -144,61 +108,78 @@ export async function publishRanking(r: Ranking | undefined): Promise<void> {
   }
   const duels = lastDuelPerPair(r).length;
   const settings: BoardSettings = { ...DEFAULT_SETTINGS, method: publishMethod(r) };
+  // Turnstile, only when a site key is configured (the server checks the token).
+  const check = turnstileKey() !== undefined;
   const html = `<p>${t('publishBody')}</p>
     ${pictures ? `<p class="pub-pictures">${t('publishPictures', { pictures: plural(pictures, 'picture') })}</p>` : ''}
     ${duels ? `<label class="opt pub-votes"><input type="checkbox" id="pub-votes" checked> ${t('publishVotes', { duels: plural(duels, 'duel') })}</label>` : ''}
     ${settingsHTML('pub', settings)}
     <details class="more"><summary>${t('moreOptions')}</summary>${optionsHTML('pub', settings)}</details>
-    ${SITE_KEY ? '<div class="pub-captcha" id="pub-captcha"></div>' : ''}`;
-  const asked = ask({ title: t('publishTitle'), html, ok: t('publish') });
-  let widget: { api: TurnstileApi; id: string } | null = null;
-  if (SITE_KEY) {
-    void loadTurnstile().then((api) => {
-      const el = $('#pub-captcha');
-      if (api && el) widget = { api, id: api.render(el, { sitekey: SITE_KEY }) };
-    });
-  }
+    ${check ? `<div class="pub-captcha" id="pub-captcha"></div><p class="m-error" id="pub-captcha-err" role="alert" hidden>${t('captchaFailed')}</p>` : ''}`;
+  let done: Published | null = null;
+  const send = async (): Promise<string | true> => {
+    const turnstile = widget.token();
+    if (check && !turnstile) return t('captchaMissing');
+    const form = $('#m-body');
+    if (!form) return t('publishFailed');
+    const chosen = readSettings(form, 'pub');
+    const withVotes = $<HTMLInputElement>('#pub-votes', form)?.checked ?? false;
+    try {
+      const { alias, owner } = await publishBoard({
+        ...publishRequest(r, S.voter, chosen, withVotes, getLang(), pictures > 0),
+        ...(turnstile ? { turnstile } : {}),
+      });
+      done = { alias, owner, chosen, withVotes };
+      return true;
+    } catch (e) {
+      // The token was spent (or may have been): another check for the next try.
+      widget.reset();
+      return t(errorKey(e, PUBLISH_ERRORS, 'publishFailed'));
+    }
+  };
+  const asked = ask({
+    title: t('publishTitle'),
+    html,
+    ok: t('publish'),
+    confirm: { run: send, busy: t('publishing') },
+  });
+  // With a check, Publish waits for its token.
+  const ok = $<HTMLButtonElement>('#m-ok');
+  if (check && ok) ok.disabled = true;
+  const widget = turnstileWidget('#pub-captcha', (state) => {
+    if (ok && $('#pub-captcha')) ok.disabled = state !== 'ready';
+    const err = $('#pub-captcha-err');
+    if (err) err.hidden = state !== 'failed';
+  });
   const confirmed = await asked;
-  const current = widget as { api: TurnstileApi; id: string } | null;
-  const turnstile = current ? current.api.getResponse(current.id) : undefined;
-  current?.api.remove(current.id);
-  if (!confirmed) return;
-  if (SITE_KEY && !turnstile) {
-    toast(t('captchaMissing'));
-    return;
+  widget.take();
+  // Set by send(), which TypeScript can't see run.
+  const published = done as Published | null;
+  if (!confirmed || !published) return;
+  const { alias, owner, chosen, withVotes } = published;
+  const used = { ...settings, ...chosen };
+  trackEvent('board-published', {
+    method: used.method,
+    visibility: used.visibility,
+    items: r.items.length,
+    votes: withVotes,
+    pictures,
+  });
+  r.pub = { alias, status: 'open' };
+  r.updated = Date.now();
+  saveOwner(alias, owner);
+  save();
+  // The link's preview image, drawn here from the same items and votes the server just received.
+  // The drawing code loads with it, in the background.
+  void import('./share').then((m) => m.uploadPublishedCard(r, alias, withVotes, used));
+  // The pictures the published items announced, for the moderator's review; one that fails leaves its item as
+  // text, and the author's list offers to send it again (author.ts).
+  if (pictures) {
+    const announced = pictureItems(r).map((it) => ({ id: it.id, data: it.img }));
+    void sendPictures(alias, owner, announced);
   }
-  const form = $('#m-body');
-  if (!form) return;
-  const chosen = readSettings(form, 'pub');
-  const withVotes = $<HTMLInputElement>('#pub-votes', form)?.checked ?? false;
-  publishing = true;
-  try {
-    const request = {
-      ...publishRequest(r, S.voter, chosen, withVotes, getLang(), pictures > 0),
-      ...(turnstile ? { turnstile } : {}),
-    };
-    const { alias, owner } = await publishBoard(request);
-    const used = { ...settings, ...chosen };
-    trackEvent('board-published', {
-      method: used.method,
-      visibility: used.visibility,
-      items: r.items.length,
-      votes: withVotes,
-      pictures,
-    });
-    r.pub = { alias, status: 'open' };
-    r.updated = Date.now();
-    saveOwner(alias, owner);
-    save();
-    // The link's preview image, drawn here from the same items and votes the server just received.
-    uploadPublishedCard(r, alias, withVotes);
-    if (pictures) void sendPictures(r, alias, owner);
-    const copied = await copyText(boardURL(alias));
-    openBoard(alias);
-    toast(t(copied ? 'published' : 'publishedShare'));
-  } catch (e) {
-    toast(t((e instanceof ApiError && PUBLISH_ERRORS[e.code]) || 'publishFailed'));
-  } finally {
-    publishing = false;
-  }
+  const copied = await copyText(boardURL(alias));
+  // The ranking's address now opens its board: Back must not land on it, only to be sent forward again.
+  openBoard(alias, { replace: S.route.view === 'rank' && S.route.id === r.id });
+  toast(t(copied ? 'published' : 'publishedShare'));
 }

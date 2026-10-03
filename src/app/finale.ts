@@ -1,4 +1,5 @@
-import { fillCSS, fillInk } from '../core/colors';
+import { fillCSS, fillText } from '../core/colors';
+import { hueValue } from '../core/model';
 import type { ItemScore, RankingView } from '../core/protocol';
 import { agreement, crowdCheck, neckAndNeck, ownRanking, totalPairs } from '../core/published';
 import type { BoardStatus, Computed, Duel, Item, MethodKey } from '../core/types';
@@ -36,7 +37,7 @@ export interface FinaleData {
 /** How long the reveal lasts; live updates wait for its end. */
 const PLAY_MS = 4200;
 /** Stands for an item name in a translated sentence, replaced by the highlighted name. */
-const SLOT = '';
+export const SLOT = '';
 
 const podiumSvg =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="11" width="6" height="10" rx="1"/><rect x="9" y="4" width="6" height="17" rx="1"/><rect x="15.5" y="14" width="6" height="7" rx="1"/></svg>';
@@ -59,6 +60,7 @@ export function setPodiumWho(w: string | undefined): void {
 export function resetFinale(): void {
   who = 'crowd';
   clearTimeout(timer);
+  clearShows();
   playing = false;
 }
 
@@ -95,11 +97,14 @@ function ctxOf(d: FinaleData): Ctx {
 }
 
 const tileStyle = (it: Item): string =>
-  it.fill ? `background:${fillCSS(it.fill)};color:${fillInk(it.fill)}` : `--h:${it.h}`;
+  it.fill ? `background:${fillCSS(it.fill)};${fillText(it.fill)}` : `--h:${hueValue(it)}`;
 const highlight = (it: Item): string => `<span class="fin-win" style="${tileStyle(it)}">${esc(it.label)}</span>`;
-/** A translated sentence around a highlighted item name. */
-const sentence = (text: string, it: Item): string => esc(text).replace(SLOT, highlight(it));
+/** A translated sentence around a highlighted item name (the name as it is: `$&` in a label is no pattern). */
+export const sentence = (text: string, it: Item): string => esc(text).replace(SLOT, () => highlight(it));
 const percent = (x: number): number => (x < 0 ? 0 : Math.min(100, Math.round(x)));
+/** "≈", neck and neck with the one above: a picture with a name, for a screen reader. */
+const neckHTML = (): string =>
+  `<span class="fin-neck" role="img" aria-label="${t('neck')}" title="${t('neck')}">≈</span>`;
 const shortScore = (m: MethodKey, x: ItemScore): string =>
   m === 'win' ? pct(Math.round(x.score * 100)) : String(Math.round(x.score));
 
@@ -117,7 +122,7 @@ function crowdRows(c: Ctx, crowd: RankingView): Row[] {
     const it = c.byId.get(id);
     const x = crowd.stats[id];
     if (!it || !x) return [];
-    const neck = close.has(id) ? ` <span class="fin-neck" title="${t('neck')}">≈</span>` : '';
+    const neck = close.has(id) ? ` ${neckHTML()}` : '';
     return [{ it, meta: `${fmtCrowd(crowd.method, x)}${neck}` }];
   });
 }
@@ -150,9 +155,17 @@ function actionsHTML(c: Ctx, delay: number): string {
   // A voter can start their own version from these items; the author already has the ranking.
   const cta = c.d.owner
     ? ''
-    : `<p class="fin-cta">${t('finCta')} <button class="link" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}">${t('makeMine')}</button></p>`;
+    : `<p class="fin-cta">${t('finCta')} <button class="link" type="button" data-action="b-make-mine" title="${esc(t('makeMineHint'))}" aria-describedby="fin-mine-hint">${t('makeMine')}</button><span id="fin-mine-hint" hidden>${esc(t('makeMineHint'))}</span></p>`;
+  // Where the button goes: new pairs to vote, the crowd's ranking (live, or final once closed), or the board's page.
+  const main = c.left
+    ? t('finVoteNew')
+    : !c.d.crowd
+      ? t('finBackBoard')
+      : c.d.status === 'closed'
+        ? t('finSeeFinal')
+        : t('finSeeBoard');
   return `<div class="fin-acts rv" style="--d:${delay}s">
-    <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${c.left ? t('finVoteNew') : t('finSeeBoard')}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button></div>
+    <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${main}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button></div>
     ${cta}
   </div>`;
 }
@@ -234,7 +247,7 @@ function podiumHTML(c: Ctx): string {
         <span class="fin-cap">${t('finPairsVoted')}</span>
       </div>
       <div class="rv" style="--d:0.3s">
-        <h1 class="fin-h">${c.left ? t('finNewTitle', { pairs: plural(c.left, 'pair') }) : t('votedAll')}</h1>
+        <h1 class="fin-h" id="fin-h">${c.left ? t('finNewTitle', { pairs: plural(c.left, 'pair') }) : t('votedAll')}</h1>
         <p class="fin-sub">${sub}</p>
       </div>
     </header>
@@ -275,7 +288,7 @@ function duoHTML(c: Ctx): string {
           const it = c.byId.get(id);
           const x = crowd.stats[id];
           if (!it || !x) return '';
-          return `<li data-id="${esc(id)}" style="${at(crowdStart, i)}"><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="fin-nm">${esc(it.label)}</span><span class="fin-sc mono">${shortScore(crowd.method, x)}${close.has(id) ? ' ≈' : ''}</span></li>`;
+          return `<li data-id="${esc(id)}" style="${at(crowdStart, i)}"><span class="pos mono">${i + 1}</span>${thumbHTML(it)}<span class="fin-nm">${esc(it.label)}</span><span class="fin-sc mono">${shortScore(crowd.method, x)}${close.has(id) ? ` ${neckHTML()}` : ''}</span></li>`;
         })
         .join('')
     : own
@@ -321,7 +334,7 @@ function duoHTML(c: Ctx): string {
   }
   return `<header class="rv" style="--d:0.1s">
       <p class="fin-eyebrow">${barHTML(c)}<span class="mono">${t('finPairs', { n: countHTML(d.count), total: c.pairs })} · ${status}</span></p>
-      <h1 class="fin-h">${title}</h1>
+      <h1 class="fin-h" id="fin-h">${title}</h1>
       <p class="fin-sub">${esc(sub)}</p>
     </header>
     <div class="fin-grid fin-grid-duo">
@@ -341,7 +354,8 @@ function duoHTML(c: Ctx): string {
 
 export function finaleHTML(d: FinaleData): string {
   const c = ctxOf(d);
-  return `<div class="fin" id="fin">${topHTML(d)}<div class="fin-body">${d.view === 'duo' ? duoHTML(c) : podiumHTML(c)}</div></div>`;
+  // A region named by its heading: the focus lands on it when the page opens, its blocks still appearing.
+  return `<div class="fin" id="fin" role="region" aria-labelledby="fin-h">${topHTML(d)}<div class="fin-body">${d.view === 'duo' ? duoHTML(c) : podiumHTML(c)}</div></div>`;
 }
 
 function countUp(el: HTMLElement): void {
@@ -360,16 +374,34 @@ function countUp(el: HTMLElement): void {
   requestAnimationFrame(tick);
 }
 
+/** The timers that let the reveal's blocks be reached as they appear. */
+let shows: ReturnType<typeof setTimeout>[] = [];
+function clearShows(): void {
+  for (const s of shows) clearTimeout(s);
+  shows = [];
+}
+/** Blocks still to appear are out of reach (Tab, a screen reader) until their turn: nothing focused unseen. */
+function holdUnrevealed(fin: HTMLElement): void {
+  for (const el of $$('.rv', fin)) {
+    const at = Number.parseFloat(el.style.getPropertyValue('--d')) || 0;
+    if (at <= 0) continue;
+    el.setAttribute('inert', '');
+    shows.push(setTimeout(() => el.removeAttribute('inert'), at * 1000));
+  }
+}
+
 /** After finaleHTML is in the page: runs the reveal (or a fade), draws the lines, binds the hover. */
 export function mountFinale(mode: FinaleMode, onSettled: () => void): void {
   const fin = $('#fin');
   if (!fin) return;
   clearTimeout(timer);
+  clearShows();
   playing = false;
   if (mode === 'swap') fin.classList.add('swap');
   if (mode === 'play' && !reduced) {
     fin.classList.add('play');
     playing = true;
+    holdUnrevealed(fin);
     if (typeof requestAnimationFrame === 'function') for (const el of $$('[data-count]', fin)) countUp(el);
     timer = setTimeout(() => {
       playing = false;

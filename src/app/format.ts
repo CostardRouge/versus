@@ -16,6 +16,9 @@ export function fmtCrowd(m: MethodKey, x: ItemScore): string {
 }
 export const fmtRecord = (s: ItemStats, withTies: boolean): string =>
   `${s.w}${t('recW')} ${s.l}${t('recL')}${withTies ? ` ${s.d}${t('recD')}` : ''}`;
+/** The record in words, for a screen reader: "5 wins, 2 losses, 1 tie". */
+export const recordText = (s: ItemStats, withTies: boolean): string =>
+  t('recordText', withTies ? { w: s.w, l: s.l, d: s.d } : { w: s.w, l: s.l });
 
 export function deltaInfo(
   m: MethodKey,

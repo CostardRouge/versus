@@ -13,8 +13,9 @@ import { type AdminKey, type AdminLang, adminText } from '../i18n/admin';
 /**
  * The publisher's moderation page (/admin/): the boards of the registry with their counts, flags and reports;
  * per board, the full view and the admin actions (close or reopen, feature, hide, remove an item, clear the
- * reports, take down). Talks to /api/admin with the token typed on the page, kept in this tab only
- * (docs/published-boards.md#moderation). Rendered as HTML strings with delegated events, like the app.
+ * reports, delete its link previews, take down). Talks to /api/admin with the token typed on the page, kept in
+ * memory only: no storage a script could read, and a reload asks again (docs/published-boards.md#moderation).
+ * Rendered as HTML strings with delegated events, like the app.
  */
 
 export interface AdminOpts {
@@ -23,16 +24,15 @@ export interface AdminOpts {
   api: string | null;
   lang: AdminLang;
   fetch: typeof fetch;
-  /** Where the token lives between reloads of this tab; null when storage is unavailable. */
-  storage: Storage | null;
   confirm: (message: string) => boolean;
   /** The app's address for a board. */
   boardURL: (alias: string) => string;
   locale: string;
 }
 
-const TOKEN_KEY = 'versus-admin';
 const PAGE = 50;
+/** How long a request may take before the page says the server didn't answer. */
+const TIMEOUT_MS = 15_000;
 
 const FILTER_KEYS: Record<AdminFilter, AdminKey> = {
   all: 'fAll',
@@ -77,24 +77,9 @@ export function mountAdmin(opts: AdminOpts): void {
   const numbers = new Intl.NumberFormat(opts.locale);
   const n = (x: number) => numbers.format(x);
   const when = (ts: number) => dates.format(new Date(ts));
-  const read = (): string => {
-    try {
-      return opts.storage?.getItem(TOKEN_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  };
-  const write = (token: string): void => {
-    try {
-      if (token) opts.storage?.setItem(TOKEN_KEY, token);
-      else opts.storage?.removeItem(TOKEN_KEY);
-    } catch {
-      /* the token lasts for this page only */
-    }
-  };
 
   const st: State = {
-    token: read(),
+    token: '',
     totals: null,
     list: null,
     filter: 'all',
@@ -115,6 +100,7 @@ export function mountAdmin(opts: AdminOpts): void {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${st.token}` },
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {
       throw new AdminError('network');
@@ -127,10 +113,14 @@ export function mountAdmin(opts: AdminOpts): void {
   /** A refused token goes back to the form, forgotten; anything else keeps the page and says so. */
   const fail = (e: unknown): void => {
     const code = e instanceof AdminError ? e.code : 'network';
-    st.error = code === 'forbidden' ? 'wrongToken' : code === 'network' ? 'offline' : 'failed';
+    const errors: Partial<Record<ErrorCode | 'network', AdminKey>> = {
+      forbidden: 'wrongToken',
+      network: 'offline',
+      changed: 'picChanged',
+    };
+    st.error = errors[code] ?? 'failed';
     if (code === 'forbidden') {
       st.token = '';
-      write('');
       st.totals = null;
       st.list = null;
       st.open = null;
@@ -154,6 +144,9 @@ export function mountAdmin(opts: AdminOpts): void {
       if (st.open && !list.boards.some((b) => b.alias === st.open)) {
         st.open = null;
         st.detail = null;
+      } else if (st.open && !st.detail) {
+        // Details that failed to load come with the refreshed list.
+        st.detail = await call<AdminBoardView>('GET', `/boards/${st.open}`);
       }
     } catch (e) {
       fail(e);
@@ -169,16 +162,22 @@ export function mountAdmin(opts: AdminOpts): void {
     try {
       st.detail = await call<AdminBoardView>('GET', `/boards/${alias}`);
     } catch (e) {
+      // The row closes rather than load forever; the error says why.
+      if (st.open === alias) st.open = null;
       fail(e);
     }
     render();
   }
 
-  /** An admin action on the open board, then its details and the list again (the row changed). */
+  /**
+   * An admin action on the open board, then its details and the list again (the row changed). What went wrong stays
+   * on screen once the list is read again.
+   */
   async function act(run: () => Promise<unknown>, then: 'detail' | 'list' = 'detail'): Promise<void> {
     const alias = st.open;
     st.busy = true;
     render();
+    let failed: AdminKey | null = null;
     try {
       await run();
       if (then === 'list' || !alias) {
@@ -187,9 +186,14 @@ export function mountAdmin(opts: AdminOpts): void {
       } else st.detail = await call<AdminBoardView>('GET', `/boards/${alias}`);
     } catch (e) {
       fail(e);
+      failed = st.error;
     }
     st.busy = false;
     await load();
+    if (failed && !st.error) {
+      st.error = failed;
+      render();
+    }
   }
 
   // ─── Rendering ────────────────────────────────────────────────────────────
@@ -216,13 +220,14 @@ export function mountAdmin(opts: AdminOpts): void {
   }
 
   function toolsHTML(): string {
+    // Toggle buttons, one pressed: they filter the one list below (not tabs, which would have panels).
     const filters = ADMIN_FILTERS.map(
       (f) =>
-        `<button class="ad-filter" type="button" role="tab" aria-selected="${f === st.filter}" data-act="filter" data-filter="${f}">${tx(FILTER_KEYS[f])}</button>`,
+        `<button class="ad-filter" type="button" aria-pressed="${f === st.filter}" data-act="filter" data-filter="${f}">${tx(FILTER_KEYS[f])}</button>`,
     ).join('');
     return `<div class="ad-tools">
-      <div class="ad-filters" role="tablist">${filters}</div>
-      <form class="ad-search" data-form="search"><input type="search" name="q" value="${esc(st.q)}" placeholder="${esc(tx('search'))}" aria-label="${esc(tx('search'))}"><button class="ad-btn" type="submit">${tx('searchGo')}</button></form>
+      <div class="ad-filters" role="group" aria-label="${esc(tx('filters'))}">${filters}</div>
+      <form class="ad-search" data-form="search"><input id="ad-q" type="search" name="q" value="${esc(st.q)}" placeholder="${esc(tx('search'))}" aria-label="${esc(tx('search'))}"><button class="ad-btn" type="submit">${tx('searchGo')}</button></form>
       ${button('refresh', tx('refresh'))}
     </div>`;
   }
@@ -245,8 +250,8 @@ export function mountAdmin(opts: AdminOpts): void {
       <td class="mono ${b.reports ? 'ad-count' : ''}">${n(b.reports)}</td>
       <td class="ad-date">${when(b.created)}</td>
       <td class="ad-date">${when(b.active)}</td>
-      <td>${button(open ? 'less' : 'inspect', tx(open ? 'less' : 'details'), `data-alias="${esc(b.alias)}"`, 'ad-btn sm')}</td>
-    </tr>${open ? `<tr class="ad-detail"><td colspan="9">${detailHTML()}</td></tr>` : ''}`;
+      <td>${button('details', tx('details'), `data-alias="${esc(b.alias)}" aria-expanded="${open}" ${open ? `aria-controls="ad-detail-${esc(b.alias)}"` : ''}`, 'ad-btn sm')}</td>
+    </tr>${open ? `<tr class="ad-detail" id="ad-detail-${esc(b.alias)}"><td colspan="9">${detailHTML()}</td></tr>` : ''}`;
   }
 
   function detailHTML(): string {
@@ -258,6 +263,7 @@ export function mountAdmin(opts: AdminOpts): void {
       button('feature', tx(v.mod.featured ? 'unfeature' : 'feature'), `data-on="${!v.mod.featured}"`),
       button('hide', tx(v.mod.hidden ? 'unhideBoard' : 'hideBoard'), `data-on="${!v.mod.hidden}"`),
       v.reports.length ? button('clear-reports', tx('clearReports')) : '',
+      button('delete-cards', tx('deleteCards')),
       button('delete', tx('takeDown'), '', 'ad-btn danger'),
     ].join('');
     const reports = v.reports.length
@@ -291,7 +297,7 @@ export function mountAdmin(opts: AdminOpts): void {
         <ul class="ad-pics">${pending
           .map(
             (it) =>
-              `<li><img data-pic="${esc(it.id)}" alt="" width="160" height="160"><span class="ad-pic-label">${esc(it.label)}</span><span class="ad-pic-acts">${button('approve-pic', tx('approve'), `data-id="${esc(it.id)}"`, 'ad-btn sm primary')}${button('refuse-pic', tx('refuse'), `data-id="${esc(it.id)}"`, 'ad-btn sm danger')}</span></li>`,
+              `<li><img data-pic="${esc(it.id)}" alt="" width="160" height="160"><span class="ad-pic-label">${esc(it.label)}</span><span class="ad-pic-acts">${button('approve-pic', tx('approve'), `data-id="${esc(it.id)}"`, 'ad-btn sm primary')}${button('refuse-pic', tx('refuse'), `data-id="${esc(it.id)}" data-label="${esc(it.label)}"`, 'ad-btn sm danger')}</span></li>`,
           )
           .join('')}</ul></section>`
       : '';
@@ -321,13 +327,62 @@ export function mountAdmin(opts: AdminOpts): void {
     </nav>`;
     if (!list.boards.length) return `<p class="ad-muted ad-empty">${tx('empty')}</p>${list.offset ? pager : ''}`;
     return `<div class="ad-scroll"><table class="ad-table">
-      <thead><tr>${cols.map((c) => `<th>${tx(c)}</th>`).join('')}<th></th></tr></thead>
+      <thead><tr>${cols.map((c) => `<th>${tx(c)}</th>`).join('')}<th><span class="ad-vh">${tx('cActions')}</span></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>${pager}`;
   }
 
+  /**
+   * The control to give the focus back to once the page is drawn again, by a selector: every render rewrites the
+   * page, and an action disables the buttons while it runs, so the focus would fall back to the top each time.
+   */
+  let refocus: string | null = null;
+  let renders = 0;
+  /** The board the last click was about: its row is where the focus goes when the control clicked is gone. */
+  let near: string | null = null;
+
+  /** A selector for a control: its data-act with the board, item or filter it acts on, or its id. */
+  function keyOf(el: Element | null): string | null {
+    if (!(el instanceof HTMLElement) || !root.contains(el)) return null;
+    if (el.id) return `#${el.id}`;
+    const d = el.dataset;
+    if (!d.act) return null;
+    const attrs = (['alias', 'id', 'filter'] as const).filter((k) => d[k] !== undefined);
+    return `[data-act="${d.act}"]${attrs.map((k) => `[data-${k}="${(d[k] ?? '').replace(/["\\]/g, '\\$&')}"]`).join('')}`;
+  }
+
+  /**
+   * Focuses the first of `keys` on the page. Disabled while an action runs, it is marked busy and kept for the next
+   * render; gone (the item removed, the board taken down), the next one is tried.
+   */
+  function focusFirst(keys: (string | null)[]): void {
+    for (const key of keys) {
+      const el = key ? root.querySelector<HTMLButtonElement>(key) : null;
+      if (!key || !el) continue;
+      if (el.disabled) {
+        el.setAttribute('aria-busy', 'true');
+        refocus = key;
+      } else el.focus();
+      return;
+    }
+  }
+
   function render(): void {
-    const brand = `<a class="ad-brand" href="../"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h">${tx('title')}</h1>`;
+    renders++;
+    const want = refocus ?? keyOf(document.activeElement);
+    refocus = null;
+    draw();
+    // Without a token, its field is where the keyboard belongs: on opening, and after a refused one.
+    if (!st.token && opts.api !== null) focusFirst(['#ad-token']);
+    else if (want && root.querySelector(want) !== document.activeElement) {
+      const row = st.open ?? near;
+      focusFirst([want, row ? `[data-act="details"][data-alias="${row}"]` : null, '#ad-h']);
+    }
+  }
+
+  function draw(): void {
+    // In a tab of its own: leaving this page would forget the token.
+    const brand = `<a class="ad-brand" href="../" target="_blank" rel="noopener"><span class="ad-mark" aria-hidden="true">vs</span> Versus</a><h1 class="ad-h" id="ad-h" tabindex="-1">${tx('title')}</h1>`;
     if (opts.api === null) {
       root.innerHTML = `<header class="ad-top">${brand}</header><main class="ad-main"><p class="ad-notice">${tx('noApi')}</p></main>`;
       return;
@@ -350,10 +405,15 @@ export function mountAdmin(opts: AdminOpts): void {
     void loadPictures();
   }
 
-  /** The pictures to review are behind the token: fetched here and shown from object URLs (freed on the next render). */
+  /**
+   * The pictures to review are behind the token: fetched here and shown from object URLs (freed on the next render).
+   * Each one's ETag goes back with an approval, so the server approves the picture shown here and no other.
+   */
   const shown: string[] = [];
+  const etags = new Map<string, string>();
   async function loadPictures(): Promise<void> {
     if (typeof URL.revokeObjectURL === 'function') for (const url of shown.splice(0)) URL.revokeObjectURL(url);
+    etags.clear();
     const alias = st.open;
     if (!alias || typeof URL.createObjectURL !== 'function') return;
     for (const img of root.querySelectorAll<HTMLImageElement>('img[data-pic]')) {
@@ -361,14 +421,13 @@ export function mountAdmin(opts: AdminOpts): void {
       try {
         const res = await opts.fetch(
           `${opts.api ?? ''}/api/admin/boards/${alias}/items/${encodeURIComponent(id)}/image`,
-          {
-            headers: { Authorization: `Bearer ${st.token}` },
-          },
+          { headers: { Authorization: `Bearer ${st.token}` }, signal: AbortSignal.timeout(TIMEOUT_MS) },
         );
         if (!res.ok || st.open !== alias) continue;
         const url = URL.createObjectURL(await res.blob());
         shown.push(url);
         img.src = url;
+        etags.set(id, res.headers.get('ETag') ?? '');
       } catch {
         /* the picture stays blank; the label and the buttons are there */
       }
@@ -384,7 +443,6 @@ export function mountAdmin(opts: AdminOpts): void {
     const data = new FormData(form);
     if (form.dataset.form === 'token') {
       st.token = String(data.get('token') ?? '').trim();
-      write(st.token);
       void load();
     } else if (form.dataset.form === 'search') {
       st.q = String(data.get('q') ?? '').trim();
@@ -395,13 +453,22 @@ export function mountAdmin(opts: AdminOpts): void {
 
   root.addEventListener('click', (e) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
-    if (!el || (el as HTMLButtonElement).disabled) return;
+    // One request at a time: a second click while one runs does nothing.
+    if (!el || (el as HTMLButtonElement).disabled || (st.busy && el.dataset.act !== 'logout')) return;
     const alias = st.open;
     const title = st.detail?.title ?? '';
+    // The focus comes back to this control after the renders the click causes (a click doesn't focus it everywhere).
+    const n = renders;
+    refocus = keyOf(el);
+    near = alias ?? el.dataset.alias ?? null;
+    handle(el, alias, title);
+    if (renders === n) refocus = null;
+  });
+
+  function handle(el: HTMLElement, alias: string | null, title: string): void {
     switch (el.dataset.act) {
       case 'logout':
         st.token = '';
-        write('');
         st.totals = st.list = st.detail = null;
         st.open = null;
         st.error = null;
@@ -423,13 +490,13 @@ export function mountAdmin(opts: AdminOpts): void {
         st.offset += PAGE;
         void load();
         break;
-      case 'inspect':
-        if (el.dataset.alias) void inspect(el.dataset.alias);
-        break;
-      case 'less':
-        st.open = null;
-        st.detail = null;
-        render();
+      case 'details':
+        if (el.dataset.alias && el.dataset.alias !== st.open) void inspect(el.dataset.alias);
+        else {
+          st.open = null;
+          st.detail = null;
+          render();
+        }
         break;
       case 'close':
       case 'reopen':
@@ -442,14 +509,19 @@ export function mountAdmin(opts: AdminOpts): void {
         if (alias) void act(() => call('PATCH', `/boards/${alias}`, { hidden: el.dataset.on === 'true' }));
         break;
       case 'clear-reports':
-        if (alias) void act(() => call('DELETE', `/boards/${alias}/reports`));
+        if (alias && opts.confirm(tx('confirmClearReports', { title }))) {
+          void act(() => call('DELETE', `/boards/${alias}/reports`));
+        }
         break;
       case 'approve-pic':
       case 'refuse-pic': {
         const id = el.dataset.id;
         const decision = el.dataset.act === 'approve-pic' ? 'ok' : 'refused';
-        if (alias && id) {
-          void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, { decision }));
+        // A refused picture is deleted: asked first.
+        const sure = decision === 'ok' || opts.confirm(tx('confirmRefuse', { label: el.dataset.label ?? '' }));
+        if (alias && id && sure) {
+          const body = decision === 'ok' ? { decision, etag: etags.get(id) ?? '' } : { decision };
+          void act(() => call('POST', `/boards/${alias}/items/${encodeURIComponent(id)}/picture`, body));
         }
         break;
       }
@@ -460,6 +532,11 @@ export function mountAdmin(opts: AdminOpts): void {
         }
         break;
       }
+      case 'delete-cards':
+        if (alias && opts.confirm(tx('confirmDeleteCards', { title }))) {
+          void act(() => call('DELETE', `/boards/${alias}/cards`));
+        }
+        break;
       case 'delete':
         if (alias && opts.confirm(tx('confirmTakeDown', { title }))) {
           void act(() => call('DELETE', `/boards/${alias}`), 'list');
@@ -468,7 +545,7 @@ export function mountAdmin(opts: AdminOpts): void {
       default:
         break;
     }
-  });
+  }
 
   render();
   void load();

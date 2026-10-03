@@ -108,15 +108,23 @@ export function buildDemo(d: Demo, lang: Lang): Ranking {
 }
 
 /** Translates demo titles and labels the user has not renamed. */
-export function relabelDemos(ranks: Ranking[], from: Lang, to: Lang): void {
+export function relabelDemos(ranks: Ranking[], from: Lang, to: Lang): boolean {
+  let changed = false;
   for (const d of DEMOS) {
     const r = ranks.find((x) => x.id === d.id);
     if (!r) continue;
-    if (r.title === d.title[from]) r.title = d.title[to];
+    if (r.title === d.title[from] && d.title[from] !== d.title[to]) {
+      r.title = d.title[to];
+      changed = true;
+    }
     for (const it of r.items) {
       if (!it.id.startsWith(`${d.id}-`)) continue;
       const src = d.items[Number(it.id.slice(d.id.length + 1))];
-      if (src && it.label === src.label[from]) it.label = src.label[to];
+      if (src && it.label === src.label[from] && src.label[from] !== src.label[to]) {
+        it.label = src.label[to];
+        changed = true;
+      }
     }
   }
+  return changed;
 }

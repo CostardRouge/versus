@@ -1,17 +1,28 @@
 import { execFileSync } from 'node:child_process';
 import { relative } from 'node:path';
 import type { Plugin } from 'vite';
-import { LINKS } from '../src/app/about.ts';
+import { LINKS } from '../src/core/site.ts';
 import { landingBody, landingBoot } from '../src/landing/markup.ts';
 import { legalBody, legalBoot } from '../src/legal/markup.ts';
 import { type AnalyticsConfig, analyticsConfig, analyticsTag } from './analytics.ts';
-import { aboutStatic, generatedFiles, headTags, noscriptHtml, rootFrom, sitePath, siteUrl } from './seo.ts';
+import {
+  aboutStatic,
+  contentPolicy,
+  generatedFiles,
+  headersFile,
+  headTags,
+  noscriptHtml,
+  rootFrom,
+  scriptHashes,
+  sitePath,
+  siteUrl,
+} from './seo.ts';
 import { CONTACT, PAGES, type PageKey } from './site.ts';
 
 /** Placeholders in the pages, replaced at dev and build time. */
 export const HEAD_MARK = '<!-- seo:head -->';
-export const NOSCRIPT_MARK = '<!-- seo:noscript -->';
-export const ABOUT_MARK = '<!-- seo:about -->';
+const NOSCRIPT_MARK = '<!-- seo:noscript -->';
+const ABOUT_MARK = '<!-- seo:about -->';
 /**
  * Home and legal pages: the script run before the first paint, and the page itself (src/landing/markup.ts,
  * src/legal/markup.ts).
@@ -74,10 +85,14 @@ export function fillPage(
 }
 
 /**
- * Self-hosted fonts the first render needs (body and display, latin subset): preloaded so they download
- * alongside the bundle instead of after the stylesheet is parsed.
+ * Self-hosted fonts the first render needs (latin subset), preloaded so they download alongside the bundle
+ * instead of after the stylesheet is parsed: the body font everywhere, the display font on the home pages only,
+ * whose first view is its big title. Elsewhere it would compete with the app's script for the bandwidth the first
+ * render waits on (−350 ms of LCP measured on /app/ over a slow 4G).
  */
-const PRELOAD_FONTS = [/figtree-latin-wght-normal[^/]*\.woff2$/, /bricolage-grotesque-latin-opsz-normal[^/]*\.woff2$/];
+const BODY_FONT = /figtree-latin-wght-normal[^/]*\.woff2$/;
+const DISPLAY_FONT = /bricolage-grotesque-latin-opsz-normal[^/]*\.woff2$/;
+export const preloadFonts = (kind: string): RegExp[] => (kind === 'home' ? [BODY_FONT, DISPLAY_FONT] : [BODY_FONT]);
 
 /** Date of the last commit (the content's real last change), or today outside a git checkout. */
 function lastmod(): string {
@@ -101,6 +116,7 @@ export function seo(): Plugin {
   let root = process.cwd();
   let worker = false;
   let publish = false;
+  let api: string | null = null;
   let analytics: AnalyticsConfig | null = null;
   return {
     name: 'versus-seo',
@@ -111,6 +127,7 @@ export function seo(): Plugin {
       root = config.root;
       worker = config.mode === 'worker';
       publish = config.env.VITE_API_URL !== undefined;
+      api = config.env.VITE_API_URL ?? null;
       analytics = analyticsConfig(config.env, { production: config.isProduction, url });
     },
     transformIndexHtml: {
@@ -119,8 +136,9 @@ export function seo(): Plugin {
         const page = pageOf(relative(root, ctx.filename));
         // A relative base resolves from each page's own folder: preloads go through the way back to the root.
         const prefix = base === './' || base === '' ? rootFrom(page) : base;
+        const wanted = preloadFonts(PAGES[page].kind);
         const fonts = Object.keys(ctx.bundle ?? {})
-          .filter((file) => PRELOAD_FONTS.some((re) => re.test(file)))
+          .filter((file) => wanted.some((re) => re.test(file)))
           .map((file) => `<link rel="preload" href="${prefix}${file}" as="font" type="font/woff2" crossorigin />`);
         return fillPage(html, page, { url, publish, head: fonts, path, analytics });
       },
@@ -139,10 +157,22 @@ export function seo(): Plugin {
     configurePreviewServer(server) {
       server.middlewares.use(appViews);
     },
-    generateBundle() {
-      for (const [fileName, file] of Object.entries(generatedFiles(url, { lastmod: lastmod(), worker }))) {
-        this.emitFile({ type: 'asset', fileName, source: file.body });
-      }
+    generateBundle: {
+      // After the HTML plugin: the pages are final, so the policy can list their inline scripts' hashes.
+      order: 'post',
+      handler(_options, bundle) {
+        const files = generatedFiles(url, { lastmod: lastmod(), worker });
+        if (files._headers) {
+          const pages = Object.values(bundle).flatMap((out) =>
+            out.type === 'asset' && out.fileName.endsWith('.html') ? [String(out.source)] : [],
+          );
+          const scripts = [...pages, files['404.html']?.body ?? ''].flatMap(scriptHashes);
+          const policy = contentPolicy({ scripts, analytics: analytics?.src ?? null, api });
+          files._headers = { ...files._headers, body: headersFile(policy) };
+        }
+        for (const [fileName, file] of Object.entries(files))
+          this.emitFile({ type: 'asset', fileName, source: file.body });
+      },
     },
   };
 }

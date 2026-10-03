@@ -1,10 +1,20 @@
-import { ALIAS_RE, DEFAULT_SETTINGS, isOutcome, isRecord, parseFill, patchSettings, TOKEN_RE, VOTER_RE } from './board';
-import { DEMOS } from './demos';
-import { parseJoined } from './joined';
-import { LABEL_MAX } from './list';
-import { METHOD_KEYS } from './scoring';
-import type { BoardStatus, Duel, Item, Joined, MethodKey, Ranking } from './types';
-import { hueOf } from './util';
+import {
+  ALIAS_RE,
+  DEFAULT_SETTINGS,
+  isOutcome,
+  isRecord,
+  parseFill,
+  patchSettings,
+  picturePath,
+  TOKEN_RE,
+  VOTER_RE,
+} from './board.ts';
+import { DEMOS } from './demos.ts';
+import { parseJoined } from './joined.ts';
+import { LABEL_MAX, TITLE_MAX } from './model.ts';
+import { METHOD_KEYS } from './scoring.ts';
+import type { BoardStatus, Duel, Item, Joined, MethodKey, Ranking } from './types.ts';
+import { fileSlug, hueOf } from './util.ts';
 
 /**
  * Export and import (docs/pwa.md): the rankings of this browser in a JSON file. A backup holds everything, to
@@ -78,16 +88,7 @@ export function backupName(now: number): string {
 }
 
 /** `versus-next-destination.json`: the title without accents or punctuation. */
-export function shareName(title: string): string {
-  const slug = title
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .slice(0, 40)
-    .replace(/^-+|-+$/g, '');
-  return `versus-${slug || 'ranking'}.json`;
-}
+export const shareName = (title: string): string => `versus-${fileSlug(title) || 'ranking'}.json`;
 
 // ─── Reading a file ─────────────────────────────────────────────────────────
 
@@ -97,34 +98,36 @@ export type Parsed = { ok: true; value: Backup } | { ok: false; error: ImportErr
 const ID_RE = /^[\w-]{1,40}$/;
 /** Images are stored as data URLs (items.ts downscales them to JPEG); nothing else may reach an src or url(). */
 const IMG_RE = /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
-const TITLE_MAX = 80;
 
 const clip = (s: string, max: number): string => Array.from(s.trim()).slice(0, max).join('').trim();
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
 /**
- * An item from a file. A doubtful image or color is dropped and the item kept for its label; `strict` refuses
- * the item instead (items that came from the server: they never carry an image).
+ * An item from a file. A doubtful image or color is dropped and the item kept for its label; for the items of a
+ * published board (`board`, its alias: a "Your votes" card) it refuses the item instead, since they came from the
+ * server: no image, or the address of the board's own approved picture.
  */
-function parseItem(x: unknown, strict: boolean): Item | null {
+function parseItem(x: unknown, board: string | null): Item | null {
   if (!isRecord(x) || typeof x.id !== 'string' || !ID_RE.test(x.id)) return null;
   const parsed = parseFill(x.fill);
-  if (strict && (parsed === undefined || (x.img !== null && x.img !== undefined))) return null;
+  const path = board === null ? null : picturePath(board, x.id);
+  const picture = path !== null && x.img === path ? path : null;
+  if (board !== null && (parsed === undefined || (x.img !== null && x.img !== undefined && !picture))) return null;
   const label = typeof x.label === 'string' ? clip(x.label, LABEL_MAX) : '';
-  const img = typeof x.img === 'string' && IMG_RE.test(x.img) ? x.img : null;
+  const img = board === null ? (typeof x.img === 'string' && IMG_RE.test(x.img) ? x.img : null) : picture;
   const fill = parsed ?? null;
   if (!label && !img && !fill) return null;
   const h = isNum(x.h) ? ((Math.round(x.h) % 360) + 360) % 360 : hueOf(label);
   return { id: x.id, label, img, fill, h };
 }
 
-/** Items with unique ids; null if it isn't a list, or if any is refused (`strict`). */
-function parseItems(x: unknown, strict: boolean): Item[] | null {
+/** Items with unique ids; null if it isn't a list, or if any of a published board's is refused (`board`). */
+function parseItems(x: unknown, board: string | null): Item[] | null {
   if (!Array.isArray(x)) return null;
   const items: Item[] = [];
   for (const raw of x) {
-    const it = parseItem(raw, strict);
-    if (!it && strict) return null;
+    const it = parseItem(raw, board);
+    if (!it && board !== null) return null;
     if (it && !items.some((i) => i.id === it.id)) items.push(it);
   }
   return items;
@@ -135,7 +138,7 @@ const isStatus = (x: unknown): x is BoardStatus => x === 'open' || x === 'closed
 /** A ranking from a file. Duels and the current pair on unknown items are dropped, like the app does. */
 function parseRanking(x: unknown, now: number): Ranking | null {
   if (!isRecord(x) || typeof x.id !== 'string' || !ID_RE.test(x.id)) return null;
-  const items = parseItems(x.items, false);
+  const items = parseItems(x.items, null);
   if (!items) return null;
   const ids = new Set(items.map((i) => i.id));
   const known = (a: unknown): a is string => typeof a === 'string' && ids.has(a);
@@ -169,7 +172,7 @@ function parseRanking(x: unknown, now: number): Ranking | null {
 
 /** A "Your votes" card: its items come from the server, so any that isn't clean means the file was edited. */
 function cleanJoined(j: Joined): Joined | null {
-  const items = parseItems(j.items, true);
+  const items = parseItems(j.items, j.alias);
   if (!items) return null;
   return { ...j, title: clip(j.title, TITLE_MAX), items, settings: patchSettings(DEFAULT_SETTINGS, j.settings) };
 }
@@ -231,8 +234,8 @@ const content = (r: Ranking): string =>
 /**
  * Adds a file's content to this browser without ever replacing anything. A ranking whose id is free keeps it
  * (its address stays the same from one device to the other); one that differs from the local version, or
- * takes a demo's id, comes in as a copy. The file's voter id is taken only by a browser that has neither
- * voted nor published, so votes already cast here keep their voter.
+ * takes a demo's id, comes in as a copy. The file's voter id is taken only from a whole browser's backup, by a
+ * browser that has neither voted nor published, so votes already cast here keep their voter.
  */
 export function mergeBackup(
   local: Local,
@@ -263,12 +266,15 @@ export function mergeBackup(
     votes++;
   }
   const fresh = !local.joined.length && !local.ranks.some((r) => r.pub);
+  // Only a whole browser's backup brings a voter id: one whose votes it holds (cards, published boards). A shared
+  // ranking never does, so a file someone gives can't make this browser vote under an id they know.
+  const full = file.joined.length > 0 || Object.keys(file.owners).length > 0;
   return {
     local: {
       ranks,
       owners: { ...file.owners, ...local.owners },
       joined,
-      voter: fresh && file.voter ? file.voter : local.voter,
+      voter: fresh && full && file.voter ? file.voter : local.voter,
     },
     added,
     same,

@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { TurnstileOptions } from '../src/app/turnstile';
 import type { BoardView, ClientMessage, ItemScore, RankingView, ServerMessage } from '../src/core/protocol';
 import type { Ranking } from '../src/core/types';
 import { installFakeCanvas } from './helpers/canvas';
@@ -50,8 +51,9 @@ class FakeSocket {
 }
 
 type Call = { method: string; url: string; body: unknown; auth: string | null };
+type Answer = { status: number; body: unknown };
 const calls: Call[] = [];
-let respond: (c: Call) => { status: number; body: unknown } = () => ({ status: 404, body: { error: 'not_found' } });
+let respond: (c: Call) => Answer | Promise<Answer> = () => ({ status: 404, body: { error: 'not_found' } });
 
 const html = readFileSync(resolve(process.cwd(), 'app/index.html'), 'utf8');
 const body = (html.match(/<body>([\s\S]*)<\/body>/)?.[1] ?? '').replace(/<script[\s\S]*?<\/script>/g, '');
@@ -122,7 +124,7 @@ beforeAll(async () => {
   vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init: RequestInit) => {
+    vi.fn(async (url: string, init: RequestInit = {}) => {
       // The Popular section asks on its own; here it stays empty and out of the calls.
       if (url.includes('/api/popular')) return Response.json({ boards: [] });
       const headers = (init.headers ?? {}) as Record<string, string>;
@@ -135,7 +137,7 @@ beforeAll(async () => {
         auth: headers.Authorization ?? null,
       };
       calls.push(call);
-      const r = respond(call);
+      const r = await respond(call);
       return new Response(JSON.stringify(r.body), { status: r.status });
     }),
   );
@@ -159,6 +161,8 @@ beforeAll(async () => {
   localStorage.setItem('versus-v1', JSON.stringify([withImage]));
   document.body.innerHTML = body;
   const { mount } = await import('../src/app/ui');
+  // The share module loads once the page is idle (src/app/events.ts): loaded here, the first share opens at once.
+  await (await import('../src/app/events')).loadSharing();
   mount(document);
 });
 
@@ -201,8 +205,11 @@ describe('publishing', () => {
       c.method === 'PUT'
         ? { status: 201, body: { url: `http://localhost:3000/og/b/${ALIAS}/1.png` } }
         : { status: 201, body: { alias: ALIAS, owner: OWNER } };
+    const entries = history.length;
     click('#m-ok');
     await flush();
+    // The board takes the ranking's place in the history: Back doesn't land on an address that sends forward again.
+    expect(history.length).toBe(entries);
 
     const post = calls.find((c) => c.method === 'POST');
     expect(post?.url).toBe('/api/boards');
@@ -216,6 +223,7 @@ describe('publishing', () => {
     expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
       url: `/api/boards/${ALIAS}/card`,
       body: { blob: 'image/png' },
+      auth: `Bearer ${OWNER}`,
     });
     expect(location.pathname).toBe(`/b/${ALIAS}`);
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
@@ -255,6 +263,23 @@ describe('voting', () => {
     ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
     expect($('#toast')?.textContent).toBe('Votes are final on this ranking.');
     expect(($('[data-action="b-undo"]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('says when the server didn’t count a vote, and takes the queue it sends back', async () => {
+    const ws = FakeSocket.last();
+    click('[data-action="b-pick"][data-side="b"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p1', b: 'p2', s: 0 });
+    ws.receive({ t: 'error', code: 'too_fast' });
+    expect($('#toast')?.textContent).toBe('Not so fast: that vote wasn’t counted.');
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+    expect($('.eyebrow')?.textContent).toContain('Your votes: 1');
+    expect($('#b-main')?.dataset.duel).toContain('p1');
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'not_assigned' });
+    expect($('#toast')?.textContent).toBe('That vote wasn’t counted. Try again.');
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
   });
 
   it('follows the keyboard', async () => {
@@ -297,6 +322,7 @@ describe('voting', () => {
     ws.receive({ t: 'ranking', counts: { votes: 9, voters: 3, online: 2 }, ranking: ranking(['p0', 'p1', 'p2']) });
 
     // Back to the board, and to the result again.
+    expect($('.fin-btns [data-action="b-finale-close"]')?.textContent).toBe('See the live ranking');
     click('[data-action="b-finale-close"]');
     expect($('#fin')).toBeNull();
     expect($('#b-main')?.textContent).toContain('You voted on every pair');
@@ -314,8 +340,11 @@ describe('voting', () => {
       { a: 'p1', b: 'p0', s: 1 as const },
     ];
     ws.receive({ ...state(blind), mine, pairs: [] } as ServerMessage);
+    // Nothing to pause while no ranking shows.
+    expect($('.live-toggle')?.hidden).toBe(true);
     click('[data-action="b-finale"]');
     expect($('#fin h1')?.textContent).toBe('Your winner: Calzone.');
+    expect($('.fin-btns [data-action="b-finale-close"]')?.textContent).toBe('Back to the ranking');
     expect(document.querySelectorAll('#fin .fin-ph')).toHaveLength(3);
     expect($('#fin .fin-locked')).not.toBeNull();
     click('[data-action="b-finale-view"][data-view="podium"]');
@@ -327,6 +356,40 @@ describe('voting', () => {
     expect($('.share-msg')?.textContent).toContain('Pizzas · 3 votes · You');
     click('#m-ok');
     click('[data-action="b-finale-close"]');
+    ws.receive(state());
+    expect($('.live-toggle')?.hidden).toBe(false);
+  });
+
+  it('gives the end-of-vote page a history entry of its own: Back closes it, at the same address', async () => {
+    // jsdom moves through the history a few tasks later.
+    const settle = () => vi.advanceTimersByTimeAsync(5);
+    await settle();
+    const ws = FakeSocket.last();
+    const mine = [
+      { a: 'p0', b: 'p1', s: 1 as const },
+      { a: 'p1', b: 'p2', s: 1 as const },
+      { a: 'p0', b: 'p2', s: 1 as const },
+    ];
+    ws.receive({ ...state(), mine, pairs: [] } as ServerMessage);
+    const path = location.pathname;
+    click('[data-action="b-finale"]');
+    expect($('#fin')).not.toBeNull();
+    expect((history.state as { layer?: string } | null)?.layer).toBe('finale');
+    history.back();
+    await settle();
+    expect($('#fin')).toBeNull();
+    expect(location.pathname).toBe(path);
+    expect($('#b-main')?.textContent).toContain('You voted on every pair');
+    // Forward shows it again; its own button closes it, and its entry with it.
+    history.forward();
+    await settle();
+    expect($('#fin')).not.toBeNull();
+    click('[data-action="b-finale-close"]');
+    expect($('#fin')).toBeNull();
+    await settle();
+    expect(location.pathname).toBe(path);
+    expect((history.state as { layer?: string } | null)?.layer).toBeUndefined();
+    expect($('#b-main')?.textContent).toContain('You voted on every pair');
     ws.receive(state());
   });
 
@@ -346,6 +409,52 @@ describe('voting', () => {
     expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').live).toBe(true);
   });
 
+  it('keeps the focus where it was through live updates: the Live switch, a suggestion being typed', () => {
+    const ws = FakeSocket.last();
+    const suggest = { settings: { ...view().settings, visitorsAddItems: true } };
+    ws.receive(state(suggest));
+    // A new crowd order replaces the rows only: the switch that pauses the updates stays under the focus.
+    const box = $('#b-live') as HTMLInputElement;
+    box.focus();
+    ws.receive({ t: 'ranking', counts: { votes: 6, voters: 2, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    expect($('#b-rank .rlabel')?.textContent).toBe('Calzone');
+    expect($('#b-live')).toBe(box);
+    expect(document.activeElement).toBe(box);
+    // A new state draws the page again: the suggestion keeps its text, the focus and the caret.
+    const input = $('#add-input') as HTMLInputElement;
+    input.focus();
+    input.value = 'Quattro formaggi';
+    input.setSelectionRange(3, 5);
+    ws.receive(state({ ...suggest, counts: { votes: 7, voters: 3, online: 2 } }));
+    const again = $('#add-input') as HTMLInputElement;
+    expect(again).not.toBe(input);
+    expect(again.value).toBe('Quattro formaggi');
+    expect(document.activeElement).toBe(again);
+    expect([again.selectionStart, again.selectionEnd]).toEqual([3, 5]);
+    // Any other control too.
+    $('[data-action="b-report"]')?.focus();
+    ws.receive(state(suggest));
+    expect(document.activeElement).toBe($('[data-action="b-report"]'));
+    again.value = '';
+    ($('#add-input') as HTMLInputElement).value = '';
+    ws.receive(state());
+  });
+
+  it('names the neck-and-neck marker and the report reasons for screen readers', async () => {
+    const ws = FakeSocket.last();
+    const close = ranking(['p0', 'p1', 'p2']);
+    for (const s of Object.values(close.stats)) s.se = 80;
+    ws.receive({ t: 'ranking', counts: { votes: 7, voters: 3, online: 2 }, ranking: close });
+    const neck = $('#b-rank .neck');
+    expect(neck?.getAttribute('role')).toBe('img');
+    expect(neck?.getAttribute('aria-label')).toBe('Neck and neck with the one above');
+    click('[data-action="b-report"]');
+    expect($('#m-body fieldset legend')?.textContent).toBe('Reason');
+    click('#m-cancel');
+    await flush();
+    ws.receive(state());
+  });
+
   it('says how many votes reveal the ranking', () => {
     const ws = FakeSocket.last();
     ws.receive({
@@ -361,6 +470,10 @@ describe('voting', () => {
     const ws = FakeSocket.last();
     ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
     expect($('.b-suggest #add-input')).not.toBeNull();
+    // A visitor has no items pane: a pasted list goes into the field as text, to be sent as one suggestion.
+    const [sent, asked] = [ws.sent.length, calls.length];
+    expect(paste('- Quattro\n- Napoli')).toBe(false);
+    expect([ws.sent.length, calls.length]).toEqual([sent, asked]);
     submit('#ff8800');
     expect(ws.sent.at(-1)).toEqual({
       t: 'add',
@@ -372,6 +485,23 @@ describe('voting', () => {
     expect(($('#add-input') as HTMLInputElement).value).toBe('#ff8800');
     ws.receive(state());
     expect($('#add-input')).toBeNull();
+  });
+
+  it('sends a suggestion once, however often Enter is pressed, until the server answers', () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    const sent = ws.sent.length;
+    submit('Hawaii');
+    submit('Hawaii');
+    expect(ws.sent.slice(sent).filter((m) => m.t === 'add')).toHaveLength(1);
+    const btn = $('#add-form .add-btn') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    expect(btn.disabled).toBe(false);
+    expect(btn.hasAttribute('aria-busy')).toBe(false);
+    ($('#add-input') as HTMLInputElement).value = '';
+    ws.receive(state());
   });
 
   it('draws a skipped duel once, even when the server confirms it late', () => {
@@ -394,6 +524,97 @@ describe('voting', () => {
     ws.receive({ t: 'pairs', pairs: [['p0', 'p2']], mine: 0 });
     expect($('#stage')).not.toBe(stage);
     expect($('#stage .card-a')?.dataset.id).toBe('p0');
+  });
+
+  it('says the next pair is loading while the queue is empty', () => {
+    const ws = FakeSocket.last();
+    ws.receive({ ...state(), pairs: [] } as ServerMessage);
+    const wait = $('#b-main .empty-duel');
+    expect(wait?.getAttribute('aria-busy')).toBe('true');
+    expect(wait?.querySelector('[role="status"]')?.textContent).toBe('Loading the next pair…');
+    ws.receive(state());
+    expect($('#b-main .card-a')).not.toBeNull();
+  });
+
+  it('says a new version is out when the server no longer serves this one', () => {
+    FakeSocket.last().receive({ t: 'error', code: 'upgrade' });
+    expect($('#toast')?.textContent).toBe('A new version of Versus is out: reload the page to keep voting.');
+  });
+
+  it('says so when the server turns a vote away for too many new voters', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'rate_limited' });
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    expect($('#toast')?.textContent).toBe('Too many attempts. Try again in a minute.');
+    await vi.advanceTimersByTimeAsync(600);
+  });
+
+  it('keeps the focus on the page when what had it goes: Undo, Refresh, the add button, the result page', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    // The page's heading, where the focus lands on opening it, keeps it when a new state draws the page again.
+    const heading = $('#view h1') as HTMLElement;
+    heading.tabIndex = -1;
+    heading.focus();
+    ws.receive(state({ settings: { ...view().settings, visitorsAddItems: true } }));
+    expect($('#view h1')).not.toBe(heading);
+    expect(document.activeElement).toBe($('#view h1'));
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'pairs', pairs: [['p1', 'p2']], mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+    // The only vote undone: Undo turns disabled, the focus goes to the pair it brings back.
+    const undo = $('[data-action="b-undo"]') as HTMLButtonElement;
+    undo.focus();
+    undo.click();
+    expect(($('[data-action="b-undo"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(document.activeElement).toBe($('#stage .card-a'));
+    ws.receive({
+      t: 'pairs',
+      pairs: [
+        ['p0', 'p1'],
+        ['p1', 'p2'],
+      ],
+      mine: 0,
+    });
+
+    // Refresh goes once used: the Live switch above it takes the focus.
+    const liveBox = $('#b-live') as HTMLInputElement;
+    liveBox.checked = false;
+    change(liveBox);
+    ws.receive({ t: 'ranking', counts: { votes: 5, voters: 2, online: 2 }, ranking: ranking(['p2', 'p1', 'p0']) });
+    const refresh = $('[data-action="b-refresh"]') as HTMLButtonElement;
+    refresh.focus();
+    refresh.click();
+    expect($('[data-action="b-refresh"]')).toBeNull();
+    expect(document.activeElement).toBe($('#b-live'));
+    ($('#b-live') as HTMLInputElement).checked = true;
+    change($('#b-live') as HTMLInputElement);
+
+    // The + button turns disabled while a suggestion waits: the field keeps the focus.
+    ($('#add-form .add-btn') as HTMLButtonElement).focus();
+    submit('Hawaii');
+    expect(document.activeElement).toBe($('#add-input'));
+    ws.receive({ t: 'pairs', pairs: [['p0', 'p1']], mine: 0 });
+    ($('#add-input') as HTMLInputElement).value = '';
+
+    // A closed vote: nothing live to pause; its result page shows the final ranking, and takes the focus.
+    const all = [
+      { a: 'p0', b: 'p1', s: 1 as const },
+      { a: 'p1', b: 'p2', s: 1 as const },
+      { a: 'p0', b: 'p2', s: 1 as const },
+    ];
+    ws.receive({ ...state({ status: 'closed' }), mine: all, pairs: [] } as ServerMessage);
+    expect($('.live-toggle')?.hidden).toBe(true);
+    click('[data-action="b-finale"]');
+    expect(document.activeElement).toBe($('#fin'));
+    expect($('#fin')?.getAttribute('aria-labelledby')).toBe('fin-h');
+    expect($('.fin-btns [data-action="b-finale-close"]')?.textContent).toBe('See the final ranking');
+    click('[data-action="b-finale-close"]');
+    expect(document.activeElement).toBe($('[data-action="b-finale"]'));
+    await vi.advanceTimersByTimeAsync(5);
+    ws.receive(state());
   });
 });
 
@@ -438,8 +659,10 @@ describe('author', () => {
       `DELETE /api/boards/${ALIAS}/items/n-Napoli`,
     ]);
 
-    // Without votes an item goes at once, and Undo brings it back.
+    // Without votes an item goes at once, and Undo brings it back. The focus moves on to the next row's name.
+    $('[data-action="remove-item"][data-id="p1"]')?.focus();
     click('[data-action="remove-item"][data-id="p1"]');
+    expect(document.activeElement).toBe($('#item-list .row-label[data-id="p2"]'));
     expect($('#modal')?.hidden).toBe(true);
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p1` });
@@ -459,6 +682,46 @@ describe('author', () => {
     await flush();
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `/api/boards/${ALIAS}/items/p0` });
     expect($('#toast')?.textContent).toBe('A published ranking keeps at least 2 items.');
+  });
+
+  it('sends what the author adds once, however often Enter is pressed, until the server answers', async () => {
+    FakeSocket.last().receive(state({}, true));
+    respond = () =>
+      new Promise<Answer>((res) =>
+        setTimeout(
+          () => res({ status: 200, body: { id: 'n-Bianca', label: 'Bianca', img: null, fill: null, h: 1 } }),
+          500,
+        ),
+      );
+    calls.length = 0;
+    submit('Bianca');
+    submit('Bianca');
+    const btn = $('#add-form .add-btn') as HTMLButtonElement;
+    expect([btn.disabled, btn.getAttribute('aria-busy')]).toEqual([true, 'true']);
+    // A new state meanwhile draws the field again: still busy.
+    FakeSocket.last().receive(state({}, true));
+    expect(($('#add-form .add-btn') as HTMLButtonElement).disabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    expect(($('#add-form .add-btn') as HTMLButtonElement).disabled).toBe(false);
+    expect($('#add-form .add-btn')?.hasAttribute('aria-busy')).toBe(false);
+  });
+
+  it('tells the author when the server can’t be reached, and when this device lost the admin key', async () => {
+    FakeSocket.last().receive(state({}, true));
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    submit('Hawaii');
+    await flush();
+    expect($('#toast')?.textContent).toBe('You’re offline or the server can’t be reached. Try again in a moment.');
+    respond = () => ({ status: 403, body: { error: 'forbidden' } });
+    submit('Hawaii');
+    await flush();
+    expect($('#toast')?.textContent).toBe(
+      'This device no longer holds this ranking’s admin key. Open your latest admin link here to manage it again.',
+    );
+    ($('#add-input') as HTMLInputElement).value = '';
   });
 
   it('renames an item: at once without votes, asking what its votes become otherwise', async () => {
@@ -580,6 +843,20 @@ describe('author', () => {
     });
     expect($('#toast')?.textContent).toBe('Color changed');
 
+    // An item named by its code takes the new one: the message says so.
+    const coded = [{ ...items[0], label: '#AA0000', fill: red }, items[1], items[2]];
+    ws.receive(state({ items: coded, ranking: voted({ p0: 2 }) } as Partial<BoardView>, true));
+    respond = () => ({ status: 200, body: 2 });
+    click('[data-action="edit-color"][data-id="p0"]');
+    const hex = $('#cpop .cp-hex') as HTMLInputElement;
+    hex.value = '#2743f5';
+    hex.dispatchEvent(new Event('input', { bubbles: true }));
+    change(hex);
+    click('[data-action="cp-ok"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('Color changed. #2743F5 starts again from zero.');
+
     // A closed vote: the list is read-only, and says how to change it.
     ws.receive(state({ items: colored, status: 'closed' } as Partial<BoardView>, true));
     expect($('#item-list [data-action="edit-color"]')).toBeNull();
@@ -621,13 +898,53 @@ describe('author', () => {
     click('[data-action="b-settings"]');
     expect($('#m-title')?.textContent).toBe('Published ranking settings');
     expect($('#b-settings input[name="b-m"]')).toBeNull();
-    const blind = $('#b-settings input[name="b-vis"][value="blind"]') as HTMLInputElement;
-    blind.checked = true;
-    change(blind);
+    // Going through the radio buttons (each one a change, as with the arrow keys) sends nothing…
+    calls.length = 0;
+    for (const vis of ['after', 'always', 'blind']) {
+      const radio = $(`#b-settings input[name="b-vis"][value="${vis}"]`) as HTMLInputElement;
+      radio.checked = true;
+      change(radio);
+    }
     await flush();
-    expect(calls.at(-1)).toMatchObject({ method: 'PATCH', url: `/api/boards/${ALIAS}`, auth: `Bearer ${OWNER}` });
-    expect(calls.at(-1)?.body).toMatchObject({ visibility: 'blind' });
+    expect(calls).toHaveLength(0);
+    // …Done sends what changed, once.
+    click('#m-ok');
+    await flush();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: 'PATCH',
+      url: `/api/boards/${ALIAS}`,
+      auth: `Bearer ${OWNER}`,
+      body: { visibility: 'blind' },
+    });
+    // Nothing changed, nothing sent; Cancel forgets the changes.
+    click('[data-action="b-settings"]');
+    click('#m-ok');
+    click('[data-action="b-settings"]');
+    ($('#b-visitors') as HTMLInputElement).checked = true;
+    change($('#b-visitors') as HTMLInputElement);
+    click('#m-cancel');
+    await flush();
+    expect(calls).toHaveLength(1);
+    // Refused: the settings open again on what is in force, saying why.
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    click('[data-action="b-settings"]');
+    const after = $('#b-settings input[name="b-vis"][value="after"]') as HTMLInputElement;
+    after.checked = true;
+    change(after);
+    click('#m-ok');
+    await flush();
+    expect($('#modal')?.hidden).toBe(false);
+    expect($('#m-body [role="alert"]')?.textContent).toBe(
+      'Your changes weren’t saved. You’re offline or the server can’t be reached. Try again in a moment.',
+    );
+    expect(($('#b-settings input[name="b-vis"][value="always"]') as HTMLInputElement).checked).toBe(true);
+    click('#m-cancel');
+    respond = (c) => ({ status: 200, body: c.method === 'PATCH' ? view().settings : 'closed' });
     // Closing the vote from the settings closes them first.
+    click('[data-action="b-settings"]');
     click('#b-settings [data-action="b-close"]');
     expect($('#modal')?.hidden).toBe(true);
     await flush();
@@ -641,12 +958,14 @@ describe('author', () => {
     expect(stored().find((r) => r.pub)?.title).toBe('Pizzas du vendredi');
   });
 
-  it('withdraws into a local copy with the crowd votes', async () => {
+  it('withdraws into a local copy with the crowd votes, and the board’s pictures', async () => {
+    const pictured = items.map((it, i) => (i === 0 ? { ...it, img: `/img/b/${ALIAS}/p0.jpg` } : it));
+    FakeSocket.last().receive(state({ items: pictured }, true));
     const copy = {
       id: 'x',
       title: 'Pizzas du vendredi',
       method: 'elo',
-      items,
+      items: pictured,
       history: [
         { a: 'p0', b: 'p1', s: 1 },
         { a: 'p1', b: 'p2', s: 0 },
@@ -655,7 +974,7 @@ describe('author', () => {
       created: 1,
       updated: 1,
     };
-    respond = () => ({ status: 200, body: copy });
+    respond = (c) => (c.url.includes('/img/') ? { status: 200, body: 'jpeg' } : { status: 200, body: copy });
     click('[data-action="b-settings"]');
     click('#b-settings [data-action="b-withdraw"]');
     expect($('#m-title')?.textContent).toBe('Withdraw this ranking?');
@@ -665,9 +984,50 @@ describe('author', () => {
     const local = stored().find((r) => r.title === 'Pizzas du vendredi' && r.history.length === 2);
     expect(local?.pub).toBeUndefined();
     expect(local?.method).toBe('elo');
+    // The picture was read before the board (and it) went: the copy keeps it as its own.
+    expect(local?.items[0]?.img).toMatch(/^data:image\/jpeg;base64,/);
+    // The pictured item goes again, so that the copy can be published without pictures further on.
+    click(`#item-list [data-action="remove-item"][data-id="p0"]`);
     expect(location.pathname).toMatch(/^\/r\/\w+\/ranking$/);
     expect($('.results')).not.toBeNull();
     expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
+  });
+
+  it('makes a new admin link: the old one stops working, this browser keeps managing the board', async () => {
+    const MINE = 'Nw4dmnLnk7';
+    const NEXT = 'c'.repeat(64);
+    history.pushState(null, '', `/b/${MINE}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({}, true));
+    respond = (c) =>
+      c.url.endsWith('/owner') ? { status: 200, body: { owner: NEXT } } : { status: 200, body: view() };
+    click('[data-action="b-settings"]');
+    click('#b-settings [data-action="b-new-admin-link"]');
+    expect($('#m-title')?.textContent).toBe('Make a new admin link?');
+    calls.length = 0;
+    click('#m-ok');
+    await flush();
+    expect(calls[0]).toMatchObject({ method: 'POST', url: `/api/boards/${MINE}/owner`, auth: `Bearer ${OWNER}` });
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[MINE]).toBe(NEXT);
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(`http://localhost:3000/b/${MINE}#owner=${NEXT}`);
+    expect($('#toast')?.textContent).toBe('New admin link copied. The old one no longer works.');
+    // The open connection says hello again with it: the server took the author's rights from the old token's.
+    expect(ws.sent.at(-1)).toMatchObject({ t: 'hello', owner: NEXT });
+    // What follows uses the new token: the author's calls, and the next connection's hello.
+    click('[data-action="b-settings"]');
+    click('#b-settings [data-action="b-close"]');
+    await flush();
+    expect(calls.at(-1)).toMatchObject({ url: `/api/boards/${MINE}/close`, auth: `Bearer ${NEXT}` });
+    ws.drop(1006);
+    await vi.advanceTimersByTimeAsync(1500);
+    const again = FakeSocket.last();
+    expect(again).not.toBe(ws);
+    again.open();
+    expect(again.sent[0]).toMatchObject({ t: 'hello', owner: NEXT });
+    again.receive(state({}, true));
+    click('[data-action="back"]');
   });
 });
 
@@ -678,10 +1038,30 @@ describe('links', () => {
     window.dispatchEvent(new PopStateEvent('popstate'));
     expect(location.pathname).toBe(`/b/${ALIAS}`);
     expect(location.hash).toBe('');
-    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
     const ws = FakeSocket.last();
     ws.open();
     expect(ws.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
+    // Kept only once the server says the token is this board's.
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBeUndefined();
+    ws.receive(state({}, true));
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
+  });
+
+  it('never lets an admin link with a wrong token replace the one this browser keeps', async () => {
+    const wrong = 'c'.repeat(64);
+    history.pushState(null, '', `/b/${ALIAS}#owner=${wrong}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const tried = FakeSocket.last();
+    tried.open();
+    expect(tried.sent[0]).toMatchObject({ t: 'hello', owner: wrong });
+    tried.receive(state({}, false));
+    expect(JSON.parse(localStorage.getItem('versus-owners') ?? '{}')[ALIAS]).toBe(OWNER);
+    expect($('#toast')?.textContent).toContain('isn’t valid for this ranking');
+    // The connection starts over with the token this browser had.
+    const again = FakeSocket.last();
+    expect(again).not.toBe(tried);
+    again.open();
+    expect(again.sent[0]).toMatchObject({ t: 'hello', owner: OWNER });
   });
 
   it('reads an admin link written before paths, and moves it to the board’s address', async () => {
@@ -699,7 +1079,7 @@ describe('links', () => {
     const ws = FakeSocket.last();
     ws.receive(state());
     ws.drop(4004);
-    expect($('#view')?.textContent).toContain('doesn’t exist or was withdrawn');
+    expect($('#view h1')?.textContent).toContain('doesn’t exist or was withdrawn');
     click('.board [data-action="back"]');
     expect($('h1')?.textContent).toBe('Your rankings');
   });
@@ -810,7 +1190,7 @@ describe('sharing', () => {
     expect(location.search).toBe('');
     const ws = FakeSocket.last();
     ws.open();
-    expect(ws.sent[0]).toEqual({ t: 'hello', voter: expect.any(String), pair: ['p1', 'p2'] });
+    expect(ws.sent[0]).toEqual({ t: 'hello', v: 1, voter: expect.any(String), pair: ['p1', 'p2'] });
     ws.receive({
       ...state(),
       pairs: [
@@ -821,36 +1201,49 @@ describe('sharing', () => {
     expect($('.card-a')?.textContent).toContain('Regina');
   });
 
-  it('shares the board as an image and sends its card for the link preview', async () => {
+  it('shares the board as an image; the link’s preview is its author’s to draw', async () => {
     respond = (c) =>
       c.method === 'PUT' ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } } : { status: 404, body: {} };
     expect($('.b-head [data-action="b-make-mine"]')).not.toBeNull();
     click('[data-action="share-board"]');
     expect($('#m-title')?.textContent).toBe('Share this ranking');
+    // While the card is drawn, the preview says so; the canvas then names itself.
+    const box = $('#share-preview');
+    expect(box?.getAttribute('aria-busy')).toBe('true');
+    expect(box?.querySelector('[role="status"]')?.textContent).toBe('Drawing the picture…');
     await flush();
     expect($('#share-preview canvas')).not.toBeNull();
+    expect(box?.hasAttribute('aria-busy')).toBe(false);
+    expect(box?.hasAttribute('role')).toBe(false);
+    expect($('#share-preview canvas')?.getAttribute('role')).toBe('img');
     const msg = $('.share-msg')?.textContent ?? '';
     expect(msg).toContain('Pizzas · 3 votes · 2 voters');
     expect(msg).toContain('1. Margherita');
     expect(msg).toContain(`Vote too: http://localhost:3000/b/${DUEL}`);
-    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card` });
-    click('#m-ok');
-    // Opening it again draws no new card: one per link and session.
-    calls.length = 0;
-    click('[data-action="share-board"]');
-    await flush();
+    // A visitor sends no card for the board.
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     click('#m-ok');
   });
 
   it('shares the duel on screen, with a link that opens on it', async () => {
+    // The duel's card is drawn by whoever shares it first; the next ones are told it exists, and keep quiet.
+    respond = (c) => (c.method === 'PUT' ? { status: 409, body: { error: 'exists' } } : { status: 404, body: {} });
     click('[data-action="share-duel"]');
     expect($('#m-title')?.textContent).toBe('Share this duel');
     await flush();
     expect($('.share-msg')?.textContent).toBe(
       `Regina or Calzone? Vote too: http://localhost:3000/b/${DUEL}?duel=p1.p2`,
     );
-    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({ url: `/api/boards/${DUEL}/card?duel=p1.p2` });
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: `/api/boards/${DUEL}/card?duel=p1.p2`,
+      auth: null,
+    });
+    click('#m-ok');
+    calls.length = 0;
+    click('[data-action="share-duel"]');
+    await flush();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    expect($('#toast')?.textContent).not.toContain('didn’t work');
     click('#m-ok');
   });
 
@@ -920,6 +1313,109 @@ describe('sharing', () => {
     click('.tab[data-tab="duel"]');
     click('[data-action="back"]');
   });
+
+  it('sends the board’s card with the author’s token when the author shares', async () => {
+    const MINE = 'Au7hEf7hJk';
+    respond = (c) =>
+      c.method === 'PUT' ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } } : { status: 404, body: {} };
+    history.pushState(null, '', `/b/${MINE}#owner=${OWNER}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state({ settings: { ...view().settings, visibility: 'blind' } }, true));
+    click('.tab[data-tab="results"]');
+    calls.length = 0;
+    click('.b-results [data-action="share-board"]');
+    await flush();
+    expect(calls.find((c) => c.method === 'PUT')).toMatchObject({
+      url: `/api/boards/${MINE}/card`,
+      auth: `Bearer ${OWNER}`,
+    });
+    // The author sees the standings in the panel; the preview, public, doesn't show them (core/share.ts).
+    expect($('.share-msg')?.textContent).toContain('1. Margherita');
+    click('#m-ok');
+    click('.tab[data-tab="duel"]');
+    click('[data-action="back"]');
+  });
+});
+
+describe('human check', () => {
+  const OFFICIAL = 'Ch3ckEd7bd';
+  const queue: [string, string][] = [
+    ['p0', 'p1'],
+    ['p1', 'p2'],
+  ];
+
+  it('shows the check when the server holds a first vote, sends its token, then lets the voter vote', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    const render = vi.fn(() => 'w1');
+    const remove = vi.fn();
+    (window as { turnstile?: unknown }).turnstile = { render, getResponse: () => 'human-token', remove };
+    history.pushState(null, '', `/b/${OFFICIAL}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    const ws = FakeSocket.last();
+    ws.open();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    expect($('#m-title')?.textContent).toBe('One check before your first vote');
+    expect(render).toHaveBeenCalledWith($('#vote-captcha'), { sitekey: 'site-key' });
+    click('#m-ok');
+    await flush();
+    expect(ws.sent.at(-1)).toEqual({ t: 'check', token: 'human-token' });
+    expect(remove).toHaveBeenCalledWith('w1');
+    // Votes wait for the server's answer.
+    await vi.advanceTimersByTimeAsync(600);
+    const sent = ws.sent.length;
+    click('[data-action="b-pick"][data-side="a"]');
+    expect(ws.sent).toHaveLength(sent);
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    click('[data-action="b-pick"][data-side="a"]');
+    expect(ws.sent.at(-1)).toEqual({ t: 'vote', a: 'p0', b: 'p1', s: 1 });
+    ws.receive({ t: 'pairs', pairs: queue.slice(1), mine: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+  });
+
+  it('says so when the check is refused or left undone', async () => {
+    const ws = FakeSocket.last();
+    ws.receive(state());
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    click('#m-ok');
+    await flush();
+    expect(ws.sent.at(-1)).toEqual({ t: 'check', token: 'human-token' });
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    expect($('#toast')?.textContent).toBe('The check failed. Try again.');
+    // Confirmed without solving it: nothing is sent.
+    (window as { turnstile?: unknown }).turnstile = { render: () => 'w2', getResponse: () => undefined, remove() {} };
+    await vi.advanceTimersByTimeAsync(600);
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    const sent = ws.sent.length;
+    click('#m-ok');
+    await flush();
+    expect(ws.sent).toHaveLength(sent);
+    expect($('#toast')?.textContent).toBe('Complete the check to vote.');
+    // A build without a site key never shows one.
+    vi.unstubAllEnvs();
+    await vi.advanceTimersByTimeAsync(600);
+    click('[data-action="b-pick"][data-side="a"]');
+    ws.receive({ t: 'error', code: 'captcha' });
+    ws.receive({ t: 'pairs', pairs: queue, mine: 0 });
+    await flush();
+    expect($('#modal')?.hidden).toBe(true);
+    expect($('#toast')?.textContent).toBe('The check failed. Try again.');
+    delete (window as { turnstile?: unknown }).turnstile;
+    await vi.advanceTimersByTimeAsync(600);
+    click('.board [data-action="back"]');
+  });
 });
 
 describe('reporting', () => {
@@ -944,6 +1440,19 @@ describe('reporting', () => {
       body: { voter: expect.any(String), reason: 'personal', note: 'It names my neighbour' },
     });
     expect($('#toast')?.textContent).toBe('Thanks, your report was sent.');
+    // A visitor who hasn't voted yet is told why the report didn't go.
+    respond = () => ({ status: 403, body: { error: 'forbidden' } });
+    click('[data-action="b-report"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('Vote at least once to report this ranking.');
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    click('[data-action="b-report"]');
+    click('#m-ok');
+    await flush();
+    expect($('#toast')?.textContent).toBe('You’re offline or the server can’t be reached. Try again in a moment.');
   });
 
   it('shows no report link to the author', () => {
@@ -976,9 +1485,12 @@ describe('pictures for review', () => {
   });
 
   it('announces the pictures and sends them after publishing, when the server reviews them', async () => {
+    // The picture's upload fails the first time.
+    let pictureUp = false;
     respond = (c) => {
       if (c.url === '/api/config') return { status: 200, body: { images: 'review' } };
       if (c.method === 'POST') return { status: 201, body: { alias: PICS, owner: OWNER } };
+      if (c.url.endsWith('/image') && !pictureUp) return { status: 503, body: {} };
       return { status: 201, body: { url: `http://localhost:3000/og/b/${PICS}/1.png`, ok: true } };
     };
     click('.rcard [data-action="open"][data-id="with-image"][data-tab="duel"]');
@@ -1001,8 +1513,8 @@ describe('pictures for review', () => {
       body: { blob: 'image/jpeg' },
       auth: `Bearer ${OWNER}`,
     });
-    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
-    // The author panel says the picture waits.
+    expect($('#toast')?.textContent).toBe('1 picture not sent. Retry from the list of items.');
+    // The author panel says it wasn't sent, not that it waits for a review, and sends it again on demand.
     const ws = FakeSocket.last();
     ws.open();
     ws.receive(
@@ -1018,10 +1530,129 @@ describe('pictures for review', () => {
         true,
       ),
     );
-    expect($('#item-list li[data-id="i1"] .row-note')?.textContent).toBe('Picture awaiting review');
+    const note = () => $('#item-list li[data-id="i1"] .row-note');
+    expect(note()?.textContent).toBe('Picture not sent Retry');
+    expect(note()?.querySelector('button')?.getAttribute('aria-label')).toBe('Send the picture of Beach again');
+    pictureUp = true;
+    calls.length = 0;
+    click('#item-list [data-action="pic-retry"][data-id="i1"]');
+    await flush();
+    expect(calls.filter((c) => c.method === 'PUT')).toMatchObject([
+      { url: `/api/boards/${PICS}/items/i1/image`, auth: `Bearer ${OWNER}` },
+    ]);
+    expect($('#toast')?.textContent).toBe('1 picture sent for review.');
+    expect(note()?.textContent).toBe('Picture awaiting review');
     // Images added later go the same way: announced, then sent.
     await flush();
     expect($('[data-action="pick-files"]')).not.toBeNull();
+    click('[data-action="back"]');
+  });
+});
+
+describe('offline', () => {
+  const VISITED = 'Vs3dEf7hJk';
+
+  it('says when a board can’t be reached at first, shows what "Your votes" remembers, and tries again', async () => {
+    respond = () => {
+      throw new TypeError('Failed to fetch');
+    };
+    history.pushState(null, '', `/b/${VISITED}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect($('#b-wait')?.textContent).toBe('Connecting…');
+    const ws = FakeSocket.last();
+    ws.drop(1006);
+    await flush();
+    const wait = $('#b-wait');
+    expect(wait?.getAttribute('role')).toBe('status');
+    expect(wait?.textContent).toBe('Offline or the server can’t be reached — trying again');
+    // The card under "Your votes": the title and the counts of the last visit.
+    expect($('#view h1.b-title')?.textContent).toBe('Pizzas');
+    expect($('#b-wait h2')?.textContent).toBe('Offline or the server can’t be reached — trying again');
+    expect($('.board .b-counts')?.textContent).toContain('Your votes: 1');
+    // Retry connects at once; the message changes in place.
+    click('[data-action="b-retry"]');
+    const again = FakeSocket.last();
+    expect(again).not.toBe(ws);
+    expect($('#b-wait')).toBe(wait);
+    expect(wait?.textContent).toBe('Connecting…');
+    again.open();
+    again.receive(state());
+    expect($('#b-wait')).toBeNull();
+    expect($('#b-main .card-a')).not.toBeNull();
+  });
+
+  it('goes back from a board that can’t be reached', async () => {
+    history.pushState(null, '', '/b/Wa1tNgBrd2');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    FakeSocket.last().drop(1006);
+    await flush();
+    expect($('.board .b-title')).toBeNull();
+    // Nothing names the page yet: the waiting words are its heading.
+    expect($('#b-wait h1')?.textContent).toBe('Offline or the server can’t be reached — trying again');
+    click('#b-wait-acts [data-action="back"]');
+    expect($('h1')?.textContent).toBe('Your rankings');
+  });
+});
+
+describe('publishing, slowly', () => {
+  it('keeps the dialog open and busy until the server answers, with what went wrong in it', async () => {
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    let widget: TurnstileOptions | undefined;
+    const reset = vi.fn();
+    (window as { turnstile?: unknown }).turnstile = {
+      render: (_el: HTMLElement, o: TurnstileOptions) => {
+        widget = o;
+        return 'w9';
+      },
+      getResponse: () => 'human-token',
+      reset,
+      remove() {},
+    };
+    click('.g-head [data-action="new-rank"]');
+    for (const v of ['Tea', 'Coffee']) submit(v);
+    click('[data-action="publish"]');
+    await flush();
+    const ok = $('#m-ok') as HTMLButtonElement;
+    // Publish waits for the check's token.
+    expect(ok.disabled).toBe(true);
+    widget?.callback?.('human-token');
+    expect(ok.disabled).toBe(false);
+    ($('#m-body input[name="pub-vis"][value="blind"]') as HTMLInputElement).checked = true;
+    const later = (a: Answer) => new Promise<Answer>((res) => setTimeout(() => res(a), 1000));
+    respond = () => later({ status: 429, body: { error: 'rate_limited' } });
+    calls.length = 0;
+    click('#m-ok');
+    expect(ok.disabled).toBe(true);
+    expect(ok.textContent).toBe('Publishing…');
+    expect($('.modal-box')?.getAttribute('aria-busy')).toBe('true');
+    // Nothing closes it meanwhile, and nothing goes twice.
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    ok.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect($('#modal')?.hidden).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    // What went wrong, in the dialog, the settings as chosen.
+    expect($('#modal')?.hidden).toBe(false);
+    expect($('#m-error')?.textContent).toBe('Too many attempts. Try again in a minute.');
+    expect(($('#m-body input[name="pub-vis"][value="blind"]') as HTMLInputElement).checked).toBe(true);
+    expect([ok.disabled, ok.textContent]).toEqual([false, 'Publish']);
+    expect($('.modal-box')?.hasAttribute('aria-busy')).toBe(false);
+    // The token was spent: the check starts again.
+    expect(reset).toHaveBeenCalledWith('w9');
+    const SLOW = 'S1owPubbd7';
+    respond = (c) =>
+      c.method === 'PUT'
+        ? { status: 201, body: { url: 'http://localhost:3000/og/x.png' } }
+        : later({ status: 201, body: { alias: SLOW, owner: OWNER } });
+    click('#m-ok');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect($('#modal')?.hidden).toBe(true);
+    const posts = calls.filter((c) => c.method === 'POST');
+    expect(posts).toHaveLength(2);
+    expect(posts[1]?.body).toMatchObject({ settings: { visibility: 'blind' }, turnstile: 'human-token' });
+    expect(location.pathname).toBe(`/b/${SLOW}`);
+    vi.unstubAllEnvs();
+    delete (window as { turnstile?: unknown }).turnstile;
     click('[data-action="back"]');
   });
 });

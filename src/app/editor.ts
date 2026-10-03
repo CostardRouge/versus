@@ -1,9 +1,10 @@
 import { fillCode, fillCSS, hslToHex, isHex, normHex } from '../core/colors';
-import { LABEL_MAX, parseList } from '../core/list';
+import { parseList } from '../core/list';
+import { LABEL_MAX } from '../core/model';
 import type { Fill, Item } from '../core/types';
 import { esc } from '../core/util';
 import { plural, t } from '../i18n';
-import { $, $$, ask, doc, imgSvg, reduced, thumbHTML } from './dom';
+import { $, $$, ask, doc, imgSvg, reduced, thumbHTML, toast } from './dom';
 
 /**
  * The item editor every ranking shares (D116): the add field (a name, a pasted list, a #hex code), images and
@@ -11,6 +12,40 @@ import { $, $$, ask, doc, imgSvg, reduced, thumbHTML } from './dom';
  * same pane (`items.ts`, `author.ts`); a visitor suggesting an item gets the same field. Only what each may do,
  * and what a change costs (votes on a published board), differ.
  */
+
+/**
+ * Who fills the pane on screen and takes its edits: a local ranking (`localHost`, items.ts), where they apply at
+ * once, or a published board's author (`authorHost`, author.ts), where they go through the server. The workspace
+ * picks one (`itemsHost`, workspace.ts); the delegated listeners (events.ts) hand every edit to it.
+ */
+export interface ItemsHost {
+  /** What was sent from the add field: one item, or every new label of a list. */
+  add(input: HTMLInputElement): void;
+  /** A list pasted or dropped in the add field; false when the text isn't one, for the field to take it. */
+  addList(text: string): boolean;
+  /** The color picked beside the add field. */
+  addColor(): void;
+  /** Images dropped, pasted or chosen. */
+  addFiles(files: File[]): void;
+  remove(id: string | undefined): void;
+  /** A name edited in the list. */
+  rename(input: HTMLInputElement): void;
+  /** A color item's swatch: opens the color editor on it, or closes it. */
+  recolor(id: string | undefined, anchor: HTMLElement): void;
+  /** A scoring method picked in the score menu. */
+  setMethod(k: string | undefined): void;
+  /** Draws the main pane for the tab on screen: the duel or the results. */
+  renderMain(): void;
+}
+
+/** What adding a list came to, with a way to undo it: "N items added", and the duplicates left out. */
+export function addedToast(n: number, dupes: number, undo: () => void): void {
+  const items = plural(n, 'item');
+  const msg = dupes
+    ? t('itemsAddedDupes', { items, n, dupes: plural(dupes, 'duplicate'), d: dupes })
+    : t('itemsAdded', { items, n });
+  toast(msg, { label: t('undoToast'), run: undo });
+}
 
 /** The add field: a name, a list (typed, pasted or dropped) or a #hex code. One per page. */
 export const addFormHTML = (placeholder: string, label: string, disabled = false): string =>
@@ -55,8 +90,8 @@ export interface Row {
   dim?: boolean;
   /** Places gained (positive) or lost since the last duel. */
   moved?: number;
-  /** A word under the name: a picture under review, another item of the same color. */
-  note?: { text: string; bad?: boolean };
+  /** A word under the name: a picture under review, another item of the same color; with what to do about it. */
+  note?: { text: string; bad?: boolean; action?: { name: string; label: string; aria: string } };
 }
 
 function swatchHTML(it: Item, editable: boolean): string {
@@ -64,13 +99,22 @@ function swatchHTML(it: Item, editable: boolean): string {
   return `<button class="thumb thumb-btn" type="button" data-action="edit-color" data-id="${esc(it.id)}" style="background:${fillCSS(it.fill)}" aria-label="${esc(t('editColorAria', { label: it.label }))}" title="${t('editColor')}"></button>`;
 }
 
-export function rowHTML(row: Row, editable: boolean): string {
+const rtClass = (row: Row): string => `rt mono ${row.dim ? 'dim' : ''}`;
+const dlClass = (moved: number): string => `dl mono ${moved > 0 ? 'up' : moved < 0 ? 'down' : ''}`;
+const dlText = (moved: number): string => (moved > 0 ? `↑${moved}` : moved < 0 ? `↓${-moved}` : '');
+
+const noteActionHTML = ({ it, note }: Row): string =>
+  note?.action
+    ? ` <button class="link row-act" type="button" data-action="${note.action.name}" data-id="${esc(it.id)}" aria-label="${esc(note.action.aria)}">${esc(note.action.label)}</button>`
+    : '';
+
+function rowHTML(row: Row, editable: boolean): string {
   const { it, moved = 0 } = row;
   const name = editable
     ? `<input class="row-label" data-id="${esc(it.id)}" value="${esc(it.label)}" aria-label="${esc(t('renameAria', { label: it.label }))}" maxlength="${LABEL_MAX}">`
     : `<span class="row-text">${esc(it.label)}</span>`;
   const label = row.note
-    ? `<span class="row-main">${name}<small class="row-note ${row.note.bad ? 'bad' : ''}">${esc(row.note.text)}</small></span>`
+    ? `<span class="row-main">${name}<small class="row-note ${row.note.bad ? 'bad' : ''}">${esc(row.note.text)}${noteActionHTML(row)}</small></span>`
     : name;
   const remove = editable
     ? `<button class="rm" type="button" data-action="remove-item" data-id="${esc(it.id)}" aria-label="${esc(t('removeAria', { label: it.label }))}">×</button>`
@@ -79,31 +123,129 @@ export function rowHTML(row: Row, editable: boolean): string {
       <span class="pos mono">${row.pos}</span>
       ${swatchHTML(it, editable)}
       ${label}
-      <span class="rt mono ${row.dim ? 'dim' : ''}" ${row.metaTitle ? `title="${esc(row.metaTitle)}"` : ''}>${row.meta}</span>
-      <span class="dl mono ${moved > 0 ? 'up' : moved < 0 ? 'down' : ''}">${moved > 0 ? `↑${moved}` : moved < 0 ? `↓${-moved}` : ''}</span>
+      <span class="${rtClass(row)}" ${row.metaTitle ? `title="${esc(row.metaTitle)}"` : ''}>${row.meta}</span>
+      <span class="${dlClass(moved)}">${dlText(moved)}</span>
       ${remove}
     </li>`;
 }
 
+/** What a row was drawn with, apart from what changes at every duel (its place, score and move). */
+interface Drawn {
+  it: Item;
+  label: string;
+  img: string | null;
+  fill: string;
+  note: string;
+  editable: boolean;
+}
+
+const drawn = new WeakMap<Element, Drawn>();
+
+const drawnOf = (row: Row, editable: boolean): Drawn => ({
+  it: row.it,
+  label: row.it.label,
+  img: row.it.img,
+  fill: row.it.fill ? `${row.it.fill.type}:${row.it.fill.colors.join(',')}` : '',
+  note: row.note ? `${row.note.bad ? '!' : ''}${row.note.text}${row.note.action?.name ?? ''}` : '',
+  editable,
+});
+
+/** True when the row's picture, name, color and note are as drawn: only its place, score and move need patching. */
+const unchanged = (a: Drawn | undefined, b: Drawn): boolean =>
+  !!a &&
+  a.it.id === b.it.id &&
+  a.label === b.label &&
+  a.img === b.img &&
+  a.fill === b.fill &&
+  a.note === b.note &&
+  a.editable === b.editable;
+
+function patchRow(li: Element, row: Row): void {
+  const pos = $('.pos', li);
+  if (pos && pos.textContent !== row.pos) pos.textContent = row.pos;
+  const rt = $('.rt', li);
+  if (rt) {
+    if (rt.innerHTML !== row.meta) rt.innerHTML = row.meta;
+    rt.className = rtClass(row);
+    if (row.metaTitle) rt.title = row.metaTitle;
+    else rt.removeAttribute('title');
+  }
+  const dl = $('.dl', li);
+  const moved = row.moved ?? 0;
+  if (dl) {
+    dl.className = dlClass(moved);
+    dl.textContent = dlText(moved);
+  }
+}
+
+/**
+ * A row whose item was renamed in place (its name field, or a color named by its code): the field and the names of
+ * its controls follow, and the row counts as drawn with that name.
+ */
+export function relabelRow(it: Item): void {
+  const li = $(`#item-list li[data-id="${it.id}"]`);
+  if (!li) return;
+  const name = $<HTMLInputElement>('.row-label', li);
+  if (name && name.value !== it.label) name.value = it.label;
+  name?.setAttribute('aria-label', t('renameAria', { label: it.label }));
+  $('.rm', li)?.setAttribute('aria-label', t('removeAria', { label: it.label }));
+  $('.thumb-btn', li)?.setAttribute('aria-label', t('editColorAria', { label: it.label }));
+  const was = drawn.get(li);
+  if (was) drawn.set(li, { ...was, label: it.label });
+}
+
+function rowElement(row: Row, editable: boolean): Element {
+  const tpl = doc.createElement('template');
+  tpl.innerHTML = rowHTML(row, editable);
+  const li = tpl.content.firstElementChild as Element;
+  drawn.set(li, drawnOf(row, editable));
+  return li;
+}
+
 /**
  * Fills the list, rows sliding from their old place to the new one (none under reduced motion); a row that
- * wasn't there pops in.
+ * wasn't there pops in. Rows already on screen are kept and patched (their place, score and move): a duel no
+ * longer rebuilds every row, its pictures and its name fields. A row is drawn again only when its content changed.
  */
 export function renderRows(rows: readonly Row[], editable: boolean, animate: boolean): void {
   const ul = $('#item-list');
   if (!ul) return;
-  const before: Record<string, number> = {};
-  if (animate) for (const li of $$('li[data-id]', ul)) before[li.dataset.id ?? ''] = li.getBoundingClientRect().top;
-  ul.innerHTML = rows.length
-    ? rows.map((r) => rowHTML(r, editable)).join('')
-    : `<li class="empty">${t('emptyList')}</li>`;
   const count = $('#aside-count');
   if (count) count.textContent = plural(rows.length, 'item');
   const n = $('#n-items');
   if (n) n.textContent = String(rows.length);
-  if (!animate || reduced) return;
-  for (const li of $$('li[data-id]', ul)) {
-    const b = before[li.dataset.id ?? ''];
+  if (!rows.length) {
+    ul.innerHTML = `<li class="empty">${t('emptyList')}</li>`;
+    return;
+  }
+  const old = new Map<string, Element>();
+  for (const li of $$('li[data-id]', ul)) old.set(li.dataset.id ?? '', li);
+  // Positions are read (a layout) only when rows will move: live counts on a board leave the order as it is.
+  const moves = animate && !reduced && [...old.keys()].join('\n') !== rows.map((r) => r.it.id).join('\n');
+  const before = new Map<Element, number>();
+  if (moves) for (const li of old.values()) before.set(li, li.getBoundingClientRect().top);
+  for (const li of $$('li:not([data-id])', ul)) li.remove();
+  const lis = rows.map((row) => {
+    const li = old.get(row.it.id);
+    old.delete(row.it.id);
+    if (li && unchanged(drawn.get(li), drawnOf(row, editable))) {
+      patchRow(li, row);
+      return li;
+    }
+    const fresh = rowElement(row, editable);
+    // A name being typed in is kept: only another name from elsewhere replaces it.
+    li?.replaceWith(fresh);
+    if (li && before.has(li)) before.set(fresh, before.get(li) as number);
+    return fresh;
+  });
+  for (const li of old.values()) li.remove();
+  // Only rows out of place move: a focused field stays where it is unless its row moves.
+  lis.forEach((li, i) => {
+    if (ul.children[i] !== li) ul.insertBefore(li, ul.children[i] ?? null);
+  });
+  if (!moves) return;
+  for (const li of lis) {
+    const b = before.get(li);
     if (b === undefined) {
       li.classList.add('new');
       continue;
@@ -162,7 +304,12 @@ export function fileToThumb(file: File): Promise<string> {
         c.width = Math.round(img.width * sc);
         c.height = Math.round(img.height * sc);
         c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
-        resolve(c.toDataURL('image/jpeg', 0.82));
+        // A canvas the browser refuses to read back (SecurityError) must not leave the import waiting forever.
+        try {
+          resolve(c.toDataURL('image/jpeg', 0.82));
+        } catch (e) {
+          reject(e);
+        }
       };
       img.onerror = reject;
       img.src = String(fr.result);

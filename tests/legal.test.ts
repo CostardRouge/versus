@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { analyticsConfig, analyticsTag } from '../build/analytics';
 import { BODY_MARK, BOOT_MARK, fillPage } from '../build/seo-plugin';
 import { CONTACT, LEGALS, PAGES } from '../build/site';
-import { LEGAL_PATH } from '../src/app/about';
 import { TTL_DAYS } from '../src/core/board';
+import { LEGAL_PATH } from '../src/core/site';
 import { legalEn } from '../src/i18n/legal-en';
 import { legalFr } from '../src/i18n/legal-fr';
 import { landingBody } from '../src/landing/markup';
-import { BOARD_TTL_DAYS, legalBody } from '../src/legal/markup';
+import { legalBody, legalBoot } from '../src/legal/markup';
 
 const OPTS = {
   contact: CONTACT,
@@ -20,6 +20,46 @@ const OPTS = {
 const body = { en: legalBody('en', OPTS), fr: legalBody('fr', OPTS) } as const;
 const placeholders = (v: string): string[] => [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1] ?? '').sort();
 const levels = (html: string) => [...html.matchAll(/<h(\d)[\s>]/g)].map((m) => Number(m[1]));
+
+/** Each event the app counts (src/audience.ts trackEvent), and the words saying so in the legal notice. */
+const COUNTED: Record<string, { en: RegExp; fr: RegExp }> = {
+  'ranking-created': { en: /a ranking created/, fr: /un classement créé/ },
+  'ranking-finished': { en: /created or finished/, fr: /créé ou terminé/ },
+  'board-published': { en: /a ranking published/, fr: /un classement publié/ },
+  'board-joined': { en: /a first vote on a published ranking/, fr: /un premier vote sur un classement publié/ },
+  'board-finished': { en: /every pair voted/, fr: /toutes ses paires votées/ },
+  shared: { en: /shared as an image and how/, fr: /partagé en image et par quel moyen/ },
+  'rankings-exported': { en: /rankings exported to a file/, fr: /classements exportés dans un fichier/ },
+  'rankings-imported': { en: /or imported from one/, fr: /ou importés d’un fichier/ },
+  'app-installed': { en: /an installation/, fr: /une installation/ },
+  chocolatine: { en: /chocolatine debate/, fr: /débat de la chocolatine/ },
+};
+
+/** The names passed to trackEvent anywhere under src/. */
+function trackedEvents(): string[] {
+  const names = new Set<string>();
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const path = resolve(dir, e.name);
+      if (e.isDirectory()) walk(path);
+      else if (e.name.endsWith('.ts')) {
+        for (const m of readFileSync(path, 'utf8').matchAll(/trackEvent\(\s*'([\w-]+)'/g)) names.add(m[1] ?? '');
+      }
+    }
+  };
+  walk(resolve(process.cwd(), 'src'));
+  return [...names].sort();
+}
+
+describe('what the legal notice says is counted', () => {
+  it('names every event the app sends, in both languages', () => {
+    expect(trackedEvents()).toEqual(Object.keys(COUNTED).sort());
+    for (const [name, words] of Object.entries(COUNTED)) {
+      expect(legalEn.count2, name).toMatch(words.en);
+      expect(legalFr.count2, name).toMatch(words.fr);
+    }
+  });
+});
 
 describe('legal notice messages', () => {
   it('French covers exactly the English keys, with the same placeholders and markup', () => {
@@ -39,7 +79,6 @@ describe('legal pages', () => {
   });
 
   it('state the real deletion delay of published rankings', () => {
-    expect(BOARD_TTL_DAYS).toBe(TTL_DAYS);
     expect(body.en).toContain(`after ${TTL_DAYS} days without activity`);
   });
 
@@ -129,5 +168,28 @@ describe('the measurement switch', () => {
     expect(state()).toBe('none');
     expect(visible()).toEqual([legalEn.countNone]);
     expect(button().hidden).toBe(true);
+  });
+});
+
+describe('first paint', () => {
+  it('applies a chosen theme to the page and to the browser’s bar', () => {
+    const bars = () =>
+      [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
+    // A page load: the head as the build writes it, then the script.
+    const run = () => {
+      document.head.innerHTML =
+        '<meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)">';
+      new Function(legalBoot().replace(/<\/?script>/g, ''))();
+    };
+    localStorage.setItem('versus-prefs', JSON.stringify({ theme: 'dark' }));
+    run();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(bars()).toEqual(['#0E1015', '#0E1015']);
+    localStorage.setItem('versus-prefs', JSON.stringify({ theme: 'light' }));
+    run();
+    expect(bars()).toEqual(['#ECEEF2', '#ECEEF2']);
+    localStorage.clear();
+    delete document.documentElement.dataset.theme;
+    document.head.innerHTML = '';
   });
 });

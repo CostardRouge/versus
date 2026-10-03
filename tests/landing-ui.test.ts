@@ -113,7 +113,8 @@ describe('home page', () => {
     $('#pause').click();
     expect(document.documentElement.classList.contains('paused')).toBe(true);
     expect($('#pause').getAttribute('aria-pressed')).toBe('true');
-    expect($('#pause').getAttribute('aria-label')).toBe(S.playAnim);
+    // A toggle keeps its name: only its pressed state says the animations are paused.
+    expect($('#pause').getAttribute('aria-label')).toBe(S.pauseAnim);
     $('#pause').click();
     expect(document.documentElement.classList.contains('paused')).toBe(false);
   });

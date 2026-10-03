@@ -1,3 +1,4 @@
+import { esc } from '../core/util';
 import { $$, doc } from './dom';
 
 /**
@@ -34,8 +35,8 @@ function draw(box: HTMLElement): void {
     const same = left.indexOf(l) === i;
     const d = `--d:${(animated ? at + i * 0.06 : 0).toFixed(2)}s`;
     const k = key.replace(/"/g, '');
-    out += `<path data-id="${k}" class="${same ? 'sl-same' : 'sl-moved'}" ${same ? '' : `stroke="url(#${id})"`} d="M4 ${y1} C ${w / 2} ${y1}, ${w / 2} ${y2}, ${w - 4} ${y2}" pathLength="1" stroke-dasharray="1" style="${d}"/>`;
-    out += `<circle data-id="${k}" class="sl-a" cx="4" cy="${y1}" r="3.5" style="${d}"/><circle data-id="${k}" class="sl-b" cx="${w - 4}" cy="${y2}" r="3.5" style="${d}"/>`;
+    out += `<path data-id="${esc(k)}" class="${same ? 'sl-same' : 'sl-moved'}" ${same ? '' : `stroke="url(#${id})"`} d="M4 ${y1} C ${w / 2} ${y1}, ${w / 2} ${y2}, ${w - 4} ${y2}" pathLength="1" stroke-dasharray="1" style="${d}"/>`;
+    out += `<circle data-id="${esc(k)}" class="sl-a" cx="4" cy="${y1}" r="3.5" style="${d}"/><circle data-id="${esc(k)}" class="sl-b" cx="${w - 4}" cy="${y2}" r="3.5" style="${d}"/>`;
   });
   svg.innerHTML = out;
 }
@@ -45,18 +46,51 @@ export function drawSlopes(): void {
   for (const box of $$('[data-slope]')) draw(box);
 }
 
-/** Pointing at an item (in either ranking, or its line) highlights it on both sides. */
-export function bindSlopes(root: ParentNode = doc): void {
+/**
+ * Pointing at an item (in either ranking, or its line) highlights it on both sides. Its rows are also toggle
+ * buttons, for touch and the keyboard: a tap, Enter or Space keeps the item highlighted, a second one lets go.
+ */
+function bindSlopes(root: ParentNode = doc): void {
   for (const box of $$('[data-slope]', root)) {
+    const rows = $$('[data-slope-l] li[data-id], [data-slope-r] li[data-id]', box);
+    // A list holds list items only: with buttons for rows, each column's list is a group named by its heading.
+    for (const col of $$('[data-slope-l], [data-slope-r]', box)) {
+      const list = col.querySelector('ol');
+      list?.setAttribute('role', 'group');
+      const name = col.querySelector('p')?.textContent?.trim();
+      if (name) list?.setAttribute('aria-label', name);
+    }
+    let kept: string | null = null;
     const light = (key: string | null) => {
       box.classList.toggle('hovering', key !== null);
       for (const el of $$<Element>('[data-id]', box)) el.classList.toggle('hl', el.getAttribute('data-id') === key);
     };
+    const keep = (key: string | null) => {
+      kept = key === kept ? null : key;
+      for (const li of rows) li.setAttribute('aria-pressed', String(li.dataset.id === kept));
+      light(kept);
+    };
+    for (const li of rows) {
+      li.tabIndex = 0;
+      li.setAttribute('role', 'button');
+      li.setAttribute('aria-pressed', 'false');
+    }
     box.addEventListener('pointerover', (e) => {
+      if (kept !== null) return;
       const el = (e.target as Element | null)?.closest?.('[data-id]');
       light(el?.getAttribute('data-id') ?? null);
     });
-    box.addEventListener('pointerleave', () => light(null));
+    box.addEventListener('pointerleave', () => light(kept));
+    box.addEventListener('click', (e) => {
+      const li = (e.target as Element | null)?.closest?.<HTMLElement>('li[data-id]');
+      if (li && rows.includes(li)) keep(li.dataset.id ?? null);
+    });
+    box.addEventListener('keydown', (e) => {
+      const li = e.target as HTMLElement;
+      if ((e.key !== 'Enter' && e.key !== ' ') || !rows.includes(li)) return;
+      e.preventDefault();
+      keep(li.dataset.id ?? null);
+    });
   }
 }
 

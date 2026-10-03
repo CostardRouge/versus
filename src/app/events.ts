@@ -1,17 +1,7 @@
-import { parseList } from '../core/list';
 import { locale, t } from '../i18n';
-import {
-  authorAdd,
-  authorAddColor,
-  authorAddFiles,
-  authorEditColor,
-  authorOnScreen,
-  authorRemove,
-  authorSettings,
-} from './author';
+import { authorNewAdminLink, authorRetryPicture, authorSettings } from './author';
 import { exportAll, exportOne, importFile, isBackupFile, pickImport } from './backup';
 import {
-  boardAdd,
   boardAdminLink,
   boardChange,
   boardKeydown,
@@ -20,9 +10,11 @@ import {
   boardRefresh,
   boardReport,
   boardReset,
+  boardRetry,
   boardShare,
   boardSkip,
   boardStatus,
+  boardSuggest,
   boardUndo,
   boardUnlink,
   boardWithdraw,
@@ -32,20 +24,23 @@ import {
   setFinaleView,
   setFinaleWho,
 } from './board';
-import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
-import { $, closeModal, doc, narrow, toastAct } from './dom';
-import { choose, duelKeydown, endContinue, endSee, endStay, skip, undoLast } from './duel';
-import { changeTheme } from './header';
-import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
-import { forgetJoined, keepJoinedCopy, makeMineFromCard } from './joined';
-import { makeMineFromPopular } from './popular';
+import { closeColor, colorChange, colorInput, cpAction, placeColor, setActiveStop } from './color';
+import { $, closeModal, doc, narrow, toastAct, toastHasAct, trapTab } from './dom';
+import { choose, duelKeydown, endContinue, endSee, skip, undoLast } from './duel';
+import { changeTheme, viewTitle } from './header';
+import { addFiles } from './items';
+import { forgetJoined } from './joined';
 import { publishRanking } from './publish';
 import { applyUpdate, dismissUpdate, install } from './pwa';
 import {
   changeLang,
+  closeNotice,
   deleteRank,
   duplicateRank,
   goBack,
+  keepJoinedCopy,
+  makeMineFromCard,
+  makeMineFromPopular,
   newRank,
   open,
   openBoard,
@@ -55,23 +50,29 @@ import {
   toggleDemos,
 } from './rankings';
 import { copyRanking, setCompare, setRankView } from './results';
-import {
-  shareBoard,
-  shareCopyImage,
-  shareCopyText,
-  shareDownload,
-  shareDuel,
-  shareFinale,
-  shareFormat,
-  shareLocal,
-  shareNative,
-  shareView,
-} from './share';
 import { drawSlopes } from './slope';
-import { cur, S, save } from './state';
-import { setMethod, setTab, toggleMethodMenu } from './workspace';
+import { cur, S, saveSoon } from './state';
+import { itemsHost, menuKeydown, setMethod, setTab, tabKeydown, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */
+
+type Sharing = typeof import('./share');
+let sharingModule: Sharing | null = null;
+
+/**
+ * The share panel and the card drawing stay out of the first load: most visits never share. They load once the page
+ * is idle (`ui.ts`), so the first share opens at once, or at the first share if that comes sooner.
+ */
+export async function loadSharing(): Promise<Sharing> {
+  sharingModule ??= await import('./share');
+  return sharingModule;
+}
+
+/** Runs a share action: at once once loaded, still inside the click (the share sheet and the clipboard ask for one). */
+function sharing(run: (m: Sharing) => unknown): void {
+  if (sharingModule) run(sharingModule);
+  else void loadSharing().then(run);
+}
 
 function onClick(e: MouseEvent): void {
   const target = e.target as HTMLElement | null;
@@ -82,6 +83,12 @@ function onClick(e: MouseEvent): void {
   if (cpop && !cpop.hidden && !target.closest('#cpop') && !target.closest('.thumb-btn')) closeColor();
   const el = target.closest<HTMLElement>('[data-action]');
   if (!el || (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return;
+  // A link of the app (a gallery card's title) opens its view here; with a modifier key, or the middle button
+  // (no click event), the browser opens it in a new tab or window.
+  if (el instanceof HTMLAnchorElement) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+  }
   const id = el.dataset.id;
   const action = el.dataset.action ?? '';
   // A published board's settings close before one of their actions runs (it may open a dialog of its own).
@@ -99,6 +106,9 @@ function onClick(e: MouseEvent): void {
       break;
     case 'back':
       goBack();
+      break;
+    case 'notice-close':
+      closeNotice();
       break;
     case 'tab': {
       const tab = el.dataset.tab;
@@ -119,9 +129,7 @@ function onClick(e: MouseEvent): void {
       setMethod(el.dataset.m);
       break;
     case 'edit-color':
-      if (S.route.view === 'board') authorEditColor(id, el);
-      else if (id && cp.id === id && cpop && !cpop.hidden) closeColor();
-      else if (id) openColor(id, el);
+      itemsHost()?.recolor(id, el);
       break;
     case 'reset':
       void resetRank(id);
@@ -135,18 +143,14 @@ function onClick(e: MouseEvent): void {
     case 'toggle-demos':
       toggleDemos();
       break;
-    case 'add-color': {
-      const r = cur();
-      if (S.route.view === 'board') void authorAddColor();
-      else if (r) addColor(r);
+    case 'add-color':
+      itemsHost()?.addColor();
       break;
-    }
     case 'delete':
       void deleteRank(id);
       break;
     case 'remove-item':
-      if (S.route.view === 'board') void authorRemove(id);
-      else removeItem(id);
+      itemsHost()?.remove(id);
       break;
     case 'pick':
       choose(el.dataset.side);
@@ -158,37 +162,37 @@ function onClick(e: MouseEvent): void {
       undoLast();
       break;
     case 'copy':
-      copyRanking();
+      void copyRanking();
       break;
     case 'share-rank':
-      shareLocal(cur());
+      sharing((m) => m.shareLocal(cur()));
       break;
     case 'share-board':
-      shareBoard();
+      sharing((m) => m.shareBoard());
       break;
     case 'share-duel':
-      shareDuel();
+      sharing((m) => m.shareDuel());
       break;
     case 'share-finale':
-      shareFinale();
+      sharing((m) => m.shareFinale());
       break;
     case 'share-fmt':
-      shareFormat(el.dataset.fmt);
+      sharing((m) => m.shareFormat(el.dataset.fmt));
       break;
     case 'share-view':
-      shareView(el.dataset.view);
+      sharing((m) => m.shareView(el.dataset.view));
       break;
     case 'share-native':
-      void shareNative();
+      sharing((m) => m.shareNative());
       break;
     case 'share-copy-text':
-      void shareCopyText();
+      sharing((m) => m.shareCopyText());
       break;
     case 'share-copy-image':
-      void shareCopyImage();
+      sharing((m) => m.shareCopyImage());
       break;
     case 'share-download':
-      void shareDownload();
+      sharing((m) => m.shareDownload());
       break;
     case 'make-mine':
       makeMineFromCard(el.dataset.alias);
@@ -204,9 +208,6 @@ function onClick(e: MouseEvent): void {
       break;
     case 'end-see':
       endSee();
-      break;
-    case 'end-stay':
-      endStay();
       break;
     case 'end-continue':
       endContinue();
@@ -259,8 +260,11 @@ function onClick(e: MouseEvent): void {
     case 'b-admin-link':
       void boardAdminLink();
       break;
+    case 'b-new-admin-link':
+      void authorNewAdminLink();
+      break;
     case 'b-settings':
-      authorSettings();
+      void authorSettings();
       break;
     case 'b-close':
       void boardStatus('closed');
@@ -273,6 +277,12 @@ function onClick(e: MouseEvent): void {
       break;
     case 'b-unlink':
       boardUnlink();
+      break;
+    case 'b-retry':
+      boardRetry();
+      break;
+    case 'pic-retry':
+      void authorRetryPicture(id);
       break;
     case 'b-finale':
       openFinale();
@@ -314,7 +324,8 @@ function onInput(e: Event): void {
     if (r) {
       r.title = tg.value.trim() || t('untitled');
       r.updated = Date.now();
-      save();
+      viewTitle(r.title);
+      saveSoon();
     }
     return;
   }
@@ -336,27 +347,37 @@ function onChange(e: Event): void {
     if (c2) c2.hidden = !tg.checked;
     return;
   }
-  if (S.route.view === 'board') {
-    boardChange(tg);
-    return;
-  }
-  const r = cur();
-  if (!r) return;
+  // A board's own fields: the Live switch, its author's title and settings.
+  if (boardChange(tg)) return;
+  const host = itemsHost();
+  if (!host) return;
   if (tg.id === 'file-input') {
-    if (tg.files) void addFiles(r, [...tg.files]);
+    if (tg.files) host.addFiles([...tg.files]);
     tg.value = '';
-    return;
-  }
-  if (tg.classList.contains('row-label')) renameItem(r, tg);
+  } else if (tg.classList.contains('row-label')) host.rename(tg);
 }
+
+const NOT_TEXT = new Set(['checkbox', 'radio', 'color', 'file', 'range', 'button', 'submit', 'reset']);
+/** Where typing goes, with its own undo. */
+const textField = (el: HTMLElement): boolean =>
+  el.matches('textarea, [contenteditable]') || (el instanceof HTMLInputElement && !NOT_TEXT.has(el.type));
 
 function onKeydown(e: KeyboardEvent): void {
   const modal = $('#modal');
   if (modal && !modal.hidden) {
+    const box = $('.modal-box', modal);
     if (e.key === 'Escape') closeModal(false);
+    else if (e.key === 'Tab' && box) trapTab(e, box);
     return;
   }
   const tg = e.target as HTMLElement;
+  // ⌘/Ctrl+Z undoes what the toast on screen offers to undo (an item removed, a list added), before a duel; a
+  // text field keeps its own undo.
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && toastHasAct() && !textField(tg)) {
+    e.preventDefault();
+    toastAct();
+    return;
+  }
   const cpop = $('#cpop');
   if (cpop && !cpop.hidden) {
     if (e.key === 'Enter' && tg.classList.contains('cp-hex')) {
@@ -371,12 +392,10 @@ function onKeydown(e: KeyboardEvent): void {
   }
   const mpop = $('#method-pop');
   if (mpop && !mpop.hidden) {
-    if (e.key === 'Escape') {
-      toggleMethodMenu(false);
-      $('#method-btn')?.focus();
-    }
+    menuKeydown(e);
     return;
   }
+  if (tg.closest('.tabs [role="tab"]') && tabKeydown(e, tg)) return;
   if (tg.id === 'rank-title' && e.key === 'Enter') {
     e.preventDefault();
     // Leaving the field commits a published board's title.
@@ -389,43 +408,33 @@ function onKeydown(e: KeyboardEvent): void {
     tg.blur();
     return;
   }
+  // Duel shortcuts only where they can't be another control's keys: on the page itself, on a view's heading (where
+  // the focus lands on a new view), or in the duel. Arrows on a tab or a header button must never cast a vote.
+  const page = tg === doc.body || tg === doc.documentElement || tg.matches('#view h1[tabindex="-1"]');
+  if (!page && !tg.closest('.duel')) return;
   if (S.route.view === 'board') boardKeydown(e, tg);
   else duelKeydown(e, tg);
 }
 
 function onPaste(e: ClipboardEvent): void {
-  const r = cur();
+  const host = itemsHost();
   const tg = e.target as HTMLElement;
-  if (!e.clipboardData || tg.closest?.('#cpop')) return;
+  if (!e.clipboardData || !host || tg.closest?.('#cpop')) return;
   const files = [...(e.clipboardData.files ?? [])].filter((f) => f.type.startsWith('image/'));
-  if (authorOnScreen()) {
-    const text = e.clipboardData.getData('text/plain');
-    if (files.length) void authorAddFiles(files);
-    else if (tg.id === 'add-input' && parseList(text).length >= 2) void authorAdd(text);
-    else return;
-    e.preventDefault();
-    return;
-  }
-  if (!r) return;
   if (files.length) {
     e.preventDefault();
-    void addFiles(r, files);
+    host.addFiles(files);
     return;
   }
   // A list adds all its items at once; anything else goes into the field.
-  if (tg.id === 'add-input' && addList(r, e.clipboardData.getData('text/plain'))) e.preventDefault();
+  if (tg.id === 'add-input' && host.addList(e.clipboardData.getData('text/plain'))) e.preventDefault();
 }
 
 /** A list dropped on the add field, or inserted by a phone keyboard's clipboard, comes without a paste event. */
 function onBeforeInput(e: InputEvent): void {
   if (!e.cancelable || (e.target as HTMLElement).id !== 'add-input') return;
   const text = e.data ?? e.dataTransfer?.getData('text/plain') ?? '';
-  const r = cur();
-  if (authorOnScreen()) {
-    if (parseList(text).length < 2) return;
-    e.preventDefault();
-    void authorAdd(text);
-  } else if (r && addList(r, text)) e.preventDefault();
+  if (itemsHost()?.addList(text)) e.preventDefault();
 }
 
 const hasFiles = (e: DragEvent): boolean => [...(e.dataTransfer?.types ?? [])].includes('Files');
@@ -442,15 +451,10 @@ export function bindEvents(): void {
     e.preventDefault();
     const input = $<HTMLInputElement>('#add-input');
     if (!input) return;
-    // On a published board: the author's items, or a visitor's suggestion.
-    if (S.route.view === 'board') {
-      void boardAdd(input.value);
-      return;
-    }
-    const r = cur();
-    if (!r) return;
-    if (addTyped(r, input.value)) input.value = '';
-    input.focus();
+    const host = itemsHost();
+    // Without the items pane, the field is a visitor's, on a published board: a suggestion.
+    if (host) host.add(input);
+    else boardSuggest(input.value);
   });
   doc.addEventListener('focusin', (e) => {
     const tg = e.target as HTMLElement;
@@ -459,6 +463,10 @@ export function bindEvents(): void {
   doc.addEventListener('focusout', (e) => {
     const tg = e.target as HTMLInputElement;
     if (tg.id === 'rank-title' && !tg.value.trim()) tg.value = t('untitled');
+    // Focus gone elsewhere closes the method menu. Without a new owner (a click on nothing focusable, Safari's
+    // buttons), the click itself decides.
+    const to = (e as FocusEvent).relatedTarget as Element | null;
+    if (tg.closest?.('#method-pop') && to && !to.closest('.method-wrap')) toggleMethodMenu(false);
   });
   let dragDepth = 0;
   doc.addEventListener('dragenter', (e) => {
@@ -488,13 +496,13 @@ export function bindEvents(): void {
       return;
     }
     // Images go to the open ranking or the author's board (or a new ranking).
-    if (authorOnScreen()) {
-      void authorAddFiles(files);
+    const host = itemsHost();
+    if (host) {
+      host.addFiles(files);
       return;
     }
     const date = new Date().toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
-    const r = cur() ?? newRank(t('imagesRankTitle', { date }));
-    void addFiles(r, files);
+    void addFiles(newRank(t('imagesRankTitle', { date })), files);
   });
   doc.addEventListener(
     'scroll',
@@ -511,7 +519,7 @@ export function bindEvents(): void {
   // A link written the old way (#/b/<alias>) pasted into an open app.
   window.addEventListener('hashchange', routeFromURL);
   narrow.addEventListener('change', () => {
-    if (cur() || authorOnScreen()) setTab(S.route.tab);
+    if (itemsHost()) setTab(S.route.tab);
     placeColor();
   });
   $('#m-ok')?.addEventListener('click', () => closeModal(true));

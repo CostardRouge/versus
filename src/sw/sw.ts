@@ -22,23 +22,57 @@ const at = (path: string): string => new URL(path, scope).href;
 const PRECACHED = new Set(__PRECACHE__.map(at));
 /** The app's page, stored under its folder's address (see precacheList in build/pwa.ts). */
 const SHELL = at('./app/');
-/** The home pages, by path relative to the scope; `index.html` is the same page as its folder. */
+/**
+ * The pages served from the network first (always current) and from the cache offline: the home pages and the legal
+ * notices, by path relative to the scope; `index.html` is the same page as its folder.
+ */
 const HOMES: Record<string, string> = {
   '': at('./'),
   'index.html': at('./'),
   'fr/': at('./fr/'),
   'fr/index.html': at('./fr/'),
+  'legal/': at('./legal/'),
+  'legal/index.html': at('./legal/'),
+  'fr/mentions-legales/': at('./fr/mentions-legales/'),
+  'fr/mentions-legales/index.html': at('./fr/mentions-legales/'),
 };
 
 self.addEventListener('install', (event) => {
-  // `reload` skips the HTTP cache, which could still hold the previous deploy's page.
-  const requests = [...PRECACHED].map((url) => new Request(url, { cache: 'reload' }));
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(requests)));
+  event.waitUntil(precache());
 });
+
+/**
+ * Stores the files of this version. Files under assets/ have hashed names: one the previous version already holds
+ * is the same file, copied over instead of downloaded again (a deploy changes a few of them, not the fonts). The
+ * rest is fetched with `reload`, which skips the HTTP cache: it could still hold the previous deploy's page.
+ */
+async function precache(): Promise<void> {
+  const cache = await caches.open(CACHE);
+  const previous = await Promise.all(
+    (await caches.keys()).filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.open(k)),
+  );
+  const fetched: Request[] = [];
+  for (const url of PRECACHED) {
+    const hashed = new URL(url).pathname.startsWith(`${scope.pathname}assets/`);
+    let kept: Response | undefined;
+    for (const old of hashed ? previous : []) {
+      kept = await old.match(url);
+      if (kept) break;
+    }
+    if (kept) await cache.put(url, kept);
+    else fetched.push(new Request(url, { cache: 'reload' }));
+  }
+  await cache.addAll(fetched);
+  // An older version that took over meanwhile (Reload in a tab) deleted every other cache, this one included: this
+  // install fails, and the browser tries it again at its next update check.
+  if (!(await caches.has(CACHE))) throw new Error('cache deleted during install');
+}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // The files of this version, stored again if an older version's activation deleted them after the install.
+      if (!(await caches.has(CACHE))) await precache().catch(() => {});
       for (const key of await caches.keys()) {
         if (key.startsWith(PREFIX) && key !== CACHE) await caches.delete(key);
       }
@@ -61,10 +95,13 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') {
     // Every address under app/ is a view of the one app page (app/demo/…, app/b/…, D92); anything else opened
     // directly (robots.txt, llms.txt…) goes to the network.
-    if (path.startsWith('app/')) event.respondWith(page(req));
+    // `app` without its slash is the address people type.
+    if (path === 'app' || path.startsWith('app/')) event.respondWith(page(req));
     else if (path in HOMES) event.respondWith(home(req, HOMES[path] as string));
     return;
   }
+  // The moderation page's files stay out of the cache: only its publisher uses them, online.
+  if (path.startsWith('assets/admin-')) return;
   if (PRECACHED.has(url.origin + url.pathname) || path.startsWith('assets/')) event.respondWith(file(req, event));
 });
 

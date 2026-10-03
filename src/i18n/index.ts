@@ -1,8 +1,9 @@
 import type { MethodKey } from '../core/types.ts';
 import { en, enPlurals, type Messages, type MsgKey, type PluralKey, type Vars } from './en.ts';
 import { fr, frPlurals } from './fr.ts';
+import { fill, intlLocale, type Lang, pctText, pluralIsMany } from './text.ts';
 
-export type Lang = 'en' | 'fr';
+export type { Lang };
 export const LANGS: readonly Lang[] = ['en', 'fr'];
 
 const MESSAGES: Record<Lang, Messages> = { en, fr };
@@ -25,18 +26,17 @@ export function detectLang(saved: unknown, browser: string | undefined): Lang {
 export function t(key: MsgKey, vars: Vars = {}): string {
   const entry = MESSAGES[current][key] ?? en[key];
   if (typeof entry === 'function') return entry(vars);
-  return entry.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ''));
+  return fill(entry, vars);
 }
 
 /** "1 item", "3 items"; French treats 0 and 1 as singular. */
 export function plural(n: number, key: PluralKey): string {
   const [one, many] = PLURALS[current][key];
-  const isMany = current === 'fr' ? n > 1 : n !== 1;
-  return `${n} ${isMany ? many : one}`;
+  return `${n} ${pluralIsMany(n, current) ? many : one}`;
 }
 
-export const pct = (v: number): string => (current === 'fr' ? `${v} %` : `${v}%`);
-export const locale = (): string => (current === 'fr' ? 'fr-FR' : 'en-GB');
+export const pct = (v: number): string => pctText(v, current);
+export const locale = (): string => intlLocale(current);
 
 export interface MethodText {
   name: string;

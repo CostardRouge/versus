@@ -25,6 +25,7 @@ npm install
 npm run dev          # Vite dev server
 npm run check        # lint + typecheck + tests + build (what CI runs); run before every commit
 npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/functions/statements, ≥ 75% branches)
+npm run e2e          # end-to-end tests in Chromium (Playwright, tests/e2e; the API and WebSocket faked per test)
 npm run format       # Biome auto-fix
 npm run icons        # redraw the icons and the social card into public/ (commit the files)
 npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1 migrated); npm run dev proxies /api to it
@@ -52,8 +53,10 @@ src/main.ts           imports the fonts and styles, starts audience measurement,
 src/audience.ts       audience measurement in the browser (docs/analytics.md): loads Umami only for visitors who don't decline
                       (switch, Do Not Track, GPC), sends views and anonymous events with clean paths; shared by every page
                       (never name a module "analytics": shared chunks take its name and filter lists block it)
+src/prefs.ts          the preferences every page shares (`versus-prefs`): PREFS_KEY, readPrefs, rememberLang
 src/tokens.css        design tokens shared by the app and the home page: light on :root, dark via prefers-color-scheme and [data-theme]
-src/styles.css        the app's styles (imports tokens.css)
+src/styles.css        the app's styles (imports tokens.css and stage.css)
+src/stage.css         the duel stage's rules and keyframes the app and the home page share (cards, side tags, entrances)
 src/sw/sw.ts          service worker (offline app shell, updates on request); own tsconfig (WebWorker types)
 src/core/             pure logic, no DOM: must stay framework-free and fully unit tested
   types.ts            Ranking, Item, Fill, Duel, Computed…
@@ -73,13 +76,17 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   list.ts             a list typed or pasted in the add field as labels (lines, `\n`, Markdown and bulleted lists, tabs,
                       JSON array); duplicates of what the ranking has
   backup.ts           export and import (D97–D101): the file format, strict validation of a file, merge that never replaces
-  model.ts, util.ts   constructors, ids, escaping, small helpers
+  model.ts, util.ts   constructors, ids, escaping, small helpers; imageSrc() and hueValue(): the only way a view reads an
+                      item's picture and hue
+  site.ts             the site's links and paths (home pages, legal notice, app), shared by the app, the pages and the build
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
+                      text.ts: what every dictionary does (fill, plural rule, percentages, locale), no texts, importable anywhere;
                       landing-en.ts / landing-fr.ts: the home page's texts; legal-en.ts / legal-fr.ts: the legal notice's (same rules);
                       unfurl.ts: a board's link preview texts, the only dictionary the Worker bundles; admin.ts: the moderation page's
 src/app/              UI: renders HTML strings, one delegated listener per event type (data-action attributes)
   ui.ts               mount(): loads data, adds demos, binds events, first render
-  state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons
+  state.ts, dom.ts    app state (rankings, prefs, route, save) / document, media queries, $, toast, modal, icons, focus helpers
+  nav.ts              `render` registered by ui.ts and called by the views that only need "draw again" (no import of rankings.ts)
   rankings.ts         render() (gallery or workspace), routeFromURL() and ranking-level actions (new, open, reset, duplicate, delete, language)
   gallery.ts          gallery cards: your rankings, your votes (boards voted on), Popular (featured boards and templates), demos
   joined.ts           "Your votes": records a card at the first vote, refreshes cards from the server, forget, keep a copy
@@ -89,28 +96,35 @@ src/app/              UI: renders HTML strings, one delegated listener per event
                       with the page's h1 is in index.html for crawlers without JavaScript (build/seo.ts)
   workspace.ts        workspace shell (shared with a board's author), tabs, method menu, renderMain() (duel or results)
   editor.ts           the items pane every ranking shares (D116): add field, images and colors, the list (FLIP), the
-                      question on an item's votes; a visitor's suggestion uses its add field
+                      question on an item's votes; `ItemsHost`, the pane's two owners (items.ts localHost, author.ts
+                      authorHost), picked once from the route in workspace.ts; a visitor's suggestion uses its add field
   items.ts            a local ranking's items in the editor: live-sorted list and edits (add text/colors/images, rename, remove)
-  duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts
+  duel.ts             duel stage: cards, swipe, picks, skip, undo, keyboard shortcuts; the duel kit board.ts reuses (keys,
+                      controls, side → outcome, pick animation)
   results.ts          podium or lines comparing two methods (switch), table, method comparison, copy
-  ending.ts           end of a local ranking: announcement with confetti and a countdown to the Ranking tab
+  ending.ts           end of a local ranking: announcement with confetti and a button to the Ranking tab (focused, announced)
   slope.ts            lines between two rankings (end-of-vote page, method comparison): drawing and hover
   color.ts            color editor popover
   publish.ts          publish modal and the settings forms shared with the board's settings
   board.ts            published board page: connection, server-assigned duels, crowd ranking (live or frozen), suggestions,
                       report form, withdraw; its author gets author.ts instead
+  board-state.ts      the board's DOM-free state: the Board record, the pending queue and optimistic changes with their undo
   author.ts           a published board seen by its author (D116): the workspace with the items pane, title, method, the
                       settings behind the Published button, and item edits through the API (votes kept or reset)
   finale.ts           end-of-vote page (all pairs voted): podium or you vs the crowd, toggle, reveal animation
-  share.ts            share as an image: draws the card on a canvas (tokens, fonts), the share panel (share sheet, copy,
-                      download), and sends a board's or a duel's landscape card for its link preview
-  remote.ts           API calls and the board WebSocket (hello, reconnect, gone)
+  share.ts            share as an image: cards from the app's state, the share panel (share sheet, copy, download), and sends a
+                      board's or a duel's landscape card for its link preview; loaded on demand (events.ts loadSharing)
+  share-draw.ts       draws a card on the canvas it is given (spec, format, palette, pictures): no page, no app state
+  errors.ts           what a failed API call says, one full map per kind of call (owner, publish, report, read): typed, so a
+                      new error code must say something
+  remote.ts           API calls (15 s time limit) and the board WebSocket (hello with the protocol version, reconnect, gone)
+  turnstile.ts        Cloudflare Turnstile's widget, when the build has a site key: at publication, before a first vote on an official board
   router.ts           the address bar follows the view (push, replace), app folder from the page's <base>; counts each view
   events.ts           delegated listeners (click, input, change, keydown, paste, drag and drop)
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
   backup.ts           export (share sheet on phones, download elsewhere) and import (file picked or dropped)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
-  storage.ts          guarded localStorage access, prefs, migration from prototype keys
+  storage.ts          guarded localStorage access, prefs, migration from prototype keys, unreadable rankings set aside
 src/landing/          the home page: markup.ts renders it at build time (pure strings, like frame.ts: the demo frames'
                       HTML, shared with the script), data.ts (its items, EN/FR), sprite.ts (pastry drawings), strings.ts
                       (texts at build time), crowd.ts (simulated votes); main.ts + mount.ts bring it to life: board.ts (a
@@ -119,21 +133,32 @@ src/landing/          the home page: markup.ts renders it at build time (pure st
 src/legal/            the legal notice (publisher, hosting, privacy, measurement, licence): markup.ts renders it at build time with
                       the home page's header and footer; main.ts + mount.ts count the view and run the measurement switch; legal.css
 src/admin/            the moderation page (/admin/, D107): page.ts renders it and calls /api/admin with the token typed on it (kept in
-                      sessionStorage), admin.ts is the entry (its bundle is named admin-*, kept out of the precache), admin.css; no measurement
+                      the page's memory only), admin.ts is the entry (its bundle is named admin-*, kept out of the precache), admin.css; no measurement
 worker/               Cloudflare Worker: index.ts (router, admin, limits), board-object.ts (one Durable Object per board: SQLite, WebSockets, TTL alarm),
                       cards.ts (link previews: the cards in R2, /og/ routes, head rewriting), pictures.ts (items' pictures: sent for review to R2,
                       public under /img/ once approved, the admin's decision), templates.ts (official templates: publication on demand, the
                       /t/<slug>/ pages in the legal shell, the sitemap completed), registry.ts + migrations/ (D1 registry: the admin list's rows,
-                      flags, report and picture counts, template key, recent votes, top labels), random.ts, turnstile.ts; own tsconfig; secrets
-                      ADMIN_TOKEN, TURNSTILE_SECRET; variable IMAGES_UPLOAD (`review` turns pictures on); bindings BOARDS, REGISTRY, IMAGES (R2
-                      bucket versus-images); `run_worker_first` for /sitemap.xml
+                      flags, report and picture counts, template key, recent votes, top labels; 0005 indexes the Popular list), cache.ts +
+                      cache-rules.ts (the edge cache: Popular, template pages, the sitemap, a board's page, keyed by URL and deployed version),
+                      log.ts (one JSON line per event: quiet failures, admin actions, CSP reports; never a token, voter id or address),
+                      env.ts, random.ts, turnstile.ts; own tsconfig; secrets ADMIN_TOKEN, TURNSTILE_SECRET; variables IMAGES_UPLOAD (`review`
+                      turns pictures on), CACHE_SECONDS (caps the edge cache, 0 = off); bindings BOARDS, REGISTRY, IMAGES (R2 bucket
+                      versus-images), VERSION (version metadata), rate limits PUBLISH_LIMIT, API_LIMIT, SUMMARY_LIMIT, CSP_LIMIT;
+                      `run_worker_first` for /sitemap.xml
 tests/                one suite per core module + app.test.ts (jsdom smoke test) + board-ui.test.ts, votes-ui.test.ts, share-ui.test.ts and
                       admin-ui.test.ts (published boards, "Your votes", the share panel and the moderation page against a fake API and a fake
                       canvas, tests/helpers/) + worker.test.ts (end to end in workerd via Wrangler's test harness)
                       + seo.test.ts (heads per page, hreflang, JSON-LD, icons and generated files stay consistent) + pwa.test.ts (precache
                       list, version) + landing.test.ts (home page markup and texts) + landing-ui.test.ts (jsdom smoke test)
                       + audience.test.ts (measurement settings, loading rules, clean payloads) + legal.test.ts (legal pages, switch)
-                      + backup-ui.test.ts (export, import, drop, the iOS home-screen note)
+                      + backup-ui.test.ts (export, import, drop, the iOS home-screen note) + popular-ui.test.ts, finale.test.ts,
+                      storage.test.ts, remote.test.ts (time limits), sw.test.ts (the service worker's install against fake caches),
+                      pictures.test.ts, log.test.ts, cache.test.ts, turnstile.test.ts (Worker modules that run in Node)
+                      + hostile-ui.test.ts (every view of a ranking drawn from hostile stored data: nothing runs or loads)
+                      + a11y-ui.test.ts (keyboard patterns, focus kept and moved, names, toasts), gallery-wait-ui.test.ts, styles.test.ts
+                      and tokens.test.ts (contrast of the tokens, target sizes, focus and forced-colors rules)
+tests/e2e/            Playwright (`npm run e2e`): real Chromium, desktop and phone, the API and the board's WebSocket faked per test;
+                      a11y.spec.ts runs axe (WCAG 2.2 AA) on every page and view in both themes
 docs/                 decisions, roadmap, published boards model, online architecture, SEO, PWA, audience measurement
 ```
 
@@ -144,14 +169,14 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Addresses:** every view has a path under `app/` (D92, `core/route.ts`): open views through `open()` / `openBoard()` / `goBack()` / `setTab()`, which keep the address bar in step, never with `history` directly. Links the app builds come from `routeURL()`; an author's token only ever goes in the fragment. A duel link adds `?duel=<a>.<b>` (`core/share.ts`), read once and dropped from the address.
 - **Sharing (D102 to D106, D117):** images are drawn in the browser (`app/share.ts`), never on the Worker; a board's link preview card is the landscape one, sent with `putCard()` and served by `worker/src/cards.ts`. New share entry points build a `CardSpec` in `core/share.ts` and call `openShare()`; a page with several views of its result passes one `ShareView` per view and the key of the one on screen.
 - **Official templates and public lists (D110 to D112):** the templates are fixed data in `core/templates.ts` (EN and FR, a slug per language, the key is the English slug); the Worker publishes them on demand (`worker/src/templates.ts`), never by hand. Public lists (Popular, the sitemap) read the registry only, never wake boards, and never list a hidden board or someone's unlisted board. A template page's robots meta and the sitemap must agree (`TEMPLATE_INDEX_VOTERS`). Texts the Worker renders live in `i18n/unfurl.ts` (`tpl*` keys), the only dictionary it bundles.
-- **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review` | `direct`) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author's items list does (text until approved).
+- **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review`; a picture never arrives as an address) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author's items list does (text until approved).
 - **Items (D116):** one items pane for every ranking (`app/editor.ts`): a local ranking (`items.ts`) and a board's author (`author.ts`) fill it, a visitor's suggestion uses its add field. On a published board, an edit of an item with votes asks whether they stay (`askVotes`); the rule is `editItem` in `core/board.ts`. Don't build a second form for items.
 - **Moderation (D107 to D109, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
-- **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
-- **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. No literal colors in components, except text over images and fills.
+- **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`, in attributes too (ids included); an item's picture and hue go through `imageSrc()` and `hueValue()` (`core/model.ts`), colors through `fillCSS()`: stored data is read, never trusted. A new view gets its own module; keep `events.ts` a thin dispatcher.
+- **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. Coral and green as text or thin borders use `--b-ink` and `--good-ink` (4.5:1 in both themes, also the fill under white text), field borders `--field` (3:1); `tests/tokens.test.ts` checks the contrasts. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.
-- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home and legal pages read theme and lang and write lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"), `umami.disabled` (Umami's own opt-out key, set by the legal page's switch); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Changing the stored shape requires a migration in `storage.ts`.
+- **Storage keys:** `versus-v1` (rankings; a published one has `pub`), `versus-v1-unreadable` (stored rankings the app could not read, set aside untouched), `versus-prefs` (lang, theme, hideDemos, live, resultView, rankView, joinedHint; the home and legal pages read theme and lang and write lang), `versus-voter` (anonymous voter id), `versus-owners` (owner tokens by board alias), `versus-joined` (cards of boards voted on, "Your votes"), `umami.disabled` (Umami's own opt-out key, set by the legal page's switch); `sessionStorage` `versus-lang-hint` (the home page's language suggestion dismissed) and `versus-path` (a deep app path handed over by GitHub Pages' 404 page). Changing the stored shape requires a migration in `storage.ts`.
 - **Audience measurement** (`docs/analytics.md`): views and events go through `src/audience.ts`, never through the tracker's automatic tracking or `data-umami-event` attributes. An event's data is anonymous facts only (method, counts, flags), never a title, a label, an id or an alias. The legal notice lists what is counted: change an event, a tracked path or what is stored, and update `src/i18n/legal-*.ts` in the same commit.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in the HTML shells or `public/`: each page's head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The home pages (`/`, `/fr/`) are the indexed ones, linked by hreflang, with every word in their static HTML and one h1; the app (`/app/`) is `noindex` and keeps its own static text (`src/app/about.ts`). Links between pages are relative (the site also lives under github.io/versus/). A redesigned icon or social card gets new file names (caches key on the URL). Modules the Vite config reaches import with their `.ts` extension (D90). Details in `docs/seo.md`.
@@ -172,7 +197,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
-- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates (built, not deployed).
+- `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates, moderation, pictures, templates.
 - `docs/online-architecture.md`: backend for published boards on Cloudflare (`worker/`), how to deploy it.
 - `docs/seo.md`: head tags, JSON-LD, icons, social card, manifest, robots, sitemap, llms.txt; decisions and what the owner has to do (Search Console, `SITE_URL`).
 - `docs/analytics.md`: audience measurement (Umami, what is sent and never sent, how it loads, settings) and the legal notice; what is left to check live.

@@ -13,8 +13,9 @@ type Audience = typeof import('../src/audience');
 const URL_ = 'https://versus.steevepommier.com/';
 const CONFIG = analyticsConfig({}, { production: true, url: URL_ });
 
-async function page(opts: { config?: boolean; path?: string } = {}): Promise<Audience> {
-  document.head.innerHTML = opts.config === false || !CONFIG ? '' : analyticsTag(CONFIG, opts.path ?? 'app/');
+async function page(opts: { config?: boolean; path?: string; title?: string } = {}): Promise<Audience> {
+  const tag = opts.config === false || !CONFIG ? '' : analyticsTag(CONFIG, opts.path ?? 'app/');
+  document.head.innerHTML = `<title>${opts.title ?? 'Versus'}</title>${tag}`;
   vi.resetModules();
   return import('../src/audience');
 }
@@ -153,6 +154,18 @@ describe('views and events', () => {
     expect(sent[2]).toMatchObject({ url: '/app/demo/destinations', name: 'ranking-created', data: { from: 'new' } });
     a.trackView('/app/b/:alias');
     expect(sent[3]).toMatchObject({ url: '/app/b/:alias', referrer: '/app/demo/destinations' });
+  });
+
+  it('reports the page’s own title, never the one the app gives its tab (a ranking’s name)', async () => {
+    const a = await page({ title: 'Versus — Rank anything' });
+    a.startAnalytics();
+    document.title = 'Divorce lawyers shortlist · Versus';
+    a.trackView('/app/r/:id');
+    a.trackEvent('shared', { kind: 'ranking' });
+    const sent = fakeUmami();
+    tracker()?.dispatchEvent(new Event('load'));
+    expect(sent.map((p) => p.title)).toEqual(['Versus — Rank anything', 'Versus — Rank anything']);
+    expect(JSON.stringify(sent)).not.toContain('Divorce');
   });
 
   it('knows the page it is on', async () => {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { aboutHTML } from '../src/app/about.ts';
 import { en } from '../src/i18n/en.ts';
 import {
@@ -81,11 +82,11 @@ export const rootFrom = (page: PageKey): string =>
   '../'.repeat(PAGES[page].path.split('/').filter(Boolean).length) || './';
 
 /** A page's title and description: the home page's for the language, the legal notice's, or the admin page's. */
-export const titleOf = (page: PageKey): string => {
+const titleOf = (page: PageKey): string => {
   const { kind, lang } = PAGES[page];
   return kind === 'legal' ? LEGAL_TITLES[lang] : kind === 'admin' ? ADMIN_TITLE : TITLES[lang];
 };
-export const descriptionOf = (page: PageKey): string => {
+const descriptionOf = (page: PageKey): string => {
   const { kind, lang } = PAGES[page];
   return kind === 'legal' ? LEGAL_DESCRIPTIONS[lang] : kind === 'admin' ? ADMIN_DESCRIPTION : DESCRIPTIONS[lang];
 };
@@ -93,7 +94,7 @@ export const descriptionOf = (page: PageKey): string => {
 const indexed = (kind: PageKind): kind is IndexedKind => kind === 'home' || kind === 'legal';
 
 /** Max snippet and a large image preview in results; the rest states the default posture explicitly. */
-export const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+const ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
 /**
  * The app itself stays out of the index: it renders with JavaScript, switches language on one URL and would
  * compete with the home pages, which carry the text. `follow` keeps its links counting.
@@ -237,6 +238,9 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
     meta('name', 'author', AUTHOR.name),
     meta('name', 'application-name', NAME),
     meta('name', 'apple-mobile-web-app-title', NAME),
+    // The browser's bar in the page's background, per theme; the app follows a theme chosen in it (src/app/header.ts).
+    `<meta name="theme-color" content="${COLORS.bg}" media="(prefers-color-scheme: light)" />`,
+    `<meta name="theme-color" content="${COLORS.bgDark}" media="(prefers-color-scheme: dark)" />`,
     ...(VERIFICATION.google ? [meta('name', 'google-site-verification', VERIFICATION.google)] : []),
     ...(VERIFICATION.bing ? [meta('name', 'msvalidate.01', VERIFICATION.bing)] : []),
     // Icons: .ico for the probes that ignore the head, SVG for current browsers, PNG multiples of 48 for Google.
@@ -336,7 +340,7 @@ export function manifest(): Record<string, unknown> {
  * exists to be read. Only the published boards API and the admin page are off limits. Crawlers read robots.txt
  * at the root of a host only, so this one counts on the Worker's domain, not under github.io/versus/.
  */
-export function robotsTxt(url: string): string {
+function robotsTxt(url: string): string {
   return [
     'User-agent: *',
     'Allow: /',
@@ -354,7 +358,7 @@ export function robotsTxt(url: string): string {
  * render the file as a (nearly blank) page instead of showing the XML, for no gain. The app is left out: it is
  * `noindex`, and its views are this browser's rankings or boards shared by link.
  */
-export function sitemapXml(url: string, lastmod: string): string {
+function sitemapXml(url: string, lastmod: string): string {
   const pages = [...LANGUAGES.map((l) => HOMES[l]), ...LANGUAGES.map((l) => LEGALS[l])];
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -396,16 +400,71 @@ export function llmsTxt(url: string): string {
   ].join('\n');
 }
 
+/** The scripts a page runs from its own HTML (JSON data aside), as the hashes a content security policy allows. */
+export function scriptHashes(html: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g)) {
+    const attrs = m[1] ?? '';
+    if (/\bsrc=/.test(attrs) || /type="application\/(?:ld\+)?json"/.test(attrs)) continue;
+    out.push(
+      `'sha256-${createHash('sha256')
+        .update(m[2] ?? '')
+        .digest('base64')}'`,
+    );
+  }
+  return out;
+}
+
+/** Where the policy's violations are sent (the Worker logs them). */
+export const CSP_REPORT_PATH = '/api/csp-report';
+
+/**
+ * The content security policy of every page: scripts from this site (the inline ones by hash), the measurement
+ * tracker and Turnstile; pictures, fonts and data from this site, data: and blob: URLs (images kept as data URLs,
+ * shared cards); no plugin, no framing. Inline style attributes stay allowed: the views set colors with them.
+ */
+export function contentPolicy(opts: {
+  scripts: readonly string[];
+  analytics: string | null;
+  api: string | null;
+}): string {
+  const turnstile = 'https://challenges.cloudflare.com';
+  const tracker = opts.analytics ? new URL(opts.analytics).origin : null;
+  const api = opts.api && /^https?:\/\//.test(opts.api) ? new URL(opts.api).origin : null;
+  const list = (...xs: (string | null)[]) => xs.filter(Boolean).join(' ');
+  return [
+    "default-src 'self'",
+    `script-src ${list("'self'", ...[...new Set(opts.scripts)].sort(), tracker, turnstile)}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    `connect-src ${list("'self'", tracker, api)}`,
+    `frame-src ${turnstile}`,
+    "worker-src 'self'",
+    "manifest-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    `report-uri ${CSP_REPORT_PATH}`,
+  ].join('; ');
+}
+
 /**
  * Cloudflare static assets headers (Worker build only; GitHub Pages ignores the file). Charset stated for the
  * HTML, which the platform omits otherwise; hashed bundles cached for a year; HSTS without preload, which is
- * a separate, hard-to-undo decision.
+ * a separate, hard-to-undo decision. The content security policy is first reported only (`policy`, filled in
+ * once the pages are built: their inline scripts' hashes), to be enforced once its reports are clean.
  */
-export function headersFile(): string {
+export function headersFile(policy?: string): string {
   return [
     '/*',
     '  Strict-Transport-Security: max-age=31536000; includeSubDomains',
     '  X-Content-Type-Options: nosniff',
+    '  Referrer-Policy: strict-origin-when-cross-origin',
+    // Nothing frames the site; a reported-only policy's frame-ancestors protects nothing yet.
+    '  X-Frame-Options: DENY',
+    ...(policy ? [`  Content-Security-Policy-Report-Only: ${policy}`] : []),
     '',
     ...[...Object.values(PAGES).flatMap((p) => [`/${p.path}`, `/${p.file}`]), '/404', '/404.html'].flatMap((path) => [
       path,
@@ -451,7 +510,8 @@ export function notFoundHtml(url: string): string {
       (function () {
         var p = location.pathname;
         var i = p.indexOf('/app/');
-        if (i < 0) return;
+        // Not under an app folder, or already at a folder that doesn't exist (/fr/app/): the 404 page, no loop.
+        if (i < 0 || p.length === i + 5) return;
         try {
           sessionStorage.setItem('versus-path', p.slice(i + 5) + location.search + location.hash);
         } catch (e) {
@@ -462,7 +522,7 @@ export function notFoundHtml(url: string): string {
     </script>
     <style>
       :root { color-scheme: light dark; --bg: ${COLORS.bg}; --ink: ${COLORS.ink}; --muted: ${COLORS.muted}; }
-      @media (prefers-color-scheme: dark) { :root { --bg: ${COLORS.bgDark}; --ink: #eceef3; --muted: #9298a8; } }
+      @media (prefers-color-scheme: dark) { :root { --bg: ${COLORS.bgDark}; --ink: ${COLORS.inkDark}; --muted: ${COLORS.mutedDark}; } }
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
         font: 17px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 24px; box-sizing: border-box; }
       main { max-width: 34rem; }

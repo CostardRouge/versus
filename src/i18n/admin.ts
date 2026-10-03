@@ -1,3 +1,5 @@
+import { fill, type Lang } from './text.ts';
+
 /**
  * Texts of the admin page (src/admin/), the publisher's moderation page. Its own dictionary: the page ships
  * without the app's messages, and the app without these. Placeholders: {title}, {label}.
@@ -5,7 +7,7 @@
 export const adminEn = {
   title: 'Moderation',
   tokenLabel: 'Admin token',
-  tokenHint: 'The Worker’s ADMIN_TOKEN secret. Kept in this tab only.',
+  tokenHint: 'The Worker’s ADMIN_TOKEN secret. Kept on this page only: reloading it forgets the token.',
   enter: 'Enter',
   logout: 'Forget the token',
   noApi: 'This copy of Versus has no server: nothing to moderate here.',
@@ -48,7 +50,6 @@ export const adminEn = {
   prev: 'Previous',
   next: 'Next',
   details: 'Details',
-  less: 'Close details',
   closeVote: 'Close the vote',
   reopenVote: 'Reopen the vote',
   feature: 'Feature',
@@ -77,6 +78,14 @@ export const adminEn = {
   picturesTitle: 'Pictures to review',
   approve: 'Approve',
   refuse: 'Refuse',
+  picChanged: 'The author sent another picture since you looked: here it is, look again before deciding.',
+  deleteCards: 'Delete link previews',
+  confirmDeleteCards:
+    'Delete the images the links of “{title}” unfurl with? They show the site’s card until someone shares again.',
+  filters: 'Show the boards',
+  cActions: 'Actions',
+  confirmRefuse: 'Refuse the picture of “{label}”? It is deleted, and the item shows as text.',
+  confirmClearReports: 'Mark the reports on “{title}” as reviewed? They are deleted.',
 };
 
 export type AdminKey = keyof typeof adminEn;
@@ -85,7 +94,7 @@ export type AdminMessages = Record<AdminKey, string>;
 export const adminFr: AdminMessages = {
   title: 'Modération',
   tokenLabel: 'Jeton admin',
-  tokenHint: 'Le secret ADMIN_TOKEN du Worker. Gardé dans cet onglet seulement.',
+  tokenHint: 'Le secret ADMIN_TOKEN du Worker. Gardé sur cette page seulement : la recharger oublie le jeton.',
   enter: 'Entrer',
   logout: 'Oublier le jeton',
   noApi: 'Cette copie de Versus n’a pas de serveur : rien à modérer ici.',
@@ -128,7 +137,6 @@ export const adminFr: AdminMessages = {
   prev: 'Précédents',
   next: 'Suivants',
   details: 'Détails',
-  less: 'Fermer les détails',
   closeVote: 'Clore le vote',
   reopenVote: 'Rouvrir le vote',
   feature: 'Mettre à la une',
@@ -157,11 +165,19 @@ export const adminFr: AdminMessages = {
   picturesTitle: 'Images à valider',
   approve: 'Valider',
   refuse: 'Refuser',
+  picChanged: 'L’auteur a envoyé une autre image depuis : la voici, regarde-la avant de décider.',
+  deleteCards: 'Supprimer les aperçus de liens',
+  confirmDeleteCards:
+    'Supprimer les images d’aperçu des liens de « {title} » ? Ils montreront la carte du site jusqu’au prochain partage.',
+  filters: 'Afficher les tableaux',
+  cActions: 'Actions',
+  confirmRefuse: 'Refuser l’image de « {label} » ? Elle est supprimée, et l’élément s’affiche en texte.',
+  confirmClearReports: 'Marquer les signalements de « {title} » comme traités ? Ils sont supprimés.',
 };
 
-export type AdminLang = 'en' | 'fr';
+export type AdminLang = Lang;
 const TEXTS: Record<AdminLang, AdminMessages> = { en: adminEn, fr: adminFr };
 
 /** A text of the admin page in `lang`, its placeholders filled. */
 export const adminText = (lang: AdminLang, key: AdminKey, vars: Record<string, string> = {}): string =>
-  TEXTS[lang][key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '');
+  fill(TEXTS[lang][key], vars);

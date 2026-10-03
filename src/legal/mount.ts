@@ -1,4 +1,5 @@
 import { measurement, setOptOut } from '../audience';
+import { rememberLang } from '../prefs';
 
 /**
  * The legal page's switch for audience measurement: shows what this browser does (counted, switched off, a
@@ -36,15 +37,6 @@ export function stickyHeader(doc: Document): void {
 export function rememberLanguage(doc: Document): void {
   doc.addEventListener('click', (e) => {
     const lang = (e.target as Element).closest<HTMLElement>('a[data-lang]')?.dataset.lang;
-    if (lang !== 'en' && lang !== 'fr') return;
-    try {
-      const prefs = JSON.parse(localStorage.getItem('versus-prefs') ?? '{}');
-      localStorage.setItem(
-        'versus-prefs',
-        JSON.stringify({ ...(prefs && typeof prefs === 'object' ? prefs : {}), lang }),
-      );
-    } catch {
-      /* storage unavailable: the choice lasts for this visit only */
-    }
+    if (lang === 'en' || lang === 'fr') rememberLang(lang);
   });
 }

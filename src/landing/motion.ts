@@ -44,7 +44,10 @@ export function watch(el: Element, cb: (visible: boolean) => void): void {
 }
 export const isSeen = (el: Element): boolean => !!seen.get(el) && !document.hidden;
 
-/** A cancellable script: every wait pauses while `ok()` is false or animations are paused, and throws once stopped. */
+/**
+ * A cancellable script: every wait pauses while `ok()` is false, animations are paused, or the visitor asks for
+ * reduced motion (also when they ask with the page open), and throws once stopped.
+ */
 export class Run {
   alive = true;
   constructor(private readonly ok: () => boolean) {}
@@ -53,7 +56,7 @@ export class Run {
   }
   async wait(ms: number): Promise<void> {
     await sleep(ms);
-    while (this.alive && (paused || !this.ok())) await sleep(250);
+    while (this.alive && (paused || calm() || !this.ok())) await sleep(250);
     if (!this.alive) throw STOP;
   }
 }

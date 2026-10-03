@@ -8,7 +8,7 @@ export const legalEn = {
   title: 'Legal notice and privacy',
   intro:
     'Who publishes Versus, who hosts it, and what it knows about you: very little. Your rankings never leave your browser unless you publish one.',
-  updated: 'Last updated on 30 September 2026.',
+  updated: 'Last updated on 3 October 2026.',
   tocAria: 'On this page',
 
   pubTitle: 'Publisher',
@@ -30,7 +30,7 @@ export const legalEn = {
   device1:
     'Your rankings, their items (images included), your duels and your preferences (language, theme, display choices) are kept in your browser’s local storage, on this device only. So are, if you use published rankings, an anonymous voter id (a random string), the keys of the rankings you published and the cards under “Your votes”.',
   device2:
-    'The installed app also keeps its own files in the browser’s cache to work offline: files, never your data. None of this is sent anywhere, except what you publish. To erase it, delete your rankings in the app, or clear this site’s data in your browser’s settings.',
+    'Opening the app also stores its own files in the browser’s cache, so that it works offline: files, never your data. None of this is sent anywhere, except what you publish. To erase it, delete your rankings in the app, or clear this site’s data in your browser’s settings.',
 
   boardsTitle: 'Published rankings',
   boards1:
@@ -44,7 +44,7 @@ export const legalEn = {
   count1:
     'Visits are counted with <a href="https://umami.is">Umami</a>, self-hosted on the publisher’s own server at <code>insight.steevepommier.com</code>: no third party receives the data, and none of it serves advertising.',
   count2:
-    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, an installation, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
+    '<b>Counted:</b> the pages viewed, with whatever identifies a ranking or a published ranking replaced by a placeholder (<code>/app/r/:id</code>); the site you came from; a few anonymous events (a ranking created or finished, a ranking published, a first vote on a published ranking and every pair voted, a result or a duel shared as an image and how, rankings exported to a file or imported from one (how many), an installation, a side taken in the chocolatine debate); your browser, system, type of device, screen size, language and country.',
   count3:
     '<b>Never counted:</b> the content of your rankings, their titles or items, the address of a published ranking, the author’s key, your IP address (it gives the country, then is discarded), or anything that could follow you from one site to another. No cookie is set.',
   count4:
@@ -58,11 +58,11 @@ export const legalEn = {
 
   cookiesTitle: 'Cookies',
   cookies1:
-    'Versus sets no cookie, so there is no consent banner: there is nothing to consent to. When publishing asks for a check against bots, Cloudflare Turnstile runs in your browser, under Cloudflare’s privacy policy.',
+    'Versus sets no cookie, so there is no consent banner: there is nothing to consent to. When publishing, or a first vote on one of the site’s own rankings, asks for a check against bots, Cloudflare Turnstile runs in your browser, under Cloudflare’s privacy policy.',
 
   logsTitle: 'Hosting and abuse',
   logs1:
-    'Like any host, Cloudflare (and GitHub for the copy) processes your IP address to deliver the pages and protect the site: see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>. Versus uses it, without keeping it, to limit how often one address can publish or call the server, and keeps technical logs of calls to the server for a few days to fix errors.',
+    'Like any host, Cloudflare (and GitHub for the copy) processes your IP address to deliver the pages and protect the site: see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>. Versus uses it to limit how often one address can publish or call the server, and how many new voters and suggestions it can bring to a ranking: for that last count, a published ranking keeps a short fingerprint of the address, which can’t be turned back into it and differs from one ranking to the next, for ten minutes. Versus keeps technical logs of calls to the server for a few days to fix errors.',
 
   rightsTitle: 'Your rights',
   rights1:

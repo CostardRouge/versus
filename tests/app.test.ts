@@ -54,14 +54,24 @@ describe('app', () => {
     const root = document.documentElement;
     expect(root.dataset.theme).toBeUndefined();
     expect($('[data-action="theme"][data-t="system"]')?.getAttribute('aria-pressed')).toBe('true');
+    // The build's theme-color tags (build/seo.ts): the browser's bar follows a chosen theme.
+    document.head.insertAdjacentHTML(
+      'beforeend',
+      '<meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)">',
+    );
+    const bars = () =>
+      [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
     click('[data-action="theme"][data-t="dark"]');
     expect(root.dataset.theme).toBe('dark');
+    expect(bars()).toEqual(['#0E1015', '#0E1015']);
     expect($('[data-action="theme"][data-t="dark"]')?.getAttribute('aria-pressed')).toBe('true');
     expect(JSON.parse(localStorage.getItem('versus-prefs') ?? '{}').theme).toBe('dark');
     click('[data-action="theme"][data-t="light"]');
     expect(root.dataset.theme).toBe('light');
+    expect(bars()).toEqual(['#ECEEF2', '#ECEEF2']);
     click('[data-action="theme"][data-t="system"]');
     expect(root.dataset.theme).toBeUndefined();
+    expect(bars()).toEqual(['#ECEEF2', '#0E1015']);
   });
 
   it('records a duel from the buttons', () => {
@@ -71,6 +81,49 @@ describe('app', () => {
     vi.advanceTimersByTime(600);
     expect($('.eyebrow')?.textContent).not.toBe(before);
     expect(JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].history).toHaveLength(25);
+    // The next duel was saved with the vote: a reload shows that one.
+    const pair = JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].pair;
+    expect([$('.card-a')?.dataset.id, $('.card-b')?.dataset.id]).toEqual(pair);
+  });
+
+  it('keeps the rows of the list across a duel, patching their place and score', () => {
+    const rows = () =>
+      new Map([...document.querySelectorAll<HTMLElement>('#item-list li[data-id]')].map((li) => [li.dataset.id, li]));
+    const before = rows();
+    click('[data-action="pick"][data-side="b"]');
+    vi.advanceTimersByTime(600);
+    const after = rows();
+    expect(after.size).toBe(before.size);
+    for (const [id, li] of after) expect(li, id).toBe(before.get(id));
+    const places = [...document.querySelectorAll('#item-list li[data-id] .pos')].map((p) => p.textContent);
+    expect(places).toEqual(places.map((_, i) => String(i + 1)));
+  });
+
+  it('writes a title being typed once the typing pauses', () => {
+    const input = $('#rank-title') as HTMLInputElement;
+    const stored = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].title;
+    const before = stored();
+    input.value = 'Next trip';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(stored()).toBe(before);
+    vi.advanceTimersByTime(500);
+    expect(stored()).toBe('Next trip');
+    input.value = before;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(500);
+  });
+
+  it('casts no vote with keys pressed on a tab, only on the page or in the duel', () => {
+    const count = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]')[0].history.length;
+    const n = count();
+    const tab = $('.tab[data-tab="results"]') as HTMLElement;
+    for (const key of ['ArrowRight', 'ArrowDown', 's', '=']) {
+      tab.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    }
+    expect(count()).toBe(n);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    vi.advanceTimersByTime(600);
+    expect(count()).toBe(n + 1);
   });
 
   it('switches scoring method and shows the comparison table', () => {
@@ -78,6 +131,24 @@ describe('app', () => {
     expect($('#method-name')?.textContent).toBe('Simple');
     click('.tab[data-tab="results"]');
     expect(document.querySelectorAll('.cmp-table th')).toHaveLength(5);
+  });
+
+  it('copies the ranking as text, saying when the browser can’t or won’t', async () => {
+    const toastText = () => $('#toast span')?.textContent ?? $('#toast')?.textContent;
+    click('[data-action="copy"]');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastText()).toBe('Copy isn’t available in this browser');
+    const writeText = vi.fn(async (_: string) => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    click('[data-action="copy"]');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastText()).toBe('Ranking copied');
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^Next destination \(Simple\)\n1\. /);
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    click('[data-action="copy"]');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toastText()).toBe('The browser refused the copy');
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
   });
 
   it('adds text and hex items from the side panel', () => {
@@ -90,9 +161,26 @@ describe('app', () => {
     }
     expect(document.querySelectorAll('#item-list li[data-id]')).toHaveLength(2);
     expect($('.thumb-btn')?.getAttribute('aria-label')).toContain('#2743F5');
+    // A label the ranking has already is refused, as on a board, and left in the field to change.
+    input.value = ' tea ';
+    $('#add-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(document.querySelectorAll('#item-list li[data-id]')).toHaveLength(2);
+    expect($('#toast')?.textContent).toBe('This item is already there.');
+    expect(input.value).toBe(' tea ');
+    input.value = '';
+    // A color named by its code follows the color, and so do the names of its row's controls.
+    click('.thumb-btn');
+    const hex = $('#cpop .cp-hex') as HTMLInputElement;
+    hex.value = '#e4492a';
+    hex.dispatchEvent(new Event('input', { bubbles: true }));
+    const row = $('.thumb-btn')?.closest('li');
+    expect(row?.querySelector<HTMLInputElement>('.row-label')?.value).toBe('#E4492A');
+    expect(row?.querySelector('.thumb-btn')?.getAttribute('aria-label')).toBe('Change the color of #E4492A');
+    expect(row?.querySelector('.rm')?.getAttribute('aria-label')).toBe('Remove #E4492A');
+    click('[data-action="cp-done"]');
   });
 
-  it('announces the end of an exact sort, then shows the ranking by itself', () => {
+  it('announces the end of an exact sort in one sentence, focusing the way to the ranking', () => {
     click('[data-action="set-method"][data-m="sort"]');
     const input = $('#add-input') as HTMLInputElement;
     input.value = 'Coffee';
@@ -104,13 +192,13 @@ describe('app', () => {
     }
     expect($('.end-h')?.textContent).toBe('Sort complete!');
     expect($('.end-facts')?.textContent).toContain('3 items placed');
-    // "Stay here" stops the countdown.
-    click('[data-action="end-stay"]');
-    vi.advanceTimersByTime(5000);
-    expect($('.end')).not.toBeNull();
-    expect($('[data-action="end-stay"]')).toBeNull();
+    // Not a live region holding buttons: one sentence goes to #live, the focus to "See the ranking".
+    expect($('.end')?.getAttribute('role')).toBeNull();
+    expect($('#live')?.textContent).toMatch(/^Sort complete: every item found its place, in \d duels?\.$/);
+    expect(document.activeElement).toBe($('[data-action="end-see"]'));
     click('[data-action="end-see"]');
     expect($('.results')).not.toBeNull();
+    expect(document.activeElement?.id).toBe('tab-results');
   });
 
   it('shows the ranking as lines comparing two methods, and remembers it', () => {
@@ -126,13 +214,16 @@ describe('app', () => {
     expect($('.slope')).toBeNull();
   });
 
-  it('moves to the ranking when the countdown ends', () => {
+  it('stays on the announcement until asked, then shows the ranking', () => {
     click('.tab[data-tab="duel"]');
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
     click('[data-action="pick"][data-side="a"]');
     vi.advanceTimersByTime(600);
-    expect($('.end-run')).not.toBeNull();
-    vi.advanceTimersByTime(4100);
+    expect($('.end')).not.toBeNull();
+    vi.advanceTimersByTime(30000);
+    expect($('.tab[data-tab="duel"]')?.getAttribute('aria-selected')).toBe('true');
+    expect($('.end')).not.toBeNull();
+    click('[data-action="end-see"]');
     expect($('.tab[data-tab="results"]')?.getAttribute('aria-selected')).toBe('true');
     expect($('.res-enter')).not.toBeNull();
   });
@@ -177,6 +268,61 @@ describe('app', () => {
     expect($('#toast')?.textContent).toBe('All already in the list');
     expect(labels()).toHaveLength(5);
   });
+
+  it('removes an item at once and puts it back in its place, duels included, on Undo', () => {
+    const rank = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]').at(-1);
+    click('.tab[data-tab="duel"]');
+    click('[data-action="pick"][data-side="a"]');
+    vi.advanceTimersByTime(600);
+    const before = rank();
+    const [first] = before.items;
+    click(`#item-list [data-action="remove-item"][data-id="${first.id}"]`);
+    expect(rank().items.map((i: { id: string }) => i.id)).not.toContain(first.id);
+    expect($('#toast')?.textContent).toContain(`“${first.label}” removed.`);
+    click('[data-action="toast-act"]');
+    expect(rank().items).toEqual(before.items);
+    expect(rank().history).toEqual(before.history);
+  });
+
+  it('refuses to rename an item to another item’s label', () => {
+    const inputs = () => [...document.querySelectorAll<HTMLInputElement>('#item-list .row-label')];
+    const [a, b] = inputs();
+    if (!a || !b) throw new Error('missing rows');
+    const label = a.value;
+    a.value = ` ${b.value.toUpperCase()} `;
+    a.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(a.value).toBe(label);
+    expect($('#toast')?.textContent).toBe('This item is already there.');
+    // A name that is free: the row's controls are named after it at once.
+    a.value = 'Matcha';
+    a.dispatchEvent(new Event('change', { bubbles: true }));
+    const row = a.closest('li');
+    expect(a.getAttribute('aria-label')).toBe('Rename Matcha');
+    expect(row?.querySelector('.rm')?.getAttribute('aria-label')).toBe('Remove Matcha');
+  });
+
+  it('asks a destructive question starting on Cancel, keeping Tab inside and the page out of reach', async () => {
+    click('[data-action="back"]');
+    const ranks = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]').length;
+    const n = ranks();
+    click('.rcard [data-action="delete"]');
+    await vi.advanceTimersByTimeAsync(20);
+    expect(document.activeElement?.id).toBe('m-cancel');
+    expect($('#app')?.hasAttribute('inert')).toBe(true);
+    expect($('.modal-box')?.getAttribute('aria-describedby')).toBe('m-body');
+    const tab = (shiftKey = false) =>
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true }));
+    ($('#m-ok') as HTMLElement).focus();
+    tab();
+    expect(document.activeElement?.id).toBe('m-cancel');
+    tab(true);
+    expect(document.activeElement?.id).toBe('m-ok');
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect($('#modal')?.hidden).toBe(true);
+    expect($('#app')?.hasAttribute('inert')).toBe(false);
+    expect(ranks()).toBe(n);
+  });
 });
 
 describe('addresses', () => {
@@ -211,7 +357,8 @@ describe('addresses', () => {
     expect(title()).toBe(mine.title);
     expect(location.pathname).toBe(`/r/${mine.id}/items`);
     back('/r/elsewhere1');
-    expect($('#toast')?.textContent).toContain('This ranking isn’t in this browser');
+    // A notice that stays in the gallery, not a toast gone in seconds.
+    expect($('.g-notice')?.textContent).toContain('This ranking isn’t in this browser');
     expect(location.pathname).toBe('/');
     expect($('h1')?.textContent).toBe('Your rankings');
   });
@@ -228,11 +375,18 @@ describe('addresses', () => {
     expect(location.pathname).toBe('/demo/accent/ranking');
     expect(sessionStorage.getItem(STASH_KEY)).toBeNull();
     const origin = location.origin;
-    sessionStorage.setItem(STASH_KEY, '//elsewhere.example/demo/accent');
-    back('/');
-    expect(location.origin).toBe(origin);
-    expect(location.pathname).toBe('/');
-    expect($('h1')?.textContent).toBe('Your rankings');
+    for (const elsewhere of [
+      '//elsewhere.example/demo/accent',
+      'javascript:alert(1)',
+      '\\\\elsewhere.example/x',
+      'http:elsewhere.example',
+    ]) {
+      sessionStorage.setItem(STASH_KEY, elsewhere);
+      back('/');
+      expect(location.origin).toBe(origin);
+      expect(location.pathname).toBe('/');
+      expect($('h1')?.textContent).toBe('Your rankings');
+    }
   });
 });
 

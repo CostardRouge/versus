@@ -1,4 +1,5 @@
 @import "../tokens.css";
+@import "../stage.css";
 
 /* Layout: the home page runs the real duel stage. Huge left-aligned type, then the app itself playing;
    cobalt (A) faces coral (B) everywhere, one bold hero, quiet sections after. Colors are the app's tokens
@@ -106,7 +107,7 @@ kbd {
   letter-spacing: 0.07em;
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 2px 8px;
   white-space: nowrap;
 }
@@ -165,7 +166,7 @@ kbd {
   gap: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 10px 16px;
   font-weight: 600;
   font-size: 14px;
@@ -257,7 +258,7 @@ kbd {
 }
 .nav-links a {
   padding: 8px 12px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   text-decoration: none;
   color: var(--muted);
   font-weight: 600;
@@ -283,7 +284,7 @@ kbd {
   gap: 9px;
   margin: 0;
   padding: 5px 13px 5px 5px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
   font-size: 13px;
@@ -497,7 +498,7 @@ kbd {
   display: flex;
   gap: 2px;
   background: var(--surface-2);
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   padding: 3px;
   flex: none;
 }
@@ -505,7 +506,7 @@ kbd {
   border: 0;
   background: transparent;
   padding: 6px 12px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
@@ -720,7 +721,7 @@ kbd {
   flex: 1;
   display: block;
   height: 6px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
   min-width: 50px;
@@ -770,31 +771,9 @@ kbd {
 .card.is-txt {
   background: color-mix(in oklab, var(--surface) 78%, hsl(var(--h) 72% 56%));
 }
-.card-a {
-  justify-self: end;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pa, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pa, 0) * 6px) var(--a),
-    var(--shadow);
-  opacity: calc(1 - var(--pb, 0) * 0.4);
-}
-.card-b {
-  justify-self: start;
-  transform: translateX(calc(var(--dx, 0) * 0.3px)) rotate(calc(var(--dx, 0) * 0.015deg))
-    scale(calc(1 + var(--pb, 0) * 0.04));
-  box-shadow:
-    0 0 0 calc(var(--pb, 0) * 6px) var(--b),
-    var(--shadow);
-  opacity: calc(1 - var(--pa, 0) * 0.4);
-}
 .card:hover,
 .card.vhover {
   translate: 0 -5px;
-}
-.stage.dragging .card {
-  transition: none;
-  cursor: grabbing;
 }
 .stage.reset .card,
 .stage.reset .float {
@@ -819,7 +798,6 @@ kbd {
   display: block;
   font: 500 max(10px, 4.2cqi) / 1.3 var(--f-mono);
   margin-top: 4px;
-  opacity: 0.85;
 }
 .side-tag {
   position: absolute;
@@ -833,12 +811,6 @@ kbd {
   place-items: center;
   font: 800 12px var(--f-display);
   color: var(--on-accent);
-}
-.card-a .side-tag {
-  background: var(--a);
-}
-.card-b .side-tag {
-  background: var(--b);
 }
 .txt {
   position: relative;
@@ -866,13 +838,6 @@ kbd {
   line-height: 1.15;
   letter-spacing: -0.015em;
 }
-.vs {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  transition: opacity 0.2s;
-}
 .vs-dot {
   width: 46px;
   height: 46px;
@@ -885,12 +850,6 @@ kbd {
 }
 .p {
   font-size: 14px;
-}
-.pa {
-  color: var(--a);
-}
-.pb {
-  color: var(--b);
 }
 .vs-lbl {
   font-size: 9.5px;
@@ -917,15 +876,6 @@ kbd {
   right: 25%;
   translate: 50% 0;
 }
-.float.up {
-  color: var(--good);
-}
-.float.down {
-  color: var(--bad);
-}
-.float.eq {
-  color: var(--muted);
-}
 .stage.picked .float {
   animation: rise 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -943,52 +893,11 @@ kbd {
     transform: translateY(-34px);
   }
 }
-.stage.picked .vs {
-  opacity: 0;
-}
-.stage.pick-a .card-a {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--a),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-a .card-b {
-  transform: translateX(35%) rotate(8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-b .card-b {
-  transform: scale(1.05);
-  box-shadow:
-    0 0 0 6px var(--b),
-    var(--shadow);
-  opacity: 1;
-}
-.stage.pick-b .card-a {
-  transform: translateX(-35%) rotate(-8deg) scale(0.88);
-  opacity: 0;
-}
-.stage.pick-draw .card {
-  transform: scale(0.94);
-  opacity: 0.5;
-}
 .stage.enter .card-a {
   animation: inA 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .stage.enter .card-b {
   animation: inB 0.5s 0.06s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes inA {
-  from {
-    opacity: 0;
-    translate: -26px 12px;
-  }
-}
-@keyframes inB {
-  from {
-    opacity: 0;
-    translate: 26px 12px;
-  }
 }
 .kcap {
   position: absolute;
@@ -1005,7 +914,7 @@ kbd {
   background: var(--surface);
   border: 1px solid var(--line);
   border-bottom-width: 5px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   box-shadow: var(--shadow);
   opacity: 0;
   scale: 0.7;
@@ -1029,12 +938,6 @@ kbd {
   border-color: var(--a);
   color: var(--on-accent);
 }
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
 .ctl {
   display: inline-flex;
   align-items: center;
@@ -1042,7 +945,7 @@ kbd {
   gap: 8px;
   padding: 11px 18px;
   min-height: 46px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
   font-weight: 600;
@@ -1065,12 +968,12 @@ kbd {
   color: var(--on-accent);
 }
 .ctl-b {
-  border-color: var(--b);
-  color: var(--b);
+  border-color: var(--b-ink);
+  color: var(--b-ink);
 }
 .ctl-b:hover,
 .ctl-b.kpress {
-  background: var(--b);
+  background: var(--b-ink);
   color: var(--on-accent);
 }
 .ctl:hover kbd,
@@ -1081,14 +984,6 @@ kbd {
 }
 .ctl.vpress {
   scale: 0.94;
-}
-.duel-foot {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px 16px;
-  font-size: 13px;
 }
 
 /* Results: podium */
@@ -1216,7 +1111,7 @@ kbd {
   background: var(--ink);
   color: var(--bg);
   padding: 9px 16px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   font-size: 13.5px;
   font-weight: 600;
   text-align: center;
@@ -1395,7 +1290,7 @@ kbd {
   align-items: center;
   gap: 12px;
   padding: 8px 18px 8px 8px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   border: 1px solid var(--line);
   white-space: nowrap;
@@ -1424,7 +1319,7 @@ kbd {
   color: var(--a);
 }
 .vsx .xb {
-  color: var(--b);
+  color: var(--b-ink);
 }
 
 /* How it works */
@@ -1626,7 +1521,7 @@ kbd {
   position: relative;
   height: 100%;
   max-height: 190px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   overflow: hidden;
   border: 1px solid var(--line);
   display: flex;
@@ -1678,7 +1573,7 @@ kbd {
   background: var(--a);
 }
 .mc-b .tag {
-  background: var(--b);
+  background: var(--b-ink);
 }
 .mc-a.win {
   box-shadow: 0 0 0 4px var(--a);
@@ -1689,8 +1584,26 @@ kbd {
   transform: scale(1.04);
 }
 .mc.lose {
-  opacity: 0.45;
   transform: scale(0.94);
+}
+/* The card not picked fades its picture, never its name (WCAG 1.4.3): the name turns to ink. */
+.mc .bgd,
+.mc .pic,
+.mc .shade {
+  transition: opacity 0.3s;
+}
+.mc.lose .bgd,
+.mc.lose .pic {
+  opacity: 0.3;
+}
+.mc.lose .shade {
+  opacity: 0;
+}
+.mc.lose.media b {
+  color: var(--ink);
+}
+.mc.lose.is-txt {
+  background: color-mix(in oklab, var(--surface) 92%, hsl(var(--h) 72% 55%));
 }
 .mvs {
   width: 30px;
@@ -1733,8 +1646,8 @@ kbd {
   border-color: var(--a);
 }
 .v2-keys kbd[data-k="b"].on {
-  background: var(--b);
-  border-color: var(--b);
+  background: var(--b-ink);
+  border-color: var(--b-ink);
 }
 .v2-keys kbd[data-k="draw"].on {
   background: var(--ink);
@@ -1786,7 +1699,7 @@ kbd {
   position: absolute;
   right: 16px;
   bottom: 44px;
-  color: var(--good);
+  color: var(--good-ink);
   border-color: color-mix(in oklab, var(--good) 50%, transparent);
   background: var(--surface);
   opacity: 0;
@@ -1820,7 +1733,7 @@ kbd {
   border: 1px solid var(--line);
   background: var(--surface);
   padding: 5px 15px 5px 5px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   font-weight: 600;
   font-size: 14px;
   transition:
@@ -1971,7 +1884,7 @@ kbd {
   text-align: right;
 }
 .dl.up {
-  color: var(--good);
+  color: var(--good-ink);
 }
 .dl.down {
   color: var(--bad);
@@ -2012,7 +1925,7 @@ kbd {
   }
 }
 .soon {
-  color: var(--b);
+  color: var(--b-ink);
   border-color: color-mix(in oklab, var(--b) 50%, transparent);
 }
 .c-points {
@@ -2060,7 +1973,7 @@ kbd {
   font: 600 11px var(--f-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--good);
+  color: var(--good-ink);
 }
 .livechip i {
   width: 8px;
@@ -2160,7 +2073,7 @@ kbd {
   right: 54px;
   top: 4px;
   font: 700 12px var(--f-mono);
-  color: var(--good);
+  color: var(--good-ink);
   pointer-events: none;
   animation: plus 0.9s ease-out forwards;
 }
@@ -2181,7 +2094,7 @@ kbd {
   gap: 8px 14px;
   margin-top: 14px;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: var(--bg);
   font-size: 13.5px;
 }
@@ -2260,7 +2173,8 @@ kbd {
   color: var(--on-accent);
   transition:
     flex-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 0.4s,
+    background 0.4s,
+    color 0.4s,
     filter 0.4s;
 }
 .half.ha {
@@ -2312,10 +2226,17 @@ kbd {
 .final.vb .hb {
   flex-grow: 1.8;
 }
+/* The side not picked fades its color, never its words (WCAG 1.4.3): a pale tint, in ink. */
 .final.va .hb,
 .final.vb .ha {
-  opacity: 0.5;
-  filter: saturate(0.6);
+  color: var(--ink);
+  filter: none;
+}
+.final.va .hb {
+  background: color-mix(in oklab, var(--b) 28%, var(--bg));
+}
+.final.vb .ha {
+  background: color-mix(in oklab, var(--a) 28%, var(--bg));
 }
 .final.va .vsd {
   left: 64.3%;
@@ -2428,7 +2349,7 @@ kbd {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
   }
   .marq-row {
     animation: none;
@@ -2442,13 +2363,13 @@ kbd {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--surface-2);
   flex: none;
 }
 .langs a {
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   font: 500 12px / 1 var(--f-mono);
   color: var(--muted);
   text-decoration: none;
@@ -2532,8 +2453,8 @@ html.paused .caret {
     filter 0.35s;
 }
 .kcap.down.b {
-  background: var(--b);
-  border-color: var(--b);
+  background: var(--b-ink);
+  border-color: var(--b-ink);
 }
 .kcap.down.draw {
   background: var(--ink);
@@ -2584,4 +2505,21 @@ html.paused .caret {
   color: var(--muted);
   text-decoration: none;
   font-weight: 500;
+}
+
+/* Without JavaScript the page reads in full, but its demos can't play: their controls stay out of sight rather than
+   look broken. The final question keeps its two names, without the invitation to pick one. */
+html:not(.js) .controls,
+html:not(.js) .duel-foot,
+html:not(.js) .sb-foot,
+html:not(.js) #hero-btn,
+html:not(.js) #pause,
+html:not(.js) .sb-tabs,
+html:not(.js) #final-res {
+  display: none;
+}
+/* What carries words (the duel's cards, the methods' names, the final question's two sides) stays, inert. */
+html:not(.js) main button {
+  pointer-events: none;
+  cursor: default;
 }

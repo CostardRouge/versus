@@ -5,15 +5,16 @@ import {
   loadLegacyRanks,
   loadPrefs,
   loadRanks,
-  PREF_KEY,
   STORE_KEY,
   saveJoined,
   savePrefs,
   saveRanks,
+  UNREADABLE_KEY,
 } from '../src/app/storage';
 import { DEFAULT_SETTINGS } from '../src/core/board';
 import { mkItem, mkRank } from '../src/core/model';
 import type { Joined } from '../src/core/types';
+import { PREFS_KEY } from '../src/prefs';
 
 class MemoryStorage {
   private data = new Map<string, string>();
@@ -41,6 +42,27 @@ describe('storage', () => {
     r.items.push(mkItem('A'));
     expect(saveRanks([r])).toBe(true);
     expect(loadRanks()).toEqual([r]);
+  });
+
+  it('sets aside a ranking it can’t read instead of breaking the app', () => {
+    const r = mkRank('Test');
+    r.items.push(mkItem('A'));
+    const broken = { id: 'x', title: 'Broken', items: 'nope', history: [] };
+    localStorage.setItem(STORE_KEY, JSON.stringify([broken, r, { id: 'y' }]));
+    const damaged = vi.fn();
+    expect(loadRanks(damaged)).toEqual([r]);
+    expect(damaged).toHaveBeenCalledWith(2);
+    expect(JSON.parse(localStorage.getItem(UNREADABLE_KEY) ?? '[]')).toEqual([broken, { id: 'y' }]);
+  });
+
+  it('sets aside a ranking whose ids would break out of an attribute or a selector', () => {
+    const r = mkRank('Test');
+    r.items.push(mkItem('A'));
+    const odd = { ...r, id: 'x" onclick="1' };
+    const oddItem = { ...r, id: 'other', items: [{ ...mkItem('B'), id: '"]>' }] };
+    localStorage.setItem(STORE_KEY, JSON.stringify([odd, r, oddItem]));
+    expect(loadRanks()).toEqual([r]);
+    expect(JSON.parse(localStorage.getItem(UNREADABLE_KEY) ?? '[]')).toEqual([odd, oddItem]);
   });
 
   it('returns null when nothing or garbage is stored', () => {
@@ -72,7 +94,7 @@ describe('storage', () => {
   it('keeps preferences separately', () => {
     expect(loadPrefs()).toEqual({});
     savePrefs({ lang: 'fr', hideDemos: true });
-    expect(JSON.parse(localStorage.getItem(PREF_KEY) ?? '{}')).toEqual({ lang: 'fr', hideDemos: true });
+    expect(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual({ lang: 'fr', hideDemos: true });
     expect(loadPrefs()).toEqual({ lang: 'fr', hideDemos: true });
   });
 

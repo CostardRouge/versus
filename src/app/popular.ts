@@ -1,8 +1,9 @@
-import type { PopularBoard } from '../core/protocol';
+import type { BoardView, PopularBoard } from '../core/protocol';
 import { getLang, type Lang, t } from '../i18n';
-import { toast } from './dom';
-import { makeOwn, render } from './rankings';
-import { ApiError, fetchBoard, fetchPopular, online } from './remote';
+import { $, toast } from './dom';
+import { errorKey, READ_ERRORS } from './errors';
+import { render } from './nav';
+import { fetchBoard, fetchPopular, online } from './remote';
 import { S } from './state';
 
 /**
@@ -17,35 +18,64 @@ let list: PopularBoard[] = [];
 let listLang: Lang | null = null;
 let fetchedAt = -Infinity;
 let fetching = false;
+/** The last request failed (offline): the section isn't announced until one succeeds. */
+let failed = false;
 
 export const popularBoards = (): PopularBoard[] => list;
 
-/** Fetches the list when it is stale, then shows the gallery again if it changed. */
+/**
+ * True while the gallery waits for its first list: the section keeps its place with a word that it is loading,
+ * rather than popping in under the reader's eyes.
+ */
+export const popularWaiting = (): boolean => online() && !failed && !list.length && listLang === null;
+
+/** Fetches the list when it is stale, then shows the gallery again if it changed (keeping the focus: render()). */
 export async function refreshPopular(): Promise<void> {
   const lang = getLang();
   if (!online() || fetching || (lang === listLang && Date.now() - fetchedAt < REFRESH_MS)) return;
+  const waited = popularWaiting();
   fetching = true;
   try {
     const found = await fetchPopular(lang);
     fetchedAt = Date.now();
     listLang = lang;
+    failed = false;
     const changed = JSON.stringify(found) !== JSON.stringify(list);
     list = found;
-    if (changed && S.route.view === 'gallery') render();
+    if ((changed || waited) && S.route.view === 'gallery') render();
   } catch {
-    // Offline or refused: the section waits for the next gallery.
+    // Offline or refused: the section waits for the next gallery, and its place goes.
+    failed = true;
+    if (waited && S.route.view === 'gallery') render();
   } finally {
     fetching = false;
   }
 }
 
-/** "Make my own" from a popular card: the board's items become a ranking of this browser, without the votes. */
-export async function makeMineFromPopular(alias: string | undefined): Promise<void> {
-  if (!alias || !list.some((b) => b.alias === alias)) return;
+/** The popular board whose items are being fetched for "Make my own": one at a time. */
+let making: string | null = null;
+
+/** The "Make my own" button of a popular card, busy while its board is read. */
+function makingBusy(alias: string, busy: boolean): void {
+  const btn = $<HTMLButtonElement>(`[data-action="make-mine-popular"][data-alias="${alias}"]`);
+  if (!btn) return;
+  btn.disabled = busy;
+  if (busy) btn.setAttribute('aria-busy', 'true');
+  else btn.removeAttribute('aria-busy');
+}
+
+/** A popular board read for "Make my own" (rankings.ts): one at a time, its button busy meanwhile. */
+export async function readPopular(alias: string | undefined): Promise<BoardView | null> {
+  if (!alias || making || !list.some((b) => b.alias === alias)) return null;
+  making = alias;
+  makingBusy(alias, true);
   try {
-    const view = await fetchBoard(alias);
-    makeOwn(view.title, view.items, 'template');
+    return await fetchBoard(alias);
   } catch (e) {
-    toast(t(e instanceof ApiError && e.code === 'not_found' ? 'boardGone' : 'actionFailed'));
+    toast(t(errorKey(e, READ_ERRORS)));
+    return null;
+  } finally {
+    making = null;
+    makingBusy(alias, false);
   }
 }

@@ -2,10 +2,12 @@ import { trackEvent } from '../audience';
 import { nextPair, target } from '../core/scoring';
 import type { MethodKey } from '../core/types';
 import { esc, mulberry32 } from '../core/util';
+import { fill, pctText } from '../i18n/text';
+import { readPrefs, rememberLang } from '../prefs';
 import { BoardView, flip } from './board';
 import { crowd, rate, standings, vote } from './crowd';
 import { CROWD, item, PICKS, SETTLING, TOPICS } from './data';
-import { fmt, isText, mediaHTML, nDuels, pctOf, rankOf, thumbHTML } from './frame';
+import { isText, mediaHTML, nDuels, rankOf, thumbHTML } from './frame';
 import type { PageData } from './markup';
 import { calm, isPaused, loopWhenSeen, setPaused } from './motion';
 import type { Strings } from './strings';
@@ -137,7 +139,7 @@ function pickVignette(S: Strings): void {
       } else {
         (res === 'a' ? A : B)?.classList.add('win');
         (res === 'a' ? B : A)?.classList.add('lose');
-        say.textContent = fmt(S.v2Wins, { label: item(res === 'a' ? a : b).label[S.lang] });
+        say.textContent = fill(S.v2Wins, { label: item(res === 'a' ? a : b).label[S.lang] });
       }
       await run.wait(220);
       key?.classList.remove('on');
@@ -163,7 +165,7 @@ function settleVignette(S: Strings): void {
     const bar = $('.v3-stab .bar i', v);
     if (bar) bar.style.width = `${st.s}%`;
     const txt = $('.v3-stab .mono', v);
-    if (txt) txt.textContent = pctOf(st.s, S.lang);
+    if (txt) txt.textContent = pctText(st.s, S.lang);
     $('.v3-done', v)?.classList.toggle('on', st.s === 100);
   };
   loopWhenSeen(v, async (run) => {
@@ -248,19 +250,19 @@ export function methods(S: Strings, data: PageData): void {
         dl.className = `dl ${m === 'bt' ? '' : d > 0 ? 'up' : d < 0 ? 'down' : 'eq'}`;
         dl.textContent = m === 'bt' ? '' : d > 0 ? `▲${d}` : d < 0 ? `▼${-d}` : '=';
         if (m === 'bt') dl.removeAttribute('title');
-        else dl.setAttribute('title', d > 0 ? fmt(S.upBy, { n: d }) : d < 0 ? fmt(S.downBy, { n: -d }) : S.sameRank);
+        else dl.setAttribute('title', d > 0 ? fill(S.upBy, { n: d }) : d < 0 ? fill(S.downBy, { n: -d }) : S.sameRank);
       }
     });
     const col = $('#m-col');
     if (col) col.textContent = S[`m_${m}_col`];
     const meta = $('#m-meta');
-    const items = fmt(S.itemsN, { n: rows.length });
+    const items = fill(S.itemsN, { n: rows.length });
     if (meta)
-      meta.textContent = `${items} · ${m === 'sort' ? fmt(S.sortDuels, { n: data.methods.sortDuels }) : nDuels(data.methods.duels, S)}`;
+      meta.textContent = `${items} · ${m === 'sort' ? fill(S.sortDuels, { n: data.methods.sortDuels }) : nDuels(data.methods.duels, S)}`;
     const foot = $('#m-foot');
     if (foot)
       foot.textContent =
-        m === 'bt' ? S.mFootBt : m === 'sort' ? fmt(S.mFootSort, { n: data.methods.sortDuels, items }) : S.mFootOther;
+        m === 'bt' ? S.mFootBt : m === 'sort' ? fill(S.mFootSort, { n: data.methods.sortDuels, items }) : S.mFootOther;
     for (const b of $$('.m-tab')) b.setAttribute('aria-pressed', String(b.dataset.m === m));
     for (const p of $$('.m-desc')) p.hidden = p.dataset.m !== m;
   };
@@ -300,7 +302,7 @@ export function crowdBoard(S: Strings): void {
         const bar = li?.querySelector<HTMLElement>('.bar i');
         if (bar) bar.style.width = `${(r * 100).toFixed(1)}%`;
         const pct = li?.querySelector('.cb-pct');
-        if (pct) pct.textContent = pctOf(Math.round(r * 100), S.lang);
+        if (pct) pct.textContent = pctText(Math.round(r * 100), S.lang);
       });
       const nv = $('#cb-votes');
       if (nv) nv.textContent = String(c.votes);
@@ -348,22 +350,8 @@ export function finale(S: Strings, appHref: string, burst: (host: HTMLElement) =
  * browser prefers the other language is offered it, never redirected.
  */
 export function languages(S: Strings): void {
-  const prefs = (): Record<string, unknown> => {
-    try {
-      const v = JSON.parse(localStorage.getItem('versus-prefs') ?? '{}');
-      return v && typeof v === 'object' ? v : {};
-    } catch {
-      return {};
-    }
-  };
   const save = (lang: string, force: boolean) => {
-    try {
-      const p = prefs();
-      if (!force && (p.lang === 'en' || p.lang === 'fr')) return;
-      localStorage.setItem('versus-prefs', JSON.stringify({ ...p, lang }));
-    } catch {
-      /* storage unavailable: the choice lasts for this visit only */
-    }
+    if (lang === 'en' || lang === 'fr') rememberLang(lang, force);
   };
   document.addEventListener('click', (e) => {
     const a = (e.target as Element).closest<HTMLAnchorElement>('a[href]');
@@ -373,7 +361,7 @@ export function languages(S: Strings): void {
   });
   const hint = $('#lang-hint');
   if (!hint) return;
-  const chosen = prefs().lang;
+  const chosen = readPrefs().lang;
   let dismissed = false;
   try {
     dismissed = sessionStorage.getItem('versus-lang-hint') === '1';
@@ -417,7 +405,10 @@ function returning(S: Strings): void {
   if (mine && cta) cta.textContent = S.myRankings;
 }
 
-/** One button pauses every animation of the page (WCAG 2.2.2); the header gets a line once scrolled. */
+/**
+ * One button pauses every animation of the page (WCAG 2.2.2): a toggle whose name stays "Pause animations", only
+ * its pressed state changing. The header gets a line once scrolled.
+ */
 export function chrome(S: Strings): void {
   returning(S);
   oldLinks();
@@ -425,9 +416,6 @@ export function chrome(S: Strings): void {
   pause?.addEventListener('click', () => {
     setPaused(!isPaused());
     pause.setAttribute('aria-pressed', String(isPaused()));
-    const label = isPaused() ? S.playAnim : S.pauseAnim;
-    pause.setAttribute('aria-label', label);
-    pause.title = label;
   });
   if (calm() && pause) pause.hidden = true;
   const nav = $('#nav');

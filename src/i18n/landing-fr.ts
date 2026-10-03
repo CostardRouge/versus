@@ -30,7 +30,6 @@ export const landingFr: LandingMessages = {
   demoPlay: 'Jouer moi-même',
   demoReplay: 'Relancer la démo',
   pauseAnim: 'Mettre les animations en pause',
-  playAnim: 'Relancer les animations',
   say1: 'Deux viennoiseries, un seul choix : clique sur ta préférée.',
   say2: 'Au clavier, c’est encore plus rapide : ← pour A, → pour B.',
   say3: 'Sur téléphone, il suffit de glisser la carte.',
@@ -132,8 +131,10 @@ export const landingFr: LandingMessages = {
   footApp: 'Ouvrir l’app',
   footSource: 'Code source (MIT)',
   footLegal: 'Mentions légales et confidentialité',
+  footLangAria: 'Cette page en anglais ou en français',
 
   suggestText: 'Cette page existe en français.',
   suggestGo: 'Voir en français',
   suggestClose: 'Fermer',
+  suggestAria: 'Suggestion de langue',
 };

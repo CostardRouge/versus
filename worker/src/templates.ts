@@ -1,4 +1,5 @@
-import type { BoardView } from '../../src/core/protocol';
+import type { BoardView, Unfurl } from '../../src/core/protocol';
+import { MEASUREMENT_ID } from '../../src/core/site';
 import {
   TEMPLATE_INDEX_VOTERS,
   TEMPLATES,
@@ -10,11 +11,20 @@ import {
 } from '../../src/core/templates';
 import type { BoardLang } from '../../src/core/types';
 import { esc } from '../../src/core/util';
+import { pctText } from '../../src/i18n/text';
 import { type UnfurlKey, unfurlPlural, unfurlText } from '../../src/i18n/unfurl';
-import { preview } from './cards';
+import { attrValue, preview } from './cards';
 import type { Env } from './env';
+import { log } from './log';
 import { newAlias, newOwnerToken } from './random';
-import { indexableTemplates, type RegistryRow, templateBoard, templateKeys, upsertBoard } from './registry';
+import {
+  deleteBoard,
+  indexableTemplates,
+  type RegistryRow,
+  templateBoard,
+  templateKeys,
+  upsertBoard,
+} from './registry';
 
 /**
  * Official templates (docs/published-boards.md#official-templates): the site's own boards, published by the
@@ -25,13 +35,13 @@ import { indexableTemplates, type RegistryRow, templateBoard, templateKeys, upse
  */
 
 /** Voters a template page needs before it asks to be indexed. */
-export const indexVoters = (env: Env): number => Number(env.TEMPLATE_INDEX_VOTERS) || TEMPLATE_INDEX_VOTERS;
+const indexVoters = (env: Env): number => Number(env.TEMPLATE_INDEX_VOTERS) || TEMPLATE_INDEX_VOTERS;
 
 /**
  * The board of a template in one language, published now if it wasn't yet. Its registry row is written at
  * once, so the page that asked finds it; the registry's unique index settles a race between two first visits.
  */
-export async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Promise<RegistryRow | null> {
+async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Promise<RegistryRow | null> {
   const db = env.REGISTRY;
   if (!db) return null;
   const found = await templateBoard(db, t.key, lang);
@@ -66,9 +76,33 @@ export async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Pr
       return row;
     } catch {
       // Another request published this template meanwhile: this copy goes, theirs stays.
+      log('template_published_twice', { template: t.key, lang, alias });
       await stub.adminDelete();
       return templateBoard(db, t.key, lang);
     }
+  }
+  return null;
+}
+
+/**
+ * The board of a template as its page shows it, published when missing. A registry row that outlived its board (a
+ * delete that failed) goes, and the template is published again.
+ */
+async function liveTemplate(
+  env: Env,
+  t: Template,
+  lang: BoardLang,
+): Promise<{ row: RegistryRow; view: BoardView; unfurl: Unfurl } | null> {
+  const db = env.REGISTRY;
+  if (!db) return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const row = await ensureTemplate(env, t, lang);
+    if (!row) return null;
+    const stub = env.BOARDS.getByName(row.alias);
+    const [view, unfurl] = await Promise.all([stub.view(), stub.unfurl()]);
+    if (view && unfurl) return { row, view, unfurl };
+    log('template_row_stale', { template: t.key, lang, alias: row.alias });
+    await deleteBoard(db, row.alias);
   }
   return null;
 }
@@ -100,7 +134,7 @@ function pageBody(t: Template, lang: BoardLang, view: BoardView, alias: string):
     const s = view.ranking?.stats[id];
     const games = s ? s.w + s.l + s.d : 0;
     const share = s && games ? Math.round((100 * (s.w + s.d / 2)) / games) : null;
-    const pct = share === null ? '' : lang === 'fr' ? `${share} %` : `${share}%`;
+    const pct = share === null ? '' : pctText(share, lang);
     return `<li><span class="pos mono">${i + 1}</span><span class="tp-name">${esc(labels.get(id) ?? id)}</span>${
       share === null ? '' : `<span class="tp-share mono">${pct} <small>${tx('tplWinRate')}</small></span>`
     }</li>`;
@@ -133,7 +167,10 @@ function pageBody(t: Template, lang: BoardLang, view: BoardView, alias: string):
       </section>`;
 }
 
-/** JSON-LD for a template page: the page and its ranking as an ItemList. */
+/**
+ * JSON-LD for a template page: the page and its ranking as an ItemList. Written as the script's raw content: `<`, `>`
+ * and `&` are escaped the JSON way, so no label can close the script or read as markup.
+ */
 function graph(t: Template, lang: BoardLang, view: BoardView, pageURL: string, site: string): string {
   const labels = new Map(view.items.map((it) => [it.id, it.label]));
   const order = view.ranking?.order ?? view.items.map((it) => it.id);
@@ -156,7 +193,10 @@ function graph(t: Template, lang: BoardLang, view: BoardView, pageURL: string, s
     isPartOf: { '@id': `${site}#website` },
     mainEntity: { '@id': `${pageURL}#list` },
   };
-  return JSON.stringify({ '@context': 'https://schema.org', '@graph': [page, list] }).replace(/</g, '\\u003c');
+  return JSON.stringify({ '@context': 'https://schema.org', '@graph': [page, list] })
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
 }
 
 /** The template page named by a language and a slug; `notFound` answers for an unknown slug. */
@@ -173,17 +213,16 @@ export async function templatePage(
   const url = new URL(req.url);
   const path = `/${templatePath(t, lang)}`;
   if (url.pathname !== path) return Response.redirect(`${url.origin}${path}`, 301);
-  const row = await ensureTemplate(env, t, lang);
-  if (!row) return notFound();
-  const stub = env.BOARDS.getByName(row.alias);
-  const [view, unfurl] = await Promise.all([stub.view(), stub.unfurl()]);
-  if (!view || !unfurl) return notFound();
+  const live = await liveTemplate(env, t, lang);
+  if (!live) return notFound();
+  const { row, view, unfurl } = live;
   const p = await preview(env.IMAGES, url.origin, row.alias, unfurl, '');
   const indexable = !row.hidden && view.counts.voters >= indexVoters(env);
   // The shell's addresses are relative to the legal page's folder (`../assets/…`): a <base> keeps them right
   // from this page's deeper folder; its own fragment links are made absolute, so the base doesn't move them.
   const shellPath = lang === 'fr' ? '/fr/mentions-legales/' : '/legal/';
-  const shell = await assets.fetch(new Request(new URL(shellPath, url), req));
+  // The shell alone, without the visitor's conditional headers: the page is built from it, not the stored file.
+  const shell = await assets.fetch(new Request(new URL(shellPath, url)));
   const title = `${t.title[lang]} · Versus`;
   const description = t.intro[lang];
   // The site's canonical address comes from the shell's own canonical link (the first head tag rewritten).
@@ -191,9 +230,10 @@ export async function templatePage(
   const pageURL = () => `${site}${templatePath(t, lang)}`;
   const set = (attr: string, value: () => string) => ({
     element(el: Element) {
-      el.setAttribute(attr, value());
+      el.setAttribute(attr, attrValue(value()));
     },
   });
+  let settings = '';
   const rewriter = new HTMLRewriter()
     .on(
       'html',
@@ -260,7 +300,23 @@ export async function templatePage(
     .on('meta[property="og:url"]', set('content', pageURL))
     .on('script[type="application/ld+json"]', {
       element(el) {
-        el.setInnerContent(graph(t, lang, view, pageURL(), site));
+        el.setInnerContent(graph(t, lang, view, pageURL(), site), { html: true });
+      },
+    })
+    // The measurement settings name the page a view is counted as (src/audience.ts): this one, not the shell's.
+    .on(`script#${MEASUREMENT_ID}`, {
+      text(chunk) {
+        settings += chunk.text;
+        if (!chunk.lastInTextNode) {
+          chunk.remove();
+          return;
+        }
+        try {
+          const page = { ...(JSON.parse(settings) as object), page: `/${templatePath(t, lang)}` };
+          chunk.replace(JSON.stringify(page).replace(/</g, '\\u003c'), { html: true });
+        } catch {
+          chunk.replace(settings, { html: true });
+        }
       },
     })
     .on(
@@ -301,6 +357,9 @@ export async function templatePage(
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
   headers.set('X-Robots-Tag', indexable ? 'all' : 'noindex');
+  // The shell's validators describe the shell: a revalidation must get the page again.
+  headers.delete('ETag');
+  headers.delete('Last-Modified');
   return new Response(out.body, { status: shell.ok ? 200 : shell.status, headers });
 }
 
@@ -312,7 +371,7 @@ export async function templatePage(
  */
 export async function sitemap(req: Request, env: Env, assets: Fetcher): Promise<Response> {
   const url = new URL(req.url);
-  const base = await assets.fetch(new Request(new URL('/sitemap.xml', url), req));
+  const base = await assets.fetch(new Request(new URL('/sitemap.xml', url)));
   if (!base.ok) return base;
   let xml = await base.text();
   const db = env.REGISTRY;

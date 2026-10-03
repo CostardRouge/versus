@@ -1,17 +1,31 @@
 import { CROWD_METHODS, LIMITS } from '../core/board';
-import { colorTwin, sameFill } from '../core/colors';
-import { freshLabels, labelKey } from '../core/list';
+import { colorTwin, fillCode, namedByCode, sameFill } from '../core/colors';
+import { freshLabels, labelKey, parseList } from '../core/list';
 import type { BoardView } from '../core/protocol';
 import { dataURLBytes } from '../core/published';
-import type { Fill, Item, MethodKey } from '../core/types';
+import { ownerFragment } from '../core/route';
+import type { BoardSettings, Fill, Item, MethodKey } from '../core/types';
 import { esc } from '../core/util';
 import { methodText as M, plural, t } from '../i18n';
-import { type Board, boardState, countsText, itemOf, ownerCall, renderDuel, renderRanking } from './board';
-import { closeColor, cp, openBoardColor } from './color';
-import { $, $$, ask, castSvg, doc, toast } from './dom';
 import {
+  addBusy,
+  boardURL,
+  countsText,
+  type FocusMark,
+  focusMark,
+  ownerCall,
+  refocus,
+  renderDuel,
+  renderRanking,
+} from './board';
+import { type Board, boardState, itemOf } from './board-state';
+import { closeColor, editingColor, followSwatch, openBoardColor } from './color';
+import { $, $$, ask, castSvg, copyText, doc, toast } from './dom';
+import {
+  addedToast,
   askVotes,
   fileToThumb,
+  type ItemsHost,
   imageFiles,
   imageName,
   paneHTML,
@@ -21,6 +35,7 @@ import {
   typed,
   typedItems,
 } from './editor';
+import { errorKey, OWNER_ERRORS } from './errors';
 import { optionsHTML, readSettings, visibilityHTML } from './publish';
 import {
   addBoardItem,
@@ -31,8 +46,10 @@ import {
   patchBoard,
   putItemImage,
   removeBoardItem,
+  rotateOwner,
 } from './remote';
 import { S } from './state';
+import { saveOwner } from './storage';
 import { effTab, setTab, shellHTML, toggleMethodMenu } from './workspace';
 
 /**
@@ -101,7 +118,13 @@ function rows(b: Authored): Row[] {
     const twin = it.fill ? colorTwin(v.items, it.id, it.fill) : undefined;
     const note =
       it.pic === 'pending'
-        ? { text: t('picPending') }
+        ? unsent.has(picKey(b.alias, it.id))
+          ? {
+              text: t('picNotSent'),
+              bad: true,
+              action: { name: 'pic-retry', label: t('retry'), aria: t('picRetryAria', { label: it.label }) },
+            }
+          : { text: t('picPending') }
         : it.pic === 'refused'
           ? { text: t('picRefused'), bad: true }
           : twin
@@ -133,29 +156,17 @@ export function refreshAuthorList(animate: boolean): void {
   renderList(b, animate);
 }
 
-/** What the author was typing, and where, so that a new state from the server doesn't lose it. */
+/** What the author was typing, and where the focus was, so that a new state from the server doesn't lose them. */
 interface Typing {
   draft: string;
-  title: string | null;
-  focus: { sel: string; value: string; start: number | null; end: number | null } | null;
+  focus: FocusMark | null;
   scroll: number;
 }
 
 function keepTyping(): Typing {
-  const active = doc.activeElement as HTMLInputElement | null;
-  const field = active?.matches?.('#add-input, #rank-title, #item-list .row-label') ? active : null;
-  const title = $<HTMLInputElement>('#rank-title');
   return {
     draft: $<HTMLInputElement>('#add-input')?.value ?? '',
-    title: title && title === field ? title.value : null,
-    focus: field
-      ? {
-          sel: field.id ? `#${field.id}` : `#item-list .row-label[data-id="${field.dataset.id ?? ''}"]`,
-          value: field.value,
-          start: field.selectionStart,
-          end: field.selectionEnd,
-        }
-      : null,
+    focus: focusMark(),
     scroll: $('#item-list')?.scrollTop ?? 0,
   };
 }
@@ -167,16 +178,10 @@ function restoreTyping(k: Typing, b: Authored): void {
   b.sentLabel = null;
   const list = $('#item-list');
   if (list) list.scrollTop = k.scroll;
-  if (!k.focus) return;
-  const el = $<HTMLInputElement>(k.focus.sel);
-  if (!el || el.disabled) return;
-  if (el.id !== 'add-input') el.value = k.focus.value;
-  el.focus();
-  try {
-    el.setSelectionRange(k.focus.start, k.focus.end);
-  } catch {
-    /* not a text field */
-  }
+  // A title or a name being edited keeps what was typed in it.
+  const el = k.focus ? $<HTMLInputElement>(k.focus.sel) : null;
+  if (el && k.focus?.value != null && el.id !== 'add-input') el.value = k.focus.value;
+  refocus(k.focus);
 }
 
 /** The whole workspace, from the board's state. */
@@ -187,18 +192,16 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
   const typing = keepTyping();
   view.innerHTML = shell(a);
   renderList(a, false);
-  restoreTyping(typing, a);
   // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
-  if (cp.id) {
-    const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
-    if (swatch) cp.anchor = swatch;
-    else closeColor();
-  }
+  followSwatch();
   setTab(S.route.tab);
+  addBusy(adding);
+  // Once the main pane is drawn too: the focus may have been in the duel.
+  restoreTyping(typing, a);
 }
 
 /** The main pane: the duel (server-assigned pairs, like any voter), or the crowd's ranking with the ways to share. */
-export function renderAuthorMain(): void {
+function renderAuthorMain(): void {
   const b = authored();
   const main = $('#main');
   if (!b || !main) return;
@@ -224,7 +227,7 @@ export function renderAuthorMain(): void {
 // ─── The board: title, method, settings ─────────────────────────────────────
 
 /** A new title for everyone; an empty one puts the current title back. */
-export async function authorRetitle(input: HTMLInputElement): Promise<void> {
+async function authorRetitle(input: HTMLInputElement): Promise<void> {
   const b = authored();
   if (!b) return;
   const title = input.value.trim();
@@ -236,7 +239,7 @@ export async function authorRetitle(input: HTMLInputElement): Promise<void> {
 }
 
 /** The crowd's scoring method, from the score menu (Exact sort can't serve a crowd). */
-export async function authorSetMethod(k: string | undefined): Promise<void> {
+async function authorSetMethod(k: string | undefined): Promise<void> {
   toggleMethodMenu(false);
   const b = authored();
   if (!b || !CROWD_METHODS.includes(k as MethodKey) || k === b.view.settings.method) return;
@@ -246,8 +249,22 @@ export async function authorSetMethod(k: string | undefined): Promise<void> {
   }
 }
 
-/** The board's settings, links and lifecycle, behind the header's Published button. Changes apply at once. */
-export function authorSettings(): void {
+/** The open settings dialog's form as the author left it, read at each change; sent once it closes on Done. */
+let settingsForm: { draft: Partial<BoardSettings> | null } | null = null;
+
+/** What `next` changes in `now`: the fields to send, none when nothing changed. */
+function changedSettings(next: Partial<BoardSettings>, now: BoardSettings): Partial<BoardSettings> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(next)) if (v !== now[k as keyof BoardSettings]) out[k] = v;
+  return out as Partial<BoardSettings>;
+}
+
+/**
+ * The board's settings, links and lifecycle, behind the header's Published button. Changes apply on Done (or one of
+ * the dialog's actions), in one request with the changed fields only: a keyboard going through the radio buttons
+ * publishes nothing on its way. Refused, the dialog opens again on the settings in force, saying why.
+ */
+export async function authorSettings(problem?: string): Promise<void> {
   const b = authored();
   if (!b) return;
   const v = b.view;
@@ -257,6 +274,7 @@ export function authorSettings(): void {
       <button class="btn sm primary" type="button" data-action="share-board">${t('share')}</button>
       <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
       <button class="btn sm ghost" type="button" data-action="b-admin-link">${t('copyAdminLink')}</button>
+      <button class="btn sm ghost" type="button" data-action="b-new-admin-link">${t('newAdminLink')}</button>
     </div>
     ${visibilityHTML('b', v.settings)}
     <fieldset class="set"><legend>${t('moreOptions')}</legend>${optionsHTML('b', v.settings)}</fieldset>
@@ -264,21 +282,53 @@ export function authorSettings(): void {
       <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
       <button class="btn sm danger" type="button" data-action="b-withdraw">${t('withdraw')}</button>
     </div>
-  </div>`;
-  void ask({ title: t('boardSettings'), html, ok: t('done'), cancel: false });
+  </div>${problem ? `<p class="m-error" role="alert">${esc(problem)}</p>` : ''}`;
+  const form: { draft: Partial<BoardSettings> | null } = { draft: null };
+  settingsForm = form;
+  const ok = await ask({ title: t('boardSettings'), html, ok: t('done') });
+  const { draft } = form;
+  if (settingsForm === form) settingsForm = null;
+  if (!ok || !draft || authored() !== b) return;
+  const changes = changedSettings(draft, b.view.settings);
+  if (!Object.keys(changes).length) return;
+  try {
+    await patchBoard(b.alias, b.owner, changes);
+  } catch (e) {
+    const why = `${t('settingsNotSaved')} ${t(errorKey(e, OWNER_ERRORS))}`;
+    // Unless another dialog opened meanwhile (an action of the settings): then a word is enough.
+    if ($('#modal')?.hidden && authored() === b) void authorSettings(why);
+    else toast(why);
+  }
 }
 
-/** The author's fields: title, items, files, settings. True when the change was theirs. */
+/**
+ * A new admin link, when the one in use leaked or sits on a lost device: the old one stops working everywhere, this
+ * browser keeps managing the board with the new one, which is copied (or shown when the clipboard can't take it).
+ */
+export async function authorNewAdminLink(): Promise<void> {
+  const b = authored();
+  if (!b) return;
+  const ok = await ask({ title: t('newAdminLinkTitle'), body: t('newAdminLinkBody'), ok: t('newAdminLinkOk') });
+  if (!ok || authored() !== b) return;
+  const next = await ownerCall(rotateOwner);
+  if (!next) return;
+  saveOwner(b.alias, next.owner);
+  b.owner = next.owner;
+  b.socket?.setOwner(next.owner);
+  const url = `${boardURL(b.alias)}${ownerFragment(next.owner)}`;
+  if (await copyText(url)) toast(t('newAdminLinkCopied'));
+  else {
+    const html = `<p>${t('newAdminLinkShow')}</p><input class="b-admin-url mono" type="text" readonly value="${esc(url)}">`;
+    void ask({ title: t('newAdminLink'), html, ok: t('done'), cancel: false });
+  }
+}
+
+/** The author's fields beside the items pane: the title, the settings. True when the change was theirs. */
 export function authorChange(tg: HTMLInputElement): boolean {
   if (!authored()) return false;
   if (tg.id === 'rank-title') void authorRetitle(tg);
-  else if (tg.classList.contains('row-label')) void authorRename(tg);
-  else if (tg.id === 'file-input') {
-    if (tg.files) void authorAddFiles([...tg.files]);
-    tg.value = '';
-  } else if (tg.closest('#b-settings')) {
-    const settings = readSettings($('#b-settings') ?? tg, 'b');
-    void ownerCall((alias, token) => patchBoard(alias, token, settings));
+  else if (tg.closest('#b-settings')) {
+    if (settingsForm) settingsForm.draft = readSettings($('#b-settings') ?? tg, 'b');
   } else return false;
   return true;
 }
@@ -294,14 +344,8 @@ async function sendItems(b: Authored, items: NewBoardItem[], dupes: number, list
   );
   if (!added?.length) return added;
   if (!list) toast(t('itemAdded'));
-  else {
-    const n = added.length;
-    const skipped = dupes + items.length - n;
-    const text = skipped
-      ? t('itemsAddedDupes', { items: plural(n, 'item'), n, dupes: plural(skipped, 'duplicate'), d: skipped })
-      : t('itemsAdded', { items: plural(n, 'item'), n });
-    toast(text, { label: t('undoToast'), run: () => void dropItems(b, added) });
-  }
+  // Items the server refused (a label taken meanwhile, a full board) count with the duplicates.
+  else addedToast(added.length, dupes + items.length - added.length, () => void dropItems(b, added));
   return added;
 }
 
@@ -311,10 +355,26 @@ async function dropItems(b: Authored, items: Item[]): Promise<void> {
   if (authored() === b) toast(t('addUndone'));
 }
 
+/** Items being sent from the add field (typed, pasted, a color): another Enter or click waits for the answer. */
+let adding = false;
+
+/** Runs `send` as the add field's one request in flight, its button busy meanwhile. */
+async function addOnce<T>(send: () => Promise<T>): Promise<T | null> {
+  if (adding) return null;
+  adding = true;
+  addBusy(true);
+  try {
+    return await send();
+  } finally {
+    adding = false;
+    addBusy(false);
+  }
+}
+
 /** What was typed or pasted in the add field: one item, or every new label of a list (core/list.ts). */
-export async function authorAdd(text: string): Promise<boolean> {
+async function authorAdd(text: string): Promise<boolean> {
   const b = authored();
-  if (b?.view.status !== 'open') return false;
+  if (b?.view.status !== 'open' || adding) return false;
   const all = typedItems(text);
   if (!all.length) return false;
   const { fresh, dupes } = freshLabels(
@@ -326,7 +386,7 @@ export async function authorAdd(text: string): Promise<boolean> {
     return true;
   }
   b.sentLabel = text;
-  const added = await sendItems(b, fresh.map(typed), dupes, all.length > 1);
+  const added = await addOnce(() => sendItems(b, fresh.map(typed), dupes, all.length > 1));
   if (!added) {
     b.sentLabel = null;
     return false;
@@ -337,10 +397,11 @@ export async function authorAdd(text: string): Promise<boolean> {
 }
 
 /** The color picked beside the add field. */
-export async function authorAddColor(): Promise<void> {
+async function authorAddColor(): Promise<void> {
   const b = authored();
+  if (!b || adding) return;
   const color = takeColor();
-  if (b && color) await sendItems(b, [color], 0, false);
+  if (color) await addOnce(() => sendItems(b, [color], 0, false));
 }
 
 /** Labels for new images, each new on the board: "Beach", then "Beach 2". */
@@ -358,7 +419,7 @@ function freeNames(names: string[], taken: string[]): string[] {
  * Images dropped, pasted or chosen: added as items that announce a picture, then each picture is sent for the
  * moderator's review (D113). Only when the server reviews pictures; otherwise the author is told why not.
  */
-export async function authorAddFiles(files: FileList | File[]): Promise<void> {
+async function authorAddFiles(files: FileList | File[]): Promise<void> {
   const b = authored();
   if (b?.view.status !== 'open') return;
   const imgs = imageFiles(files);
@@ -389,25 +450,87 @@ export async function authorAddFiles(files: FileList | File[]): Promise<void> {
   const items = labels.map((label): NewBoardItem => ({ label, fill: null, pic: 'pending' }));
   const added = await ownerCall((alias, token) => addBoardItems(alias, token, items));
   if (!added) return;
-  let sent = 0;
-  for (const it of added) {
-    const data = dataURLBytes(read[labels.indexOf(it.label)]?.data ?? '');
-    if (!data) continue;
-    try {
-      await putItemImage(b.alias, b.owner, it.id, new Blob([data.bytes], { type: 'image/jpeg' }));
-      sent++;
-    } catch {
-      /* this item stays as text */
-    }
+  await sendPictures(
+    b.alias,
+    b.owner,
+    added.map((it) => ({ id: it.id, data: read[labels.indexOf(it.label)]?.data ?? '' })),
+  );
+}
+
+// ─── Pictures the server never received ─────────────────────────────────────
+
+/**
+ * Pictures whose upload failed, by board and item. The server can't tell a picture it never received from one
+ * awaiting review (both are `pending`), so this browser remembers them, in memory, for their rows to say so and offer
+ * to send them again (a reload forgets them: those rows say "awaiting review" again).
+ */
+const unsent = new Map<string, Blob>();
+const picKey = (alias: string, id: string): string => `${alias}/${id}`;
+const retrying = new Set<string>();
+
+/** Sends an item's picture for review; one that fails is kept, and its row offers to send it again. */
+async function sendPicture(alias: string, owner: string, id: string, jpeg: Blob): Promise<boolean> {
+  try {
+    await putItemImage(alias, owner, id, jpeg);
+    unsent.delete(picKey(alias, id));
+    return true;
+  } catch {
+    unsent.set(picKey(alias, id), jpeg);
+    return false;
   }
-  toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+}
+
+/**
+ * Sends items' pictures (JPEG data URLs) for review, one by one, then says what it came to; the list shows which
+ * ones didn't go, and offers to send them again.
+ */
+export async function sendPictures(
+  alias: string,
+  owner: string,
+  pictures: readonly { id: string; data: string | null }[],
+): Promise<void> {
+  let sent = 0;
+  let failed = 0;
+  for (const p of pictures) {
+    const data = dataURLBytes(p.data ?? '');
+    if (!data) continue;
+    if (await sendPicture(alias, owner, p.id, new Blob([data.bytes], { type: 'image/jpeg' }))) sent++;
+    else failed++;
+  }
+  if (failed) toast(t('picturesUnsent', { pictures: plural(failed, 'picture'), n: failed }));
+  else toast(sent ? t('picturesSent', { pictures: plural(sent, 'picture') }) : t('picturesFailed'));
+  refreshAuthorList(false);
+}
+
+/** "Retry" on a picture that wasn't sent. */
+export async function authorRetryPicture(id: string | undefined): Promise<void> {
+  const b = authored();
+  const key = b && id ? picKey(b.alias, id) : '';
+  const jpeg = unsent.get(key);
+  if (!b || !id || !jpeg || retrying.has(key)) return;
+  retrying.add(key);
+  const btn = $<HTMLButtonElement>(`[data-action="pic-retry"][data-id="${id}"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+  }
+  try {
+    await putItemImage(b.alias, b.owner, id, jpeg);
+    unsent.delete(key);
+    toast(t('picturesSent', { pictures: plural(1, 'picture') }));
+  } catch (e) {
+    toast(t(errorKey(e, OWNER_ERRORS)));
+  } finally {
+    retrying.delete(key);
+  }
+  if (authored() === b) renderList(b, false);
 }
 
 /**
  * A name changed in the list. With votes, the author says what they become (D116): kept (a correction, checked
  * first) or dropped (another choice). Cancelled or refused, the name goes back.
  */
-export async function authorRename(input: HTMLInputElement): Promise<void> {
+async function authorRename(input: HTMLInputElement): Promise<void> {
   const b = authored();
   const id = input.dataset.id;
   const it = id ? itemOf(id) : undefined;
@@ -439,11 +562,11 @@ export async function authorRename(input: HTMLInputElement): Promise<void> {
 }
 
 /** Opens the color editor on a color item of the board (a second click on its swatch closes it). */
-export function authorEditColor(id: string | undefined, anchor: HTMLElement): void {
+function authorEditColor(id: string | undefined, anchor: HTMLElement): void {
   const b = authored();
   const it = id ? itemOf(id) : undefined;
   if (!b || !it?.fill || b.view.status !== 'open') return;
-  if (cp.id === it.id) {
+  if (editingColor() === it.id) {
     closeColor();
     return;
   }
@@ -470,20 +593,36 @@ async function authorRecolor(id: string, fill: Fill): Promise<void> {
     if (!choice) return;
     reset = choice === 'reset';
   }
+  // An item named by its code takes the new one (editItem, core/board.ts): the message names it so.
+  const label = namedByCode(it.label, it.fill) ? fillCode(fill) : it.label;
   const n = await ownerCall((alias, token) => editBoardItem(alias, token, id, { fill, reset }));
-  if (n !== null) toast(n ? t('recoloredReset', { label: it.label }) : t('recolored'));
+  if (n !== null) toast(n ? t('recoloredReset', { label }) : t('recolored'));
+}
+
+/**
+ * Before an item's row goes (the server's redraw takes its ×): the focus moves on to the next row's name, the previous
+ * one at the end, or the add field, where the redraw keeps it.
+ */
+function focusPast(id: string): void {
+  const row = $(`#item-list li[data-id="${id}"]`);
+  const next = (row?.nextElementSibling ?? row?.previousElementSibling) as HTMLElement | null | undefined;
+  const name = next?.dataset.id ? $(`#item-list .row-label[data-id="${next.dataset.id}"]`) : null;
+  (name ?? $('#add-input'))?.focus();
 }
 
 /**
  * Removes an item. Without votes it goes at once, and Undo brings it back (as a new item); with votes, or a
  * picture that can't come back, after a confirmation.
  */
-export async function authorRemove(id: string | undefined): Promise<void> {
+async function authorRemove(id: string | undefined): Promise<void> {
   const b = authored();
   const it = id ? itemOf(id) : undefined;
   if (!b || !id || !it) return;
   const votes = votesOf(b, id);
-  const remove = () => ownerCall((alias, token) => removeBoardItem(alias, token, id));
+  const remove = () => {
+    focusPast(id);
+    return ownerCall((alias, token) => removeBoardItem(alias, token, id));
+  };
   if (votes || it.img || it.pic) {
     const ok = await ask({
       title: t('removeItemTitle', { label: it.label }),
@@ -499,6 +638,32 @@ export async function authorRemove(id: string | undefined): Promise<void> {
   const back = { label: it.label, fill: it.fill };
   toast(t('itemRemovedNamed', { label: it.label }), {
     label: t('undoToast'),
-    run: () => void ownerCall((alias, token) => addBoardItem(alias, token, back)),
+    // Put back (with a new id): the toast's button is gone, the add field takes the focus.
+    run: () => {
+      void ownerCall((alias, token) => addBoardItem(alias, token, back)).then(() => {
+        if (doc.activeElement === doc.body) $('#add-input')?.focus();
+      });
+    },
   });
 }
+
+/** The items pane of a published board's author (ItemsHost, editor.ts): every edit goes through the server. */
+export const authorHost: ItemsHost = {
+  add(input) {
+    // The + button turns busy while the server answers: the field keeps the focus, as on a local ranking.
+    input.focus();
+    void authorAdd(input.value);
+  },
+  addList(text) {
+    if (parseList(text).length < 2) return false;
+    void authorAdd(text);
+    return true;
+  },
+  addColor: () => void authorAddColor(),
+  addFiles: (files) => void authorAddFiles(files),
+  remove: (id) => void authorRemove(id),
+  rename: (input) => void authorRename(input),
+  recolor: authorEditColor,
+  setMethod: (k) => void authorSetMethod(k),
+  renderMain: renderAuthorMain,
+};
