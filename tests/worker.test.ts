@@ -1147,6 +1147,17 @@ describe('limits', () => {
     expect((await api('', { method: 'POST', body, ip: '203.0.113.8' })).status).toBe(201);
   });
 
+  it('limits "Your votes" refreshes per IP, before waking any board', async () => {
+    const body = { voter: 'voter-one-1', aliases: ['1111111111'] };
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      statuses.push((await api('', { method: 'POST', root: '/api/summaries', body, ip: '203.0.113.9' })).status);
+    }
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200));
+    expect(statuses[10]).toBe(429);
+    expect((await api('', { method: 'POST', root: '/api/summaries', body, ip: '203.0.113.10' })).status).toBe(200);
+  });
+
   it('counts a body sent without a length, and refuses it past the limit', async () => {
     /** A body of spaces sent in chunks (no Content-Length): the Worker counts the bytes as they come. */
     const chunked = (bytes: number) =>

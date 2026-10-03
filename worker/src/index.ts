@@ -178,8 +178,12 @@ async function popular(req: Request, env: Env): Promise<Response> {
   return Response.json({ boards }, { headers: { 'Cache-Control': 'public, max-age=300' } });
 }
 
-/** The cards under "Your votes": each board as this voter may see it (the voter id stays out of URLs). */
+/**
+ * The cards under "Your votes": each board as this voter may see it (the voter id stays out of URLs). Each request
+ * wakes up to LIMITS.summaries boards: its own per-IP limit comes first.
+ */
 async function summaries(req: Request, env: Env): Promise<Response> {
+  if (!(await allowed(env.SUMMARY_LIMIT, req))) return error('rate_limited');
   const body = await readJson(req);
   if (body === null) return error('too_large');
   const input = parseSummaryRequest(body);

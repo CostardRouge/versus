@@ -8,9 +8,10 @@ export interface Env {
   REGISTRY?: D1Database;
   /** The cards a board's links unfurl with (R2, bucket versus-images). Optional: without it, links get the site's card. */
   IMAGES?: R2Bucket;
-  /** Per-IP limits: publications, and every other API request. Optional in local tools. */
+  /** Per-IP limits: publications, every other API request, and "Your votes" refreshes. Optional in local tools. */
   PUBLISH_LIMIT?: RateLimit;
   API_LIMIT?: RateLimit;
+  SUMMARY_LIMIT?: RateLimit;
   /** Secret for the admin routes. Unset: the admin API is off. */
   ADMIN_TOKEN?: string;
   /** `review`: authors may publish pictures, shown once the admin approved them. Unset or anything else: no pictures. */
