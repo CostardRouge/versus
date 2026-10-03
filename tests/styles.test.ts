@@ -71,3 +71,24 @@ describe('app styles', () => {
     }
   });
 });
+
+describe('home page styles', () => {
+  const landing = readFileSync(resolve(process.cwd(), 'src/landing/landing.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+
+  it('fades the side or card not picked without fading its words', () => {
+    for (const sel of ['.final.va .hb', '.final.vb .ha']) {
+      expect(rule(sel, landing), sel).toContain('color: var(--ink);');
+      expect(rule(sel, landing), sel).not.toContain('opacity');
+    }
+    expect(rule('.mc.lose', landing)).not.toContain('opacity');
+    expect(rule('.mc.lose .bgd', landing)).toContain('opacity: 0.3;');
+    expect(rule('.mc.lose.media b', landing)).toContain('color: var(--ink);');
+  });
+
+  it('writes coral and green words in their text variants', () => {
+    for (const sel of ['.vsx .xb', '.pb', '.ctl-b']) expect(rule(sel, landing), sel).toContain('color: var(--b-ink);');
+  });
+});

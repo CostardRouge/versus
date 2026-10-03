@@ -1689,8 +1689,26 @@ kbd {
   transform: scale(1.04);
 }
 .mc.lose {
-  opacity: 0.45;
   transform: scale(0.94);
+}
+/* The card not picked fades its picture, never its name (WCAG 1.4.3): the name turns to ink. */
+.mc .bgd,
+.mc .pic,
+.mc .shade {
+  transition: opacity 0.3s;
+}
+.mc.lose .bgd,
+.mc.lose .pic {
+  opacity: 0.3;
+}
+.mc.lose .shade {
+  opacity: 0;
+}
+.mc.lose.media b {
+  color: var(--ink);
+}
+.mc.lose.is-txt {
+  background: color-mix(in oklab, var(--surface) 92%, hsl(var(--h) 72% 55%));
 }
 .mvs {
   width: 30px;
@@ -2260,7 +2278,8 @@ kbd {
   color: var(--on-accent);
   transition:
     flex-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 0.4s,
+    background 0.4s,
+    color 0.4s,
     filter 0.4s;
 }
 .half.ha {
@@ -2312,10 +2331,17 @@ kbd {
 .final.vb .hb {
   flex-grow: 1.8;
 }
+/* The side not picked fades its color, never its words (WCAG 1.4.3): a pale tint, in ink. */
 .final.va .hb,
 .final.vb .ha {
-  opacity: 0.5;
-  filter: saturate(0.6);
+  color: var(--ink);
+  filter: none;
+}
+.final.va .hb {
+  background: color-mix(in oklab, var(--b) 28%, var(--bg));
+}
+.final.vb .ha {
+  background: color-mix(in oklab, var(--a) 28%, var(--bg));
 }
 .final.va .vsd {
   left: 64.3%;
