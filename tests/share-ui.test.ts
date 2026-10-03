@@ -36,6 +36,8 @@ beforeAll(async () => {
   );
   document.body.innerHTML = body;
   const { mount } = await import('../src/app/ui');
+  // The share module loads once the page is idle (src/app/events.ts): loaded here, the first share opens at once.
+  await (await import('../src/app/events')).loadSharing();
   mount(document);
 });
 

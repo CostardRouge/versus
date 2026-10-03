@@ -59,23 +59,29 @@ import {
   toggleDemos,
 } from './rankings';
 import { copyRanking, setCompare, setRankView } from './results';
-import {
-  shareBoard,
-  shareCopyImage,
-  shareCopyText,
-  shareDownload,
-  shareDuel,
-  shareFinale,
-  shareFormat,
-  shareLocal,
-  shareNative,
-  shareView,
-} from './share';
 import { drawSlopes } from './slope';
 import { cur, S, saveSoon } from './state';
 import { menuKeydown, setMethod, setTab, tabKeydown, toggleMethodMenu } from './workspace';
 
 /** Delegated listeners: interactive elements carry data-action (+ data-id, data-tab…). */
+
+type Sharing = typeof import('./share');
+let sharingModule: Sharing | null = null;
+
+/**
+ * The share panel and the card drawing stay out of the first load: most visits never share. They load once the page
+ * is idle (`ui.ts`), so the first share opens at once, or at the first share if that comes sooner.
+ */
+export async function loadSharing(): Promise<Sharing> {
+  sharingModule ??= await import('./share');
+  return sharingModule;
+}
+
+/** Runs a share action: at once once loaded, still inside the click (the share sheet and the clipboard ask for one). */
+function sharing(run: (m: Sharing) => unknown): void {
+  if (sharingModule) run(sharingModule);
+  else void loadSharing().then(run);
+}
 
 function onClick(e: MouseEvent): void {
   const target = e.target as HTMLElement | null;
@@ -174,34 +180,34 @@ function onClick(e: MouseEvent): void {
       copyRanking();
       break;
     case 'share-rank':
-      shareLocal(cur());
+      sharing((m) => m.shareLocal(cur()));
       break;
     case 'share-board':
-      shareBoard();
+      sharing((m) => m.shareBoard());
       break;
     case 'share-duel':
-      shareDuel();
+      sharing((m) => m.shareDuel());
       break;
     case 'share-finale':
-      shareFinale();
+      sharing((m) => m.shareFinale());
       break;
     case 'share-fmt':
-      shareFormat(el.dataset.fmt);
+      sharing((m) => m.shareFormat(el.dataset.fmt));
       break;
     case 'share-view':
-      shareView(el.dataset.view);
+      sharing((m) => m.shareView(el.dataset.view));
       break;
     case 'share-native':
-      void shareNative();
+      sharing((m) => m.shareNative());
       break;
     case 'share-copy-text':
-      void shareCopyText();
+      sharing((m) => m.shareCopyText());
       break;
     case 'share-copy-image':
-      void shareCopyImage();
+      sharing((m) => m.shareCopyImage());
       break;
     case 'share-download':
-      void shareDownload();
+      sharing((m) => m.shareDownload());
       break;
     case 'make-mine':
       makeMineFromCard(el.dataset.alias);

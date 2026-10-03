@@ -2,7 +2,7 @@ import { buildDemo, DEMOS, relabelDemos } from '../core/demos';
 import { voterId } from '../core/published';
 import { detectLang, type Lang, setLang as setI18nLang, t } from '../i18n';
 import { initDom, toast } from './dom';
-import { bindEvents } from './events';
+import { bindEvents, loadSharing } from './events';
 import { applyStatic } from './header';
 import { initPwa } from './pwa';
 import { routeFromURL } from './rankings';
@@ -44,4 +44,8 @@ export function mount(d: Document): void {
   applyStatic();
   // The address names the view: the gallery, a ranking, a demo or a published board.
   routeFromURL();
+  // What the first view doesn't need, once the page is idle.
+  const idle = (run: () => void) =>
+    'requestIdleCallback' in window ? window.requestIdleCallback(run, { timeout: 4000 }) : setTimeout(run, 1500);
+  idle(() => void loadSharing().catch(() => {}));
 }

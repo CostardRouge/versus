@@ -79,3 +79,13 @@ test('adds a color and edits it in the popover, closed with Escape', async ({ pa
   await expect(pop).toBeHidden();
   await expect(swatch).toBeFocused();
 });
+
+test('shares a ranking as a picture, the drawing code loaded on demand', async ({ page }) => {
+  await page.goto('app/demo/destinations/ranking');
+  await page.getByRole('button', { name: 'Share', exact: true }).click();
+  const preview = page.locator('#share-preview');
+  await expect(preview.locator('canvas')).toBeVisible();
+  await expect(preview).not.toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('#share-msg')).toContainText('Next destination');
+});
+

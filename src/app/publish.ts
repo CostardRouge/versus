@@ -17,7 +17,6 @@ import { $, ask, copyText, toast } from './dom';
 import { errorKey, PUBLISH_ERRORS } from './errors';
 import { openBoard } from './rankings';
 import { fetchConfig, publishBoard } from './remote';
-import { uploadPublishedCard } from './share';
 import { S, save } from './state';
 import { saveOwner } from './storage';
 import { turnstileKey, turnstileWidget } from './turnstile';
@@ -195,7 +194,8 @@ async function publish(r: Ranking): Promise<void> {
   saveOwner(alias, owner);
   save();
   // The link's preview image, drawn here from the same items and votes the server just received.
-  uploadPublishedCard(r, alias, withVotes, used);
+  // The drawing code loads with it, in the background.
+  void import('./share').then((m) => m.uploadPublishedCard(r, alias, withVotes, used));
   if (pictures) void sendPictures(r, alias, owner);
   const copied = await copyText(boardURL(alias));
   openBoard(alias);
