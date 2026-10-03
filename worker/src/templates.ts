@@ -1,4 +1,4 @@
-import type { BoardView } from '../../src/core/protocol';
+import type { BoardView, Unfurl } from '../../src/core/protocol';
 import {
   TEMPLATE_INDEX_VOTERS,
   TEMPLATES,
@@ -15,7 +15,14 @@ import { attrValue, preview } from './cards';
 import type { Env } from './env';
 import { log } from './log';
 import { newAlias, newOwnerToken } from './random';
-import { indexableTemplates, type RegistryRow, templateBoard, templateKeys, upsertBoard } from './registry';
+import {
+  deleteBoard,
+  indexableTemplates,
+  type RegistryRow,
+  templateBoard,
+  templateKeys,
+  upsertBoard,
+} from './registry';
 
 /**
  * Official templates (docs/published-boards.md#official-templates): the site's own boards, published by the
@@ -71,6 +78,29 @@ export async function ensureTemplate(env: Env, t: Template, lang: BoardLang): Pr
       await stub.adminDelete();
       return templateBoard(db, t.key, lang);
     }
+  }
+  return null;
+}
+
+/**
+ * The board of a template as its page shows it, published when missing. A registry row that outlived its board (a
+ * delete that failed) goes, and the template is published again.
+ */
+async function liveTemplate(
+  env: Env,
+  t: Template,
+  lang: BoardLang,
+): Promise<{ row: RegistryRow; view: BoardView; unfurl: Unfurl } | null> {
+  const db = env.REGISTRY;
+  if (!db) return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const row = await ensureTemplate(env, t, lang);
+    if (!row) return null;
+    const stub = env.BOARDS.getByName(row.alias);
+    const [view, unfurl] = await Promise.all([stub.view(), stub.unfurl()]);
+    if (view && unfurl) return { row, view, unfurl };
+    log('template_row_stale', { template: t.key, lang, alias: row.alias });
+    await deleteBoard(db, row.alias);
   }
   return null;
 }
@@ -181,11 +211,9 @@ export async function templatePage(
   const url = new URL(req.url);
   const path = `/${templatePath(t, lang)}`;
   if (url.pathname !== path) return Response.redirect(`${url.origin}${path}`, 301);
-  const row = await ensureTemplate(env, t, lang);
-  if (!row) return notFound();
-  const stub = env.BOARDS.getByName(row.alias);
-  const [view, unfurl] = await Promise.all([stub.view(), stub.unfurl()]);
-  if (!view || !unfurl) return notFound();
+  const live = await liveTemplate(env, t, lang);
+  if (!live) return notFound();
+  const { row, view, unfurl } = live;
   const p = await preview(env.IMAGES, url.origin, row.alias, unfurl, '');
   const indexable = !row.hidden && view.counts.voters >= indexVoters(env);
   // The shell's addresses are relative to the legal page's folder (`../assets/…`): a <base> keeps them right

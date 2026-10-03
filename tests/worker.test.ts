@@ -1016,6 +1016,23 @@ describe('official templates', () => {
     expect(moved.headers.get('Location')).toMatch(/\/t\/game-consoles\/$/);
   });
 
+  it('publishes a template again when its registry row outlived its board', async () => {
+    const first = (await (await server.fetch('/t/computers/')).text()).match(ALIAS_IN_PAGE)?.[1] ?? '';
+    expect(first).not.toBe('');
+    // The board is gone but its row stays (as when the registry delete failed): its storage wiped behind the row.
+    const sql = await server.getWorker().getDurableObjectStorage('BoardObject', { name: first });
+    await sql.exec('DELETE FROM meta');
+    await server.getWorker().evictDurableObject('BoardObject', { name: first });
+    expect((await view(first)).status).toBe(404);
+    const res = await server.fetch('/t/computers/');
+    expect(res.status).toBe(200);
+    const again = (await res.text()).match(ALIAS_IN_PAGE)?.[1] ?? '';
+    expect(again).not.toBe(first);
+    expect((await view(again)).body.title).toBe('Mac or PC: the best computer to work on');
+    // The same board from now on.
+    expect(await (await server.fetch('/t/computers/')).text()).toContain(`/app/b/${again}`);
+  });
+
   it('writes a template page’s JSON-LD so that it parses back exactly', async () => {
     const alias = (await (await server.fetch('/t/cameras/')).text()).match(ALIAS_IN_PAGE)?.[1] ?? '';
     // A label no template has, written straight into the board's storage.
