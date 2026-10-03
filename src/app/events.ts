@@ -33,7 +33,7 @@ import {
   setFinaleWho,
 } from './board';
 import { closeColor, colorChange, colorInput, cp, cpAction, openColor, placeColor, setActiveStop } from './color';
-import { $, closeModal, doc, narrow, toastAct, trapTab } from './dom';
+import { $, closeModal, doc, narrow, toastAct, toastHasAct, trapTab } from './dom';
 import { choose, duelKeydown, endContinue, endSee, skip, undoLast } from './duel';
 import { changeTheme } from './header';
 import { addColor, addFiles, addList, addTyped, removeItem, renameItem } from './items';
@@ -347,6 +347,11 @@ function onChange(e: Event): void {
   if (tg.classList.contains('row-label')) renameItem(r, tg);
 }
 
+const NOT_TEXT = new Set(['checkbox', 'radio', 'color', 'file', 'range', 'button', 'submit', 'reset']);
+/** Where typing goes, with its own undo. */
+const textField = (el: HTMLElement): boolean =>
+  el.matches('textarea, [contenteditable]') || (el instanceof HTMLInputElement && !NOT_TEXT.has(el.type));
+
 function onKeydown(e: KeyboardEvent): void {
   const modal = $('#modal');
   if (modal && !modal.hidden) {
@@ -356,6 +361,13 @@ function onKeydown(e: KeyboardEvent): void {
     return;
   }
   const tg = e.target as HTMLElement;
+  // ⌘/Ctrl+Z undoes what the toast on screen offers to undo (an item removed, a list added), before a duel; a
+  // text field keeps its own undo.
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && toastHasAct() && !textField(tg)) {
+    e.preventDefault();
+    toastAct();
+    return;
+  }
   const cpop = $('#cpop');
   if (cpop && !cpop.hidden) {
     if (e.key === 'Enter' && tg.classList.contains('cp-hex')) {

@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { toast, toastMs } from '../src/app/dom';
 import { mount } from '../src/app/ui';
 
 /** Keyboard and screen reader behaviour of the app (the audit's A11Y findings), on the demos. */
@@ -21,7 +22,18 @@ const key = (k: string, el: Element | null = document.activeElement, init: Keybo
   el?.dispatchEvent(e);
   return e;
 };
-const stored = () => JSON.parse(localStorage.getItem('versus-v1') ?? '[]') as { id: string; history: unknown[] }[];
+interface Stored {
+  id: string;
+  title: string;
+  items: { id: string; label: string }[];
+  history: unknown[];
+}
+const stored = (): Stored[] => JSON.parse(localStorage.getItem('versus-v1') ?? '[]');
+const rankOf = (id: string): Stored => {
+  const r = stored().find((x) => x.id === id);
+  if (!r) throw new Error(`missing ranking ${id}`);
+  return r;
+};
 const duels = (id: string) => stored().find((r) => r.id === id)?.history.length;
 
 beforeAll(() => {
@@ -115,5 +127,63 @@ describe('method menu', () => {
     expect(document.activeElement).toBe($('#method-btn'));
     click('#method-btn');
     click('.mopt[data-m="bt"]');
+  });
+});
+
+describe('toast', () => {
+  const box = () => $('#toast');
+  const shown = () => box().classList.contains('show');
+
+  it('stays long enough to read it, and 6 s at least with an action', () => {
+    expect(toastMs('Ranking deleted', false)).toBe(2600 + 60 * 15);
+    expect(toastMs('Removed', true)).toBe(6000);
+    expect(toastMs('x'.repeat(80), true)).toBe(2600 + 60 * 80);
+  });
+
+  it('goes after its time, emptied, its live region staying in the page', () => {
+    toast('Short note');
+    expect(shown()).toBe(true);
+    vi.advanceTimersByTime(toastMs('Short note', false) - 100);
+    expect(shown()).toBe(true);
+    vi.advanceTimersByTime(200);
+    expect(shown()).toBe(false);
+    vi.advanceTimersByTime(300);
+    expect(box().textContent).toBe('');
+    expect(box().getAttribute('role')).toBe('status');
+  });
+
+  it('waits while pointed at or focused', () => {
+    const run = vi.fn();
+    toast('Removed', { label: 'Undo', run });
+    vi.advanceTimersByTime(2000);
+    box().dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(20000);
+    expect(shown()).toBe(true);
+    box().dispatchEvent(new MouseEvent('mouseleave'));
+    $('.toast-act').focus();
+    vi.advanceTimersByTime(20000);
+    expect(shown()).toBe(true);
+    $('.back').focus();
+    // The 4 s it had left.
+    vi.advanceTimersByTime(3900);
+    expect(shown()).toBe(true);
+    vi.advanceTimersByTime(200);
+    expect(shown()).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('undoes on ⌘/Ctrl+Z what it offers to undo, before a duel, and never in a text field', () => {
+    const rank = () => rankOf('demo-destinations');
+    const before = rank();
+    const id = before.items[0]?.id;
+    click(`#item-list [data-action="remove-item"][data-id="${id}"]`);
+    expect(rank().items).toHaveLength(before.items.length - 1);
+    key('z', $('#add-input'), { ctrlKey: true });
+    expect(rank().items).toHaveLength(before.items.length - 1);
+    key('z', document.body, { ctrlKey: true });
+    expect(rank().items.map((i) => i.id)).toEqual(before.items.map((i) => i.id));
+    expect(rank().history).toHaveLength(before.history.length);
+    vi.advanceTimersByTime(300);
+    expect(box().textContent).toBe('');
   });
 });
