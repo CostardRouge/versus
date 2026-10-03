@@ -30,8 +30,8 @@ export function currentPath(): string {
 
 export function routeOfState(): Route {
   const r = S.route;
-  if (r.view === 'board' && r.alias) return { view: 'board', alias: r.alias };
-  if (r.view === 'rank' && r.id) return { view: 'rank', id: r.id, tab: r.tab };
+  if (r.view === 'board') return { view: 'board', alias: r.alias };
+  if (r.view === 'rank') return { view: 'rank', id: r.id, tab: r.tab };
   return { view: 'gallery' };
 }
 

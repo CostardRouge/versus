@@ -3,7 +3,7 @@ import { ADD_MAX, getItem, IMAGES_MAX, mkItem } from '../core/model';
 import { compute, methodOf } from '../core/scoring';
 import type { Item, Ranking } from '../core/types';
 import { methodText as M, plural, t } from '../i18n';
-import { closeColor, cp, toggleColor } from './color';
+import { closeColor, editingColor, keepName, toggleColor } from './color';
 import { $, $$, doc, keepFocus, toast } from './dom';
 import {
   addedToast,
@@ -114,7 +114,8 @@ export async function addFiles(r: Ranking, files: FileList | File[]): Promise<vo
   toast(n ? t('imagesAdded', { images: plural(n, 'image'), n }) : t('cantRead'));
 }
 function dropItems(r: Ranking, ids: Set<string>): void {
-  if (cp.id && ids.has(cp.id)) closeColor();
+  const editing = editingColor();
+  if (editing && ids.has(editing)) closeColor();
   const prev = r.items.length;
   r.items = r.items.filter((i) => !ids.has(i.id));
   if (r.pair?.some((id) => ids.has(id))) r.pair = null;
@@ -173,7 +174,7 @@ function renameItem(r: Ranking, input: HTMLInputElement): void {
   it.label = v;
   r.updated = Date.now();
   save();
-  if (cp.id === it.id) cp.follow = false;
+  keepName(it.id);
   if (effTab() === 'results' || r.pair?.includes(it.id)) renderMain(r);
 }
 

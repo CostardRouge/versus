@@ -19,7 +19,7 @@ import {
   renderRanking,
 } from './board';
 import { type Board, boardState, itemOf } from './board-state';
-import { closeColor, cp, openBoardColor } from './color';
+import { closeColor, editingColor, followSwatch, openBoardColor } from './color';
 import { $, $$, ask, castSvg, copyText, doc, toast } from './dom';
 import {
   addedToast,
@@ -193,11 +193,7 @@ export function renderAuthor(b: Board & { view: BoardView }): void {
   view.innerHTML = shell(a);
   renderList(a, false);
   // The color editor follows its swatch through re-renders, and closes when the item can't be edited anymore.
-  if (cp.id) {
-    const swatch = $(`.thumb-btn[data-id="${cp.id}"]`);
-    if (swatch) cp.anchor = swatch;
-    else closeColor();
-  }
+  followSwatch();
   setTab(S.route.tab);
   addBusy(adding);
   // Once the main pane is drawn too: the focus may have been in the duel.
@@ -559,7 +555,7 @@ function authorEditColor(id: string | undefined, anchor: HTMLElement): void {
   const b = authored();
   const it = id ? itemOf(id) : undefined;
   if (!b || !it?.fill || b.view.status !== 'open') return;
-  if (cp.id === it.id) {
+  if (editingColor() === it.id) {
     closeColor();
     return;
   }

@@ -27,7 +27,7 @@ const key = (k: string, el: Element | null = document.activeElement, init: Keybo
 interface Stored {
   id: string;
   title: string;
-  items: { id: string; label: string }[];
+  items: { id: string; label: string; fill: { colors: string[] } | null }[];
   history: unknown[];
 }
 const stored = (): Stored[] => JSON.parse(localStorage.getItem('versus-v1') ?? '[]');
@@ -322,6 +322,24 @@ describe('color editor', () => {
     key('Escape');
     setMedia('narrow', false);
     click('.tab[data-tab="duel"]');
+  });
+
+  it('closes when another view replaces it, the color changed live saved', () => {
+    const swatch = $('#item-list .thumb-btn');
+    const id = swatch.dataset.id;
+    swatch.click();
+    const field = $<HTMLInputElement>('.cp-color[data-i="0"]');
+    field.value = '#654321';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    const colorOf = () => rankOf('demo-accent').items.find((i) => i.id === id)?.fill?.colors[0];
+    expect(colorOf()).not.toBe('#654321');
+    // Back to the gallery, the editor still open.
+    history.pushState(null, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    expect($('#view .gallery')).not.toBeNull();
+    expect(pop().hidden).toBe(true);
+    expect(colorOf()).toBe('#654321');
+    click('.rcard [data-action="open"][data-id="demo-accent"][data-tab="duel"]');
   });
 });
 

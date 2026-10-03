@@ -9,7 +9,7 @@ import type { Item, Ranking } from '../core/types';
 import { uid } from '../core/util';
 import { getLang, isLang, plural, setLang as setI18nLang, t } from '../i18n';
 import { enterBoard, followLayer, leaveBoard, renderBoard } from './board';
-import { cp } from './color';
+import { closeColor } from './color';
 import { $, ask, focusOn, keepFocus, narrow, toast } from './dom';
 import { clearEnding } from './ending';
 import { galleryHTML, setNotice } from './gallery';
@@ -39,11 +39,7 @@ function heading(): HTMLElement | null {
   return h;
 }
 function draw(): void {
-  const pop = $('#cpop');
-  if (pop && !pop.hidden) {
-    pop.hidden = true;
-    cp.id = null;
-  }
+  closeColor();
   const view = $('#view');
   if (!view) return;
   if (S.route.view !== 'board') leaveBoard();
@@ -208,7 +204,7 @@ export async function deleteRank(id: string | undefined): Promise<void> {
   const at = S.ranks.indexOf(r);
   S.ranks = S.ranks.filter((x) => x !== r);
   save();
-  if (S.route.id === id) {
+  if (S.route.view === 'rank' && S.route.id === id) {
     S.route = { view: 'gallery', tab: 'duel' };
     syncURL('replace');
   }

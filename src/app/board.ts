@@ -28,7 +28,7 @@ import {
   setBoardState,
   suggesting,
 } from './board-state';
-import { closeColor, cp } from './color';
+import { closeColor } from './color';
 import { $, ask, copyText, doc, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML, controlsHTML, duelKeys, outcomeOf, playPick } from './duel';
 import { addFormHTML, typed } from './editor';
@@ -365,7 +365,7 @@ export function renderBoard(mode: FinaleMode = 'none'): void {
   const input = $('#add-input') as HTMLInputElement | null;
   if (input && draft && draft !== b.sentLabel) input.value = draft;
   b.sentLabel = null;
-  if (cp.id) closeColor();
+  closeColor();
   if (b.view) {
     renderDuel();
     renderRanking();
@@ -702,7 +702,7 @@ function renderFinale(b: Board, v: BoardView, mode: FinaleMode): void {
     return;
   }
   b.finaleDirty = false;
-  if (cp.id) closeColor();
+  closeColor();
   view.innerHTML = finaleHTML(finaleData(b, v));
   mountFinale(mode, () => {
     if (boardState() === b && b.finale && b.finaleDirty) renderBoard();
