@@ -57,8 +57,14 @@ export function hslToHex(hue: number, sat: number, light: number): string {
 }
 
 /** CSS background for a fill: a flat color, or layered gradients with soft halos and fine scan lines. */
+/** A color as CSS may take it: `#rrggbb`, or black when the stored value is anything else. */
+const cssHex = (c: string): string => {
+  const h = normHex(String(c));
+  return /^#[0-9a-f]{6}$/.test(h) ? h : '#000000';
+};
+
 export function fillCSS(f: Fill): string {
-  const c = f.colors.map(normHex);
+  const c = f.colors.map(cssHex);
   const a = c[0] ?? '#000000';
   if (f.type === 'solid' || c.length === 1) return a;
   const m = c[1] ?? a;
@@ -114,7 +120,7 @@ export function fillText(f: Fill): string {
   return `color:${fillInk(f)}${shadow ? `;text-shadow:${shadow}` : ''}`;
 }
 
-export const fillCode = (f: Fill): string => f.colors.map((c) => normHex(c).toUpperCase()).join(' → ');
+export const fillCode = (f: Fill): string => f.colors.map((c) => cssHex(c).toUpperCase()).join(' → ');
 
 export const sameFill = (a: Fill, b: Fill): boolean => fillCode(a) === fillCode(b);
 

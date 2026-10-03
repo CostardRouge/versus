@@ -1,4 +1,5 @@
 import { fillCSS, fillText } from '../core/colors';
+import { hueValue } from '../core/model';
 import type { ItemScore, RankingView } from '../core/protocol';
 import { agreement, crowdCheck, neckAndNeck, ownRanking, totalPairs } from '../core/published';
 import type { BoardStatus, Computed, Duel, Item, MethodKey } from '../core/types';
@@ -96,7 +97,7 @@ function ctxOf(d: FinaleData): Ctx {
 }
 
 const tileStyle = (it: Item): string =>
-  it.fill ? `background:${fillCSS(it.fill)};${fillText(it.fill)}` : `--h:${it.h}`;
+  it.fill ? `background:${fillCSS(it.fill)};${fillText(it.fill)}` : `--h:${hueValue(it)}`;
 const highlight = (it: Item): string => `<span class="fin-win" style="${tileStyle(it)}">${esc(it.label)}</span>`;
 /** A translated sentence around a highlighted item name (the name as it is: `$&` in a label is no pattern). */
 export const sentence = (text: string, it: Item): string => esc(text).replace(SLOT, () => highlight(it));

@@ -74,7 +74,8 @@ src/core/             pure logic, no DOM: must stay framework-free and fully uni
   list.ts             a list typed or pasted in the add field as labels (lines, `\n`, Markdown and bulleted lists, tabs,
                       JSON array); duplicates of what the ranking has
   backup.ts           export and import (D97–D101): the file format, strict validation of a file, merge that never replaces
-  model.ts, util.ts   constructors, ids, escaping, small helpers
+  model.ts, util.ts   constructors, ids, escaping, small helpers; imageSrc() and hueValue(): the only way a view reads an
+                      item's picture and hue
   site.ts             the site's links and paths (home pages, legal notice, app), shared by the app, the pages and the build
 src/i18n/             en.ts is the source of keys; fr.ts is typed as Messages so missing keys fail typecheck;
                       text.ts: what every dictionary does (fill, plural rule, percentages, locale), no texts, importable anywhere;
@@ -144,6 +145,7 @@ tests/                one suite per core module + app.test.ts (jsdom smoke test)
                       + backup-ui.test.ts (export, import, drop, the iOS home-screen note) + popular-ui.test.ts, finale.test.ts,
                       storage.test.ts, remote.test.ts (time limits), sw.test.ts (the service worker's install against fake caches),
                       pictures.test.ts, log.test.ts, cache.test.ts, turnstile.test.ts (Worker modules that run in Node)
+                      + hostile-ui.test.ts (every view of a ranking drawn from hostile stored data: nothing runs or loads)
                       + a11y-ui.test.ts (keyboard patterns, focus kept and moved, names, toasts), gallery-wait-ui.test.ts, styles.test.ts
                       and tokens.test.ts (contrast of the tokens, target sizes, focus and forced-colors rules)
 tests/e2e/            Playwright (`npm run e2e`): real Chromium, desktop and phone, the API and the board's WebSocket faked per test;
@@ -161,7 +163,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Pictures (D113, D114, `docs/published-boards.md#images`):** bytes never travel in a publish request; an item announces a picture (`pic: 'pending'`) and the app sends it afterwards with the author's token. The server's policy (`parseNewItem(x, images)`, `off` | `review`; a picture never arrives as an address) is the only gate; `/img/b/…` serves a picture only once its R2 metadata says `ok`. A new place that shows items should honor `pic` the way the author's items list does (text until approved).
 - **Items (D116):** one items pane for every ranking (`app/editor.ts`): a local ranking (`items.ts`) and a board's author (`author.ts`) fill it, a visitor's suggestion uses its add field. On a published board, an edit of an item with votes asks whether they stay (`askVotes`); the rule is `editItem` in `core/board.ts`. Don't build a second form for items.
 - **Moderation (D107 to D109, `docs/published-boards.md#moderation`):** rules in `core/board.ts` (`parseReport`, `addReport`, `moderate`), the admin's views in `core/protocol.ts` (`AdminRow`, `AdminBoardView`), the registry row mirrors the flags and report count. The moderation page (`src/admin/`) has its own dictionary (`i18n/admin.ts`) and never imports the app; a new admin action is a Worker route, a `BoardObject` method, a `data-act` on the page and a test in `worker.test.ts` and `admin-ui.test.ts`. Voters' views (`BoardView`, `BoardSummary`, `Unfurl`) never carry `mod` or reports.
-- **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`. A new view gets its own module; keep `events.ts` a thin dispatcher.
+- **UI pattern:** view modules in `src/app/` render HTML strings; interactive elements carry `data-action` (+ `data-id`, `data-tab`…) handled by the delegated listeners in `events.ts`. Always escape user content with `esc()`, in attributes too (ids included); an item's picture and hue go through `imageSrc()` and `hueValue()` (`core/model.ts`), colors through `fillCSS()`: stored data is read, never trusted. A new view gets its own module; keep `events.ts` a thin dispatcher.
 - **Colors come from CSS tokens** (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--a` cobalt, `--b` coral, `--good`, `--bad`, `--on-accent`), defined for light and dark. Coral and green as text or thin borders use `--b-ink` and `--good-ink` (4.5:1 in both themes, also the fill under white text), field borders `--field` (3:1); `tests/tokens.test.ts` checks the contrasts. No literal colors in components, except text over images and fills.
 - **Fonts:** Bricolage Grotesque (display), Figtree (body), JetBrains Mono (numbers). Numbers use `.mono` (tabular figures).
 - **Accessibility:** keyboard access for every action, `aria-label` on icon buttons, `prefers-reduced-motion` respected, visible focus.

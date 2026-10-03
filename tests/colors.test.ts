@@ -118,3 +118,14 @@ describe('fills', () => {
     expect(colorTwin(items, 'a', { type: 'solid', colors: ['#d9a441'] })).toBeUndefined();
   });
 });
+
+describe('fills from untrusted storage', () => {
+  it('writes only #rrggbb into CSS and color codes', () => {
+    const f: Fill = { type: 'gradient', colors: ['#abc', 'red;background:url(//e)', '#123456'] };
+    const css = fillCSS(f);
+    expect(css).not.toMatch(/url|red|;/);
+    expect(css).toContain('#aabbcc');
+    expect(css).toContain('#000000');
+    expect(fillCode(f)).toBe('#AABBCC → #000000 → #123456');
+  });
+});

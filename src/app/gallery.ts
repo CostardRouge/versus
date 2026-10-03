@@ -3,6 +3,7 @@ import { revealAt } from '../core/board';
 import { fillCSS } from '../core/colors';
 import { DEMOS } from '../core/demos';
 import { addedItems, joinedAgreement, joinedTop, newsOf, pairsOf, sortJoined } from '../core/joined';
+import { hueValue, imageSrc } from '../core/model';
 import type { PopularBoard } from '../core/protocol';
 import { compute, stability } from '../core/scoring';
 import type { Item, Joined, Ranking } from '../core/types';
@@ -23,8 +24,9 @@ function tileHTML(it: Item | undefined, i: number, ranked: boolean): string {
   if (!it) return `<span class="${cls}"></span>`;
   const n = ranked ? `<span class="tile-n mono">${i + 1}</span>` : '';
   if (it.fill) return `<span class="${cls}" style="background:${fillCSS(it.fill)}">${n}</span>`;
-  if (it.img) return `<span class="${cls}" style="background-image:url('${it.img}')">${n}</span>`;
-  return `<span class="${cls} txt" style="--h:${it.h}">${n}<b>${esc(it.label)}</b></span>`;
+  const img = imageSrc(it);
+  if (img) return `<span class="${cls}" style="background-image:url('${esc(img)}')">${n}</span>`;
+  return `<span class="${cls} txt" style="--h:${hueValue(it)}">${n}<b>${esc(it.label)}</b></span>`;
 }
 function rcardHTML(r: Ranking): string {
   const C = compute(r);
@@ -39,20 +41,20 @@ function rcardHTML(r: Ranking): string {
     ? `<button class="btn sm" type="button" data-action="open-board" data-alias="${alias}">${t('openBoard')}</button>
       <button class="btn sm ghost" type="button" data-action="copy-link" data-alias="${alias}">${t('copyLink')}</button>`
     : r.demo
-      ? `<button class="btn sm" type="button" data-action="open" data-id="${id}" data-tab="duel">${ranked ? t('resume') : t('tryIt')}</button>
-      <button class="btn sm ghost" type="button" data-action="open" data-id="${id}" data-tab="results">${t('result')}</button>
-      <button class="btn sm ghost" type="button" data-action="reset-demo" data-id="${id}">${t('reset')}</button>
-      <button class="btn sm ghost" type="button" data-action="duplicate" data-id="${id}" title="${t('duplicateTitle')}" aria-describedby="hint-duplicate">${t('duplicate')}</button>`
-      : `<button class="btn sm" type="button" data-action="open" data-id="${id}" data-tab="duel">${ranked ? t('resume') : t('start')}</button>
-      <button class="btn sm ghost" type="button" data-action="open" data-id="${id}" data-tab="results">${t('result')}</button>
-      <button class="btn sm ghost" type="button" data-action="reset" data-id="${id}" ${r.history.length ? '' : 'disabled'}>${t('restart')}</button>
-      <button class="icon-btn" type="button" data-action="delete" data-id="${id}" aria-label="${esc(t('deleteAria', { title: r.title }))}">${trashSvg}</button>`;
+      ? `<button class="btn sm" type="button" data-action="open" data-id="${esc(id)}" data-tab="duel">${ranked ? t('resume') : t('tryIt')}</button>
+      <button class="btn sm ghost" type="button" data-action="open" data-id="${esc(id)}" data-tab="results">${t('result')}</button>
+      <button class="btn sm ghost" type="button" data-action="reset-demo" data-id="${esc(id)}">${t('reset')}</button>
+      <button class="btn sm ghost" type="button" data-action="duplicate" data-id="${esc(id)}" title="${t('duplicateTitle')}" aria-describedby="hint-duplicate">${t('duplicate')}</button>`
+      : `<button class="btn sm" type="button" data-action="open" data-id="${esc(id)}" data-tab="duel">${ranked ? t('resume') : t('start')}</button>
+      <button class="btn sm ghost" type="button" data-action="open" data-id="${esc(id)}" data-tab="results">${t('result')}</button>
+      <button class="btn sm ghost" type="button" data-action="reset" data-id="${esc(id)}" ${r.history.length ? '' : 'disabled'}>${t('restart')}</button>
+      <button class="icon-btn" type="button" data-action="delete" data-id="${esc(id)}" aria-label="${esc(t('deleteAria', { title: r.title }))}">${trashSvg}</button>`;
   const leadHTML = lead
     ? `${t('leading')} <b>${esc(lead.label)}</b>${m === 'sort' ? '' : ` <span class="mono">${fmtScore(m, stat(C, lead.id))}</span>`}`
     : t('noDuels');
   const tab = r.items.length >= 2 ? 'duel' : 'items';
   const href = pub ? routeURL({ view: 'board', alias: pub.alias }) : routeURL({ view: 'rank', id, tab });
-  const link = `<a class="rcard-main" href="${esc(href)}" data-action="open" data-id="${id}" data-tab="${tab}">${esc(r.title)}</a>`;
+  const link = `<a class="rcard-main" href="${esc(href)}" data-action="open" data-id="${esc(id)}" data-tab="${tab}">${esc(r.title)}</a>`;
   return `<article class="rcard">
     <div class="rcard-face">
       <div class="mosaic">${[0, 1, 2].map((i) => tileHTML(C.order[i], i, ranked)).join('')}</div>

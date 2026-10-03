@@ -1,4 +1,5 @@
 import { fillCSS } from '../core/colors';
+import { hueValue, imageSrc } from '../core/model';
 import { compute, METHOD_KEYS, methodOf, remaining, stability } from '../core/scoring';
 import type { Computed, Item, ItemStats, MethodKey, Ranking } from '../core/types';
 import { esc } from '../core/util';
@@ -170,7 +171,7 @@ export function resultsHTML(r: Ranking): string {
         .slice(0, 3)
         .map(
           (it, i) => `<li class="pod pod-${i + 1}">
-      <div class="pod-media" style="${it.fill ? `background:${fillCSS(it.fill)}` : `--h:${it.h}`}">${it.img ? `<img src="${it.img}" alt="">` : it.fill ? '' : `<span class="pod-txt">${esc(it.label)}</span>`}</div>
+      <div class="pod-media" style="${it.fill ? `background:${fillCSS(it.fill)}` : `--h:${hueValue(it)}`}">${imageSrc(it) ? `<img src="${esc(imageSrc(it))}" alt="">` : it.fill ? '' : `<span class="pod-txt">${esc(it.label)}</span>`}</div>
       <div class="pod-info"><span class="pod-place">${i + 1}</span><div><b>${esc(it.label)}</b>${figures(stat(C, it.id))}</div></div>
     </li>`,
         )
@@ -193,8 +194,8 @@ export function resultsHTML(r: Ranking): string {
         <button class="btn primary" type="button" data-action="tab" data-tab="duel" ${n < 2 ? 'disabled' : ''}>${t('keepDueling')}</button>
         ${ranked && n >= 2 ? `<button class="btn" type="button" data-action="share-rank">${t('share')}</button>` : ''}
         <button class="btn ghost" type="button" data-action="copy">${t('copy')}</button>
-        <button class="btn ghost" type="button" data-action="export-one" data-id="${r.id}" title="${t('exportOneTitle')}" aria-describedby="hint-export-one">${t('exportOne')}</button><span id="hint-export-one" hidden>${t('exportOneTitle')}</span>
-        <button class="btn ghost" type="button" data-action="reset" data-id="${r.id}" ${r.history.length || r.demo ? '' : 'disabled'}>${r.demo ? t('reset') : t('restart')}</button>
+        <button class="btn ghost" type="button" data-action="export-one" data-id="${esc(r.id)}" title="${t('exportOneTitle')}" aria-describedby="hint-export-one">${t('exportOne')}</button><span id="hint-export-one" hidden>${t('exportOneTitle')}</span>
+        <button class="btn ghost" type="button" data-action="reset" data-id="${esc(r.id)}" ${r.history.length || r.demo ? '' : 'disabled'}>${r.demo ? t('reset') : t('restart')}</button>
       </div>
     </div>
     ${note}${

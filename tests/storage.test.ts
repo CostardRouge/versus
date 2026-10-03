@@ -55,6 +55,16 @@ describe('storage', () => {
     expect(JSON.parse(localStorage.getItem(UNREADABLE_KEY) ?? '[]')).toEqual([broken, { id: 'y' }]);
   });
 
+  it('sets aside a ranking whose ids would break out of an attribute or a selector', () => {
+    const r = mkRank('Test');
+    r.items.push(mkItem('A'));
+    const odd = { ...r, id: 'x" onclick="1' };
+    const oddItem = { ...r, id: 'other', items: [{ ...mkItem('B'), id: '"]>' }] };
+    localStorage.setItem(STORE_KEY, JSON.stringify([odd, r, oddItem]));
+    expect(loadRanks()).toEqual([r]);
+    expect(JSON.parse(localStorage.getItem(UNREADABLE_KEY) ?? '[]')).toEqual([odd, oddItem]);
+  });
+
   it('returns null when nothing or garbage is stored', () => {
     expect(loadRanks()).toBeNull();
     localStorage.setItem(STORE_KEY, '{not json');

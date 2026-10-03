@@ -1,3 +1,4 @@
+import { esc } from '../core/util';
 import { $$, doc } from './dom';
 
 /**
@@ -34,8 +35,8 @@ function draw(box: HTMLElement): void {
     const same = left.indexOf(l) === i;
     const d = `--d:${(animated ? at + i * 0.06 : 0).toFixed(2)}s`;
     const k = key.replace(/"/g, '');
-    out += `<path data-id="${k}" class="${same ? 'sl-same' : 'sl-moved'}" ${same ? '' : `stroke="url(#${id})"`} d="M4 ${y1} C ${w / 2} ${y1}, ${w / 2} ${y2}, ${w - 4} ${y2}" pathLength="1" stroke-dasharray="1" style="${d}"/>`;
-    out += `<circle data-id="${k}" class="sl-a" cx="4" cy="${y1}" r="3.5" style="${d}"/><circle data-id="${k}" class="sl-b" cx="${w - 4}" cy="${y2}" r="3.5" style="${d}"/>`;
+    out += `<path data-id="${esc(k)}" class="${same ? 'sl-same' : 'sl-moved'}" ${same ? '' : `stroke="url(#${id})"`} d="M4 ${y1} C ${w / 2} ${y1}, ${w / 2} ${y2}, ${w - 4} ${y2}" pathLength="1" stroke-dasharray="1" style="${d}"/>`;
+    out += `<circle data-id="${esc(k)}" class="sl-a" cx="4" cy="${y1}" r="3.5" style="${d}"/><circle data-id="${esc(k)}" class="sl-b" cx="${w - 4}" cy="${y2}" r="3.5" style="${d}"/>`;
   });
   svg.innerHTML = out;
 }

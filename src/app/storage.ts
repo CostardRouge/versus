@@ -49,12 +49,16 @@ export const UNREADABLE_KEY = 'versus-v1-unreadable';
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 
 /** A stored ranking the app can open: the shape every view relies on. */
+/** Ids as the app makes them (uid, the demos' names, the server's item ids): they go into attributes and selectors. */
+const ID_RE = /^[\w-]{1,64}$/;
+const isId = (v: unknown): boolean => typeof v === 'string' && ID_RE.test(v);
+
 function readable(x: unknown): x is Ranking {
-  if (!isObj(x) || typeof x.id !== 'string' || typeof x.title !== 'string') return false;
+  if (!isObj(x) || !isId(x.id) || typeof x.title !== 'string') return false;
   const { items, history, pair, pub } = x;
   return (
     Array.isArray(items) &&
-    items.every((i) => isObj(i) && typeof i.id === 'string' && typeof i.label === 'string') &&
+    items.every((i) => isObj(i) && isId(i.id) && typeof i.label === 'string') &&
     Array.isArray(history) &&
     history.every((d) => isObj(d) && typeof d.a === 'string' && typeof d.b === 'string' && typeof d.s === 'number') &&
     (pair === null || pair === undefined || (Array.isArray(pair) && pair.length === 2)) &&

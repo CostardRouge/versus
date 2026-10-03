@@ -1,5 +1,5 @@
 import { fillCode, fillCSS, fillText } from '../core/colors';
-import { getItem } from '../core/model';
+import { getItem, hueValue, imageSrc } from '../core/model';
 import {
   compute,
   ensurePair,
@@ -33,10 +33,10 @@ export function cardHTML(it: Item, side: 'a' | 'b'): string {
   if (it.fill) {
     const code = fillCode(it.fill);
     inner = `<span class="fillbg" style="background:${fillCSS(it.fill)}"></span><span class="cap" style="${fillText(it.fill)}">${label}${it.label.toUpperCase() !== code ? `<small>${code}</small>` : ''}</span>`;
-  } else if (it.img)
-    inner = `<img src="${it.img}" alt="" draggable="false"><span class="shade"></span><span class="cap">${label}</span>`;
+  } else if (imageSrc(it))
+    inner = `<img src="${esc(imageSrc(it))}" alt="" draggable="false"><span class="shade"></span><span class="cap">${label}</span>`;
   else inner = `<span class="txt ${sizeClass(it.label)}">${label}</span>`;
-  return `<div class="card card-${side}" role="button" tabindex="0" data-side="${side}" data-id="${it.id}" style="--h:${it.h}" aria-label="${esc(t('chooseAria', { label: it.label }))}"><span class="side-tag" aria-hidden="true">${side.toUpperCase()}</span>${inner}</div>`;
+  return `<div class="card card-${side}" role="button" tabindex="0" data-side="${side}" data-id="${esc(it.id)}" style="--h:${hueValue(it)}" aria-label="${esc(t('chooseAria', { label: it.label }))}"><span class="side-tag" aria-hidden="true">${side.toUpperCase()}</span>${inner}</div>`;
 }
 function emptyDuelHTML(): string {
   return `<div class="empty-duel">

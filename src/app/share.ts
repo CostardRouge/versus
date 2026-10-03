@@ -1,5 +1,6 @@
 import { trackEvent } from '../audience';
 import { fillInk, fillNeedsHalo, haloOf, hslToHex, normHex, rgbOf } from '../core/colors';
+import { imageSrc } from '../core/model';
 import type { RankingView } from '../core/protocol';
 import { agreement, lastDuelPerPair, ownRanking } from '../core/published';
 import { methodOf, validHistory } from '../core/scoring';
@@ -845,7 +846,7 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
 
 async function imagesOf(spec: CardSpec): Promise<Images> {
   const items = [...spec.rows, ...spec.mine].map((r) => r.it).concat(spec.pair ?? []);
-  const srcs = [...new Set(items.map((i) => i.img).filter((s): s is string => !!s))];
+  const srcs = [...new Set(items.map(imageSrc).filter((s): s is string => !!s))];
   const loaded = await Promise.all(srcs.map(loadImage));
   const out: Images = new Map();
   srcs.forEach((s, i) => {

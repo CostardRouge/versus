@@ -1,4 +1,5 @@
 import { fillCSS } from '../core/colors';
+import { hueValue, imageSrc } from '../core/model';
 import type { Item } from '../core/types';
 import { esc, initials } from '../core/util';
 import { t } from '../i18n';
@@ -235,7 +236,9 @@ export async function copyText(text: string): Promise<boolean> {
  * An item's small square: its color, its picture, or its initials. A picture from the server (a published board's,
  * up to 250 KB) waits until its row is near the screen, so a long list doesn't hold back the duel's pictures.
  */
-export const thumbHTML = (it: Item): string =>
-  it.fill
-    ? `<span class="thumb" style="background:${fillCSS(it.fill)}"></span>`
-    : `<span class="thumb" style="--h:${it.h}">${it.img ? `<img src="${esc(it.img)}" alt=""${it.img.startsWith('data:') ? '' : ' loading="lazy" decoding="async"'}>` : esc(initials(it.label))}</span>`;
+export function thumbHTML(it: Item): string {
+  if (it.fill) return `<span class="thumb" style="background:${fillCSS(it.fill)}"></span>`;
+  const img = imageSrc(it);
+  const lazy = img && !img.startsWith('data:') ? ' loading="lazy" decoding="async"' : '';
+  return `<span class="thumb" style="--h:${hueValue(it)}">${img ? `<img src="${esc(img)}" alt=""${lazy}>` : esc(initials(it.label))}</span>`;
+}

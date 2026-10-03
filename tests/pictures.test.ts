@@ -10,7 +10,7 @@ import {
   parsePublish,
   pendingPictures,
 } from '../src/core/board';
-import { mkItem, mkRank } from '../src/core/model';
+import { hueValue, imageSrc, mkItem, mkRank } from '../src/core/model';
 import { dataURLBytes, pictureItems, publishRequest } from '../src/core/published';
 import { isJpeg } from '../src/core/share';
 import type { Item, Result, SharedBoard } from '../src/core/types';
@@ -97,6 +97,29 @@ describe('what the server accepts', () => {
     expect(isJpeg(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]))).toBe(false);
     expect(isJpeg(Uint8Array.from([0xff, 0xd8]))).toBe(false);
     expect(LIMITS.picture).toBeGreaterThan(100_000);
+  });
+});
+
+describe('what the views draw', () => {
+  it('draws only the two forms of picture the app writes', () => {
+    const src = (img: unknown) => imageSrc({ img } as Pick<Item, 'img'>);
+    expect(src('data:image/jpeg;base64,/9j/4AAQSkZJRg==')).toBe('data:image/jpeg;base64,/9j/4AAQSkZJRg==');
+    expect(src('/img/b/Ab3dEf7hJk/i0.jpg')).toBe('/img/b/Ab3dEf7hJk/i0.jpg');
+    for (const bad of [
+      null,
+      42,
+      'x" onerror="1',
+      'javascript:alert(1)',
+      'https://example.com/a.jpg',
+      'data:text/html;base64,PHNjcmlwdD4=',
+      "data:image/png;base64,AAAA')",
+      '/img/b/Ab3dEf7hJk/../x.jpg',
+      '/img/b/Ab3dEf7hJk/i0.jpg?x',
+    ]) {
+      expect(src(bad), String(bad)).toBeNull();
+    }
+    expect(hueValue({ h: 120 })).toBe(120);
+    expect(hueValue({ h: '1;x' as unknown as number })).toBe(0);
   });
 });
 
