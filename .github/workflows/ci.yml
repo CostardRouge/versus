@@ -17,7 +17,7 @@ permissions:
 jobs:
   verify:
     name: Lint, typecheck, test, build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -63,7 +63,7 @@ jobs:
 
   e2e:
     name: End-to-end (Chromium)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -95,7 +95,7 @@ jobs:
     name: Deploy to GitHub Pages
     needs: [verify, e2e]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write
@@ -117,7 +117,7 @@ jobs:
     needs: [verify, e2e]
     # Off until the repository has the CLOUDFLARE_ACCOUNT_ID variable (and the CLOUDFLARE_API_TOKEN secret).
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_ACCOUNT_ID != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
