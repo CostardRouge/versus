@@ -150,6 +150,7 @@ See `docs/published-boards.md`.
 | D101 | Export goes through the share sheet on touch devices, a download elsewhere | Decided | The share sheet has Save to Files, AirDrop and messages; a download is easy to lose on a phone, and the iOS home-screen app can't show one. |
 | D80 | Canonical address: https://versus.steevepommier.com/ by default, for both builds | Decided | The Worker's domain is live; audits flagged a canonical pointing to github.io. `SITE_URL` still overrides it. |
 | D81 | The page text lives in the static HTML (h1, how it works, methods, privacy, links) and closes the gallery in the visitor's language | Decided | Crawlers without JavaScript saw 3 words and no heading. One h1 either way: the static copy's, or "Your rankings" once the app runs. |
+| D121 | The project builds and runs on Node 24, the Active LTS (`.nvmrc`); `engines` keeps the floor at 22 and `@types/node` stays on the `.nvmrc` major | Decided | Node 20 is end of life and 22 is in maintenance. The floor is not raised because nothing here needs a Node 24 API; the types follow `.nvmrc`, which is why Dependabot ignores `@types/node` majors, so a Node bump moves `.nvmrc`, `@types/node` and the CLAUDE.md line together. Checked with `npm run check` (lint, types, 700 tests, build) on 24. |
 
 ## Home page
 
