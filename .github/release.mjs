@@ -163,23 +163,43 @@ function publish() {
       execFileSync('gh', ['release', 'list', '--limit', '1000', '--json', 'tagName'], { encoding: 'utf8' }),
     ).map((r) => r.tagName),
   );
-  const named = new Map();
-  for (const s of [...changelog.sections].reverse()) {
+  // A patch carries its minor's codename: read them all, oldest first, before publishing anything.
+  const minorOf = (s) => {
     const v = parseVersion(s.version);
-    const key = `${v.major}.${v.minor}`;
-    if (s.codename) named.set(key, s.codename);
+    return `${v.major}.${v.minor}`;
+  };
+  const named = new Map();
+  for (const s of [...changelog.sections].reverse()) if (s.codename) named.set(minorOf(s), s.codename);
+  // package.json's version first: it is why a release pull request merges, and a backfill must never hold it back.
+  const order = [...changelog.sections].reverse().sort((a, b) => (b.version === pkg) - (a.version === pkg));
+  const skipped = [];
+  for (const s of order) {
     const tag = `v${s.version}`;
     if (released.has(tag)) continue;
-    const title = `${tag} — ${s.codename ?? named.get(key)}`;
+    const title = `${tag} — ${s.codename ?? named.get(minorOf(s))}`;
     const notes = `Released on ${s.date}.\n\n${s.body}\n`;
     const args = ['release', 'create', tag, '--title', title, '--notes-file', '-'];
     if (tags.has(tag)) args.push('--verify-tag');
     else args.push('--target', s.commit ?? sha);
     args.push(`--latest=${s.version === pkg}`);
-    if (v.pre) args.push('--prerelease');
-    execFileSync('gh', args, { input: notes, stdio: ['pipe', 'inherit', 'inherit'] });
+    if (parseVersion(s.version).pre) args.push('--prerelease');
+    try {
+      execFileSync('gh', args, { input: notes, stdio: ['pipe', 'inherit', 'inherit'] });
+    } catch (e) {
+      if (s.version === pkg) throw e;
+      // GitHub refuses the workflow's own token a new tag on a commit whose .github/workflows differ from the
+      // default branch's (it would "change" workflows): a backfill needs RELEASE_TOKEN, see release.yml.
+      skipped.push(tag);
+      continue;
+    }
     console.log(`Released ${title} at ${s.commit ?? (tags.has(tag) ? 'its existing tag' : sha)}.`);
   }
+  if (skipped.length)
+    console.log(
+      `::warning title=Backfill not published::${skipped.join(', ')}: a tag on an older commit needs a token ` +
+        'allowed to change workflows. Set the RELEASE_TOKEN secret (fine-grained, this repository, Contents and ' +
+        'Workflows: read and write), then run the Release workflow again.',
+    );
 }
 
 const mode = process.argv[2];

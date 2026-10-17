@@ -5,11 +5,16 @@ name: Release
 # On main, `publish` gives every CHANGELOG section that has none its tag v<version> and its GitHub Release: the
 # release pull request's merge commit for package.json's version, the named commit for a backfilled one. Merging a
 # pull request that does not bump the version publishes nothing.
+# A backfilled tag points at an older commit, whose .github/workflows differ from main's: GitHub refuses that to the
+# workflow's own token. The RELEASE_TOKEN secret (a fine-grained token on this repository, Contents and Workflows:
+# read and write) lifts it; without it, backfills are skipped with a warning and the rest is published. Once the secret
+# is set, "Run workflow" (workflow_dispatch) publishes what was skipped, no merge needed.
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,7 +32,7 @@ jobs:
       - run: node .github/release.mjs check
 
   publish:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -42,4 +47,4 @@ jobs:
 
       - run: node .github/release.mjs publish
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}

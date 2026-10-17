@@ -287,7 +287,11 @@ French.** Each release has a **codename**: here a pastry (1.0.0 Chocolatine), fr
 - **A backfilled release** — a version given after the fact to a past state —
   is a section placed at its rank in the file, with
   `<!-- commit: <full sha> -->` right under its heading; the workflow tags that
-  commit. It never rewrites a section that already has its release.
+  commit. It never rewrites a section that already has its release. GitHub
+  refuses the workflow's own token a tag on a commit whose workflows differ
+  from `main`'s, so a backfill needs the `RELEASE_TOKEN` secret (the owner's
+  fine-grained token, Contents and Workflows: read and write); without it the
+  backfill is skipped with a warning and the rest still ships.
 - **A repo that serves a page shows its version** where a user can find it (a
   footer, an about line, a settings screen), read from `package.json` at build
   time, so a phone in hand says which build it runs.
