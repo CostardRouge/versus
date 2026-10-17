@@ -5,11 +5,15 @@ name: Release
 # On main, `publish` gives every CHANGELOG section that has none its tag v<version> and its GitHub Release: the
 # release pull request's merge commit for package.json's version, the named commit for a backfilled one. Merging a
 # pull request that does not bump the version publishes nothing.
+# A backfilled tag points at an older commit, whose .github/workflows differ from main's: GitHub refuses that to the
+# workflow's own token, so backfills are skipped here with a warning and published by second-brain's "Backfill
+# releases" workflow, which holds the maintainer's token. "Run workflow" re-runs publish on main by hand.
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,7 +31,7 @@ jobs:
       - run: node .github/release.mjs check
 
   publish:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

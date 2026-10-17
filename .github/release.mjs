@@ -10,7 +10,8 @@
 //
 // `node .github/release.mjs check` validates that shape (the pull request gate). `publish` (on main) creates, for
 // every section without a GitHub Release, its tag v<version> and its Release: at the section's commit for a backfill,
-// at the pushed commit for package.json's version. It never moves nor deletes a tag that exists.
+// at the pushed commit for package.json's version. `backfill` publishes the backfilled sections only, with a token
+// allowed to tag old commits (second-brain's backfill-releases.yml). Neither moves nor deletes a tag that exists.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -153,36 +154,63 @@ function check() {
   console.log(`CHANGELOG.md and package.json agree on ${pkg} (${n} release${n === 1 ? '' : 's'}).`);
 }
 
-function publish() {
+/**
+ * `publish` (release.yml, on main): every section without a Release, package.json's version first, at the pushed
+ * commit. GitHub refuses the workflow's own token a new tag on a commit whose .github/workflows differ from the default
+ * branch's, which every backfill is, so a refused backfill is only a warning there.
+ * `backfill` (second-brain's backfill-releases.yml, with the maintainer's token): the backfilled sections only.
+ */
+function publish(backfillOnly) {
   const { pkg, changelog, tags, errors } = load();
   if (errors.length) fail(errors);
   const sha = process.env.GITHUB_SHA;
-  if (!sha) fail(['GITHUB_SHA is not set: publish runs in GitHub Actions only']);
+  if (!backfillOnly && !sha) fail(['GITHUB_SHA is not set: publish runs in GitHub Actions only']);
   const released = new Set(
     JSON.parse(
       execFileSync('gh', ['release', 'list', '--limit', '1000', '--json', 'tagName'], { encoding: 'utf8' }),
     ).map((r) => r.tagName),
   );
-  const named = new Map();
-  for (const s of [...changelog.sections].reverse()) {
+  // A patch carries its minor's codename: read them all, oldest first, before publishing anything.
+  const minorOf = (s) => {
     const v = parseVersion(s.version);
-    const key = `${v.major}.${v.minor}`;
-    if (s.codename) named.set(key, s.codename);
+    return `${v.major}.${v.minor}`;
+  };
+  const named = new Map();
+  for (const s of [...changelog.sections].reverse()) if (s.codename) named.set(minorOf(s), s.codename);
+  // package.json's version first: it is why a release pull request merges, and a backfill must never hold it back.
+  const order = [...changelog.sections]
+    .reverse()
+    .filter((s) => !backfillOnly || s.commit)
+    .sort((a, b) => (b.version === pkg) - (a.version === pkg));
+  const skipped = [];
+  for (const s of order) {
     const tag = `v${s.version}`;
     if (released.has(tag)) continue;
-    const title = `${tag} — ${s.codename ?? named.get(key)}`;
+    const title = `${tag} — ${s.codename ?? named.get(minorOf(s))}`;
     const notes = `Released on ${s.date}.\n\n${s.body}\n`;
     const args = ['release', 'create', tag, '--title', title, '--notes-file', '-'];
     if (tags.has(tag)) args.push('--verify-tag');
     else args.push('--target', s.commit ?? sha);
     args.push(`--latest=${s.version === pkg}`);
-    if (v.pre) args.push('--prerelease');
-    execFileSync('gh', args, { input: notes, stdio: ['pipe', 'inherit', 'inherit'] });
+    if (parseVersion(s.version).pre) args.push('--prerelease');
+    try {
+      execFileSync('gh', args, { input: notes, stdio: ['pipe', 'inherit', 'inherit'] });
+    } catch (e) {
+      if (s.version === pkg || backfillOnly) throw e;
+      skipped.push(tag);
+      continue;
+    }
     console.log(`Released ${title} at ${s.commit ?? (tags.has(tag) ? 'its existing tag' : sha)}.`);
   }
+  if (skipped.length)
+    console.log(
+      `::warning title=Backfill waiting::${skipped.join(', ')}: a tag on an older commit needs the maintainer's ` +
+        'token. second-brain\'s "Backfill releases" workflow publishes them (COMMON-PROJECT-SPEC, C13).',
+    );
 }
 
 const mode = process.argv[2];
 if (mode === 'check') check();
-else if (mode === 'publish') publish();
-else if (mode !== undefined) fail([`unknown mode ${mode}: check or publish`]);
+else if (mode === 'publish') publish(false);
+else if (mode === 'backfill') publish(true);
+else if (mode !== undefined) fail([`unknown mode ${mode}: check, publish or backfill`]);
