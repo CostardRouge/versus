@@ -182,7 +182,7 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **Audience measurement** (`docs/analytics.md`): views and events go through `src/audience.ts`, never through the tracker's automatic tracking or `data-umami-event` attributes. An event's data is anonymous facts only (method, counts, flags), never a title, a label, an id or an alias. The legal notice lists what is counted: change an event, a tracked path or what is stored, and update `src/i18n/legal-*.ts` in the same commit.
 - **Demos are fixed data** (`core/demos.ts`): same items and duels for everyone (seeded `mulberry32`). Don't make them random.
 - **SEO lives in `build/site.ts`**, never hand-written in the HTML shells or `public/`: each page's head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The home pages (`/`, `/fr/`) are the indexed ones, linked by hreflang, with every word in their static HTML and one h1; the app (`/app/`) is `noindex` and keeps its own static text (`src/app/about.ts`). Links between pages are relative (the site also lives under github.io/versus/). A redesigned icon or social card gets new file names (caches key on the URL). Modules the Vite config reaches import with their `.ts` extension (D90). Details in `docs/seo.md`.
-- Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set.
+- Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set. `.github/workflows/registry.yml` checks a pull request's Registry block and reports it to the owner's register after the merge (see "Report the project's state" below, D122).
 
 ## Versions and releases
 
@@ -228,6 +228,68 @@ shape, in English. Each release has a **codename**: here a pastry (1.0.0 Chocola
 - Stability for rating methods = duels / `max(n, round(n·log2(n)·1.2))`; for exact sort = placed items.
 - Pair selection favors items with few duels, close positions and unseen pairs, and avoids the previous duel's items.
 - Items: text, image (downscaled to 640 px JPEG 0.82 data URL), or fill (`solid` | `gradient`, 2–3 hex stops). Typing or pasting `#hex` creates a color item. A color item whose label equals its code follows the color when edited. On a published board an image is a picture sent for review (`pic`), then an address under `/img/`.
+
+## Report the project's state (MANDATORY)
+
+The register of what is open is the private `second-brain` repository: one
+folder per project, filed by group and domain and found by its slug (`versus`
+here), whose `README.md` carries a typed front matter (`state`, `point`,
+`repos`) and a `## To do` list of checkboxes. `PROJECTS.md` at its root is
+GENERATED from those folders. That register is the source of truth — not this
+conversation, not Claude's memory, not `git log`, which records what changed
+and never what state the project is in.
+
+A session that changes code here changes this project's state, and the state
+reaches the register **through this repository: never touch `second-brain`**.
+Do not attach it (`add_repo`), do not clone it, do not commit to it — locally
+either, even though it sits beside this checkout. On every push to `main`,
+`.github/workflows/registry.yml` reads the block below from the merged pull
+request's description (or, when there is none, from the pushed commits'
+messages) and sends it to `second-brain`, whose own workflow updates the fiche
+and regenerates `PROJECTS.md`. Only what reaches `main` is reported.
+
+Write the block in a cloud session in this repository's pull request
+description, **inside an HTML comment** so the rendered pull request stays
+clean and its French does not mix with an English description. The labels are
+English, what follows them is French:
+
+    <!-- Registry
+    Project: versus
+    Last point: <the project as it now stands, in French>
+    - [x] <an existing box this work closes, copied from the fiche>
+    - [ ] <a new open action, in French>
+    Log: <one line for the fiche's log, in French>
+    -->
+
+In a local session, write the same lines at the end of the task's commit body,
+after a line `Registry:`.
+
+Every line but the first is optional. `Last point:` REPLACES the fiche's
+paragraph: write what someone back after three months needs about the whole
+project, not a changelog — the commit body already carries the detail. A
+`- [x]` ticks a box only when its text matches one; copy it from the fiche
+when you can read it (locally `../second-brain`, or through GitHub when the
+session already has it — never attach it just to read it), otherwise leave the
+ticking to the maintainer. A new box is one gesture, not a plan. The date is
+the merge's, and `state:` is never written by a block: it is the
+maintainer's call.
+
+**Hidden is not private.** The API hands a pull request's description and a
+commit's message to anyone who can read the repository. In a **public**
+repository the block carries only what is already public: the `Project:` line,
+ticked boxes (`- [x]`) and one `Log:` line — never a `Last point:`, never an
+open box, nothing else. The `check` job of `registry.yml` checks every pull
+request before it is merged: it fails on a malformed block, on a block left
+visible under a heading, and, in a public repository, on any other line; and
+the report strips such a line if it is merged anyway.
+
+**This repository is public** (measured 2026-10-17), so its blocks carry only
+`Project: versus`, ticked boxes and one `Log:` line. `registry.yml` reads the
+visibility itself: nothing here changes if the repository goes private.
+
+A change a returning reader does not need — tooling, a typo, a refactor —
+carries no block. A question, an exploration or an explanation changes no
+state and writes no block.
 
 ## Where to look next
 
