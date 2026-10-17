@@ -184,40 +184,6 @@ docs/                 decisions, roadmap, published boards model, online archite
 - **SEO lives in `build/site.ts`**, never hand-written in the HTML shells or `public/`: each page's head, the manifest, robots.txt, the sitemap and llms.txt are generated from it; the canonical address is https://versus.steevepommier.com/ unless `VITE_SITE_URL` (CI variable `SITE_URL`) says otherwise. The home pages (`/`, `/fr/`) are the indexed ones, linked by hreflang, with every word in their static HTML and one h1; the app (`/app/`) is `noindex` and keeps its own static text (`src/app/about.ts`). Links between pages are relative (the site also lives under github.io/versus/). A redesigned icon or social card gets new file names (caches key on the URL). Modules the Vite config reaches import with their `.ts` extension (D90). Details in `docs/seo.md`.
 - Commit only when `npm run check` passes. CI (`.github/workflows/ci.yml`) runs Biome, tsc, coverage and build on PRs and pushes, then deploys `main` to Pages, and to Cloudflare (`npm run worker:deploy`) when the `CLOUDFLARE_ACCOUNT_ID` variable is set. `.github/workflows/registry.yml` checks a pull request's Registry block and reports it to the owner's register after the merge (see "Report the project's state" below, D122).
 
-## Versions and releases
-
-The project carries **one version**, `version` in the root `package.json`, in
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html): `MAJOR.MINOR.PATCH`.
-`CHANGELOG.md` says what each release brings to the people who use the
-project, newest first, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-shape, in English. Each release has a **codename**: here a pastry (1.0.0 Chocolatine), from the home page's world.
-
-- **Every pull request that changes what users get** adds its lines under
-  `## [Unreleased]` (`### Added`, `### Changed`, `### Fixed`, `### Removed`,
-  `### Security`), written for a user, not a developer. Tooling, a refactor or
-  a test adds nothing there. It does not touch the version.
-- **A release is its own pull request**, made when the owner asks for one: it
-  moves the `Unreleased` lines under `## [x.y.z] - YYYY-MM-DD — Codename` and
-  sets `package.json` to the same version, nothing else. PATCH for fixes only;
-  MINOR for anything new; MAJOR when something users relied on stops working
-  (stored data that does not carry over, a link, a protocol, a removed
-  feature). Before 1.0.0, MINOR covers both. A new MINOR or MAJOR takes a new
-  codename, never reused; a PATCH keeps its minor's. When a milestone ends or
-  `Unreleased` holds something worth announcing, say so in the final message:
-  the owner decides when to release.
-- **Never tag nor publish a release by hand.** On `main`,
-  `.github/workflows/release.yml` gives every section that has none its tag
-  `vX.Y.Z` and its GitHub Release; on every pull request its `check` job
-  refuses a `CHANGELOG.md` that disagrees with `package.json` or breaks the
-  shape. Run `node .github/release.mjs check` before pushing a release.
-- **A backfilled release** — a version given after the fact to a past state —
-  is a section placed at its rank in the file, with
-  `<!-- commit: <full sha> -->` right under its heading; the workflow tags that
-  commit. It never rewrites a section that already has its release.
-- **A repo that serves a page shows its version** where a user can find it (a
-  footer, an about line, a settings screen), read from `package.json` at build
-  time, so a phone in hand says which build it runs.
-
 ## Key domain rules
 
 - Scoring methods (per ranking, switchable at any time; everything is recomputed from the same duel history):
@@ -290,6 +256,41 @@ visibility itself: nothing here changes if the repository goes private.
 A change a returning reader does not need — tooling, a typo, a refactor —
 carries no block. A question, an exploration or an explanation changes no
 state and writes no block.
+
+## Versions and releases
+
+The project carries **one version**, `version` in the root `package.json`, in
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html): `MAJOR.MINOR.PATCH`.
+`CHANGELOG.md` says what each release brings to the people who use the
+project, newest first, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+shape. **It is written in English, like the code, even where the app speaks
+French.** Each release has a **codename**: here a pastry (1.0.0 Chocolatine), from the home page's world.
+
+- **Every pull request that changes what users get** adds its lines under
+  `## [Unreleased]` (`### Added`, `### Changed`, `### Fixed`, `### Removed`,
+  `### Security`), written for a user, not a developer. Tooling, a refactor or
+  a test adds nothing there. It does not touch the version.
+- **A release is its own pull request**, made when the owner asks for one: it
+  moves the `Unreleased` lines under `## [x.y.z] - YYYY-MM-DD — Codename` and
+  sets `package.json` to the same version, nothing else. PATCH for fixes only;
+  MINOR for anything new; MAJOR when something users relied on stops working
+  (stored data that does not carry over, a link, a protocol, a removed
+  feature). Before 1.0.0, MINOR covers both. A new MINOR or MAJOR takes a new
+  codename, never reused; a PATCH keeps its minor's. When a milestone ends or
+  `Unreleased` holds something worth announcing, say so in the final message:
+  the owner decides when to release.
+- **Never tag nor publish a release by hand.** On `main`,
+  `.github/workflows/release.yml` gives every section that has none its tag
+  `vX.Y.Z` and its GitHub Release; on every pull request its `check` job
+  refuses a `CHANGELOG.md` that disagrees with `package.json` or breaks the
+  shape. Run `node .github/release.mjs check` before pushing a release.
+- **A backfilled release** — a version given after the fact to a past state —
+  is a section placed at its rank in the file, with
+  `<!-- commit: <full sha> -->` right under its heading; the workflow tags that
+  commit. It never rewrites a section that already has its release.
+- **A repo that serves a page shows its version** where a user can find it (a
+  footer, an about line, a settings screen), read from `package.json` at build
+  time, so a phone in hand says which build it runs.
 
 ## Where to look next
 

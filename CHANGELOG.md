@@ -3,7 +3,8 @@
 What each release of Versus brings to the people who use it. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html); `.github/workflows/release.yml` turns each section into a
-tag and a GitHub Release once it reaches `main` (COMMON-PROJECT-SPEC C13, D121). Codenames are pastries.
+tag and a GitHub Release once it reaches `main` (COMMON-PROJECT-SPEC C13, D123). Written in English, like the code.
+Codenames are pastries.
 
 ## [Unreleased]
 
