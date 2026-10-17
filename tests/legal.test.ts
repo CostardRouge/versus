@@ -32,6 +32,9 @@ const COUNTED: Record<string, { en: RegExp; fr: RegExp }> = {
   'rankings-exported': { en: /rankings exported to a file/, fr: /classements exportés dans un fichier/ },
   'rankings-imported': { en: /or imported from one/, fr: /ou importés d’un fichier/ },
   'app-installed': { en: /an installation/, fr: /une installation/ },
+  'share-received': { en: /something shared to Versus from another app/, fr: /un partage reçu d’une autre app/ },
+  'shortcut-used': { en: /a shortcut of its icon used/, fr: /un raccourci de son icône utilisé/ },
+  'notify-on': { en: /notifications turned on/, fr: /des notifications activées/ },
   chocolatine: { en: /chocolatine debate/, fr: /débat de la chocolatine/ },
 };
 

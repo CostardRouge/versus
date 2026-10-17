@@ -1,4 +1,5 @@
 import { fillInk, fillNeedsHalo, haloOf, hslToHex, normHex, rgbOf } from '../core/colors';
+import { imageSrc } from '../core/model';
 import {
   CARD_ROWS,
   CARD_SIZES,
@@ -194,7 +195,8 @@ function drawMedia(
   ctx.save();
   roundRect(ctx, x, y, w, h, r);
   ctx.clip();
-  const img = it.img ? images.get(it.img) : undefined;
+  const src = imageSrc(it);
+  const img = src ? images.get(src) : undefined;
   if (it.fill) {
     ctx.fillStyle = fillPaint(ctx, it.fill, x, y, w, h);
     ctx.fillRect(x, y, w, h);
@@ -257,7 +259,7 @@ function drawBadge(ctx: Ctx, P: Palette, text: string, cx: number, cy: number, r
  * like the app's cards), white over a picture, the page's ink over a text card.
  */
 function caption(ctx: Ctx, P: Palette, it: Item, size: number, draw: () => void): void {
-  const ink = it.fill ? fillInk(it.fill) : it.img ? '#ffffff' : P.ink;
+  const ink = it.fill ? fillInk(it.fill) : imageSrc(it) ? '#ffffff' : P.ink;
   ctx.save();
   ctx.fillStyle = ink;
   if (it.fill && fillNeedsHalo(it.fill)) {
@@ -284,7 +286,7 @@ function drawTile(
   drawMedia(ctx, P, row.it, x, y, w, h, r, images, 'none');
   const it = row.it;
   const pad = w * 0.08;
-  if (it.img) {
+  if (imageSrc(it)) {
     // A shade under the name, as on the duel cards.
     ctx.save();
     roundRect(ctx, x, y, w, h, r);
@@ -367,7 +369,7 @@ function drawDuelCard(
   ctx.shadowColor = 'transparent';
   drawMedia(ctx, P, it, 0, 0, w, h, w * 0.1, images, 'none');
   const pad = w * 0.09;
-  if (it.img) {
+  if (imageSrc(it)) {
     ctx.save();
     roundRect(ctx, 0, 0, w, h, w * 0.1);
     ctx.clip();

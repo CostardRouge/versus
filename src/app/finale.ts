@@ -32,6 +32,8 @@ export interface FinaleData {
   crowd: RankingView | null;
   owner: boolean;
   view: ResultView;
+  /** The voter's bell (notified at the closing), or ''. */
+  bell: string;
 }
 
 /** How long the reveal lasts; live updates wait for its end. */
@@ -165,7 +167,7 @@ function actionsHTML(c: Ctx, delay: number): string {
         ? t('finSeeFinal')
         : t('finSeeBoard');
   return `<div class="fin-acts rv" style="--d:${delay}s">
-    <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${main}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button></div>
+    <div class="fin-btns"><button class="btn primary" type="button" data-action="b-finale-close">${main}</button><button class="btn" type="button" data-action="share-finale">${t('share')}</button><button class="btn ghost" type="button" data-action="b-share">${t('copyLink')}</button><span class="b-bell">${c.d.bell}</span></div>
     ${cta}
   </div>`;
 }

@@ -30,6 +30,7 @@ Last updated 2026-09-30. Ported from the SEO/GEO work on steevepommier.com (its 
 | `_headers` (Cloudflare static assets) | `headersFile()` | Worker build only (`--mode worker`) |
 | `404.html` (`noindex`; on GitHub Pages it also carries app views to the app, D92) | `notFoundHtml()` | build |
 | Icons and the social cards (`og.png`, `og-fr.png`) in `public/` | `scripts/icons.ts` (`npm run icons`) | by hand, files committed |
+| The manifest's screenshots (`screen-*.png`) in `public/` | `scripts/screenshots.ts` (`npm run screenshots`), the real app on the demos | by hand, files committed |
 
 `tests/seo.test.ts` and `tests/landing.test.ts` hold the invariants: titles (50–60 characters) and descriptions in both languages, hreflang pairs, one h1 per page, no skipped heading level, every in-page anchor resolves, relative links that go back to the root from every page, and: title (50–60 characters) and description lengths, one h1 and at least 250 words in the static HTML, no skipped heading level, canonical = `og:url` = JSON-LD ids, every `@id` reference resolves, every linked file exists, PNG sizes match their declarations, favicons are multiples of 48 px, the `.ico` holds 16/32/48.
 
@@ -89,4 +90,3 @@ From SEOptimer and Seobility on versus.steevepommier.com, once the fixes above w
 ## Possible next steps
 
 - **Cards for links no one shared from the app yet**: a board's card is drawn at publication and at each share from the app; a link copied by hand before that unfurls with the site's card until then. A card drawn on the server would need the paid plan (CPU time) or a rasterizer of our own.
-- **Manifest screenshots** (`form_factor` wide and narrow) for Chrome's richer install dialog.

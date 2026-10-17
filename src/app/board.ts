@@ -29,7 +29,7 @@ import {
   suggesting,
 } from './board-state';
 import { closeColor } from './color';
-import { $, ask, copyText, doc, focusKey, focusOn, reduced, thumbHTML, toast } from './dom';
+import { $, $$, ask, bellSvg, copyText, doc, focusKey, focusOn, reduced, thumbHTML, toast } from './dom';
 import { bindStage, cardHTML, controlsHTML, duelKeys, outcomeOf, playPick } from './duel';
 import { addFormHTML, typed } from './editor';
 import { errorKey, OWNER_ERRORS, REPORT_ERRORS } from './errors';
@@ -45,6 +45,7 @@ import {
 } from './finale';
 import { fmtCrowd } from './format';
 import { flushJoined, joinedOf, markGone, noteBoard } from './joined';
+import { forgetPush, preparePush, pushAsked, pushReady, togglePush } from './push';
 import { makeOwn, open } from './rankings';
 import { BoardSocket, type Connection, fetchConfig, reportBoard, setBoardStatus, withdrawBoard } from './remote';
 import { currentLayer, dropLayer, popLayer, pushLayer, routeURL } from './router';
@@ -158,7 +159,12 @@ export function enterBoard(
   const board = newBoard({ alias, owner, candidate, available, reopen: currentLayer() === 'finale' });
   setBoardState(board);
   resetFinale();
-  if (available) connect(board, wanted);
+  if (!available) return;
+  connect(board, wanted);
+  // The bells show once the server and the service worker answered.
+  void preparePush().then((ok) => {
+    if (ok && boardState() === board) renderBell();
+  });
 }
 
 /** The first state of a board opened on its end-of-vote page's entry (a reload, Back from elsewhere) shows it again. */
@@ -236,6 +242,7 @@ function onConnection(board: Board, c: Connection): void {
   if (c === 'gone' && !board.leaving) {
     board.view = null;
     markGone(board.alias);
+    forgetPush(board.alias);
   }
   if (c === 'lost') board.failed = true;
   if (!board.view) {
@@ -275,6 +282,8 @@ function onMessage(board: Board, m: ServerMessage): void {
       local.title = m.board.title;
       save();
     }
+    // Closed: the board told the voters who asked, and forgot them.
+    if (m.board.status === 'closed') forgetPush(board.alias, 'voter');
     if (m.owner && board.pictures === null) {
       board.pictures = false;
       void fetchConfig().then((c) => {
@@ -437,6 +446,7 @@ function boardHTML(b: Board): string {
       <span class="b-head-acts">
         <button class="btn sm primary" type="button" data-action="share-board">${t('share')}</button>
         <button class="btn sm" type="button" data-action="b-share">${t('copyLink')}</button>
+        <span class="b-bell">${bellHTML(b)}</span>
         ${mine}
       </span>
     </div>
@@ -696,6 +706,7 @@ const finaleData = (b: Board, v: BoardView): FinaleData => ({
   crowd: b.shown,
   owner: b.isOwner,
   view: resultView(),
+  bell: bellHTML(b),
 });
 
 /** In place updates wait for the end of the reveal; a view switch or an opening doesn't. */
@@ -809,6 +820,34 @@ export function boardChange(tg: HTMLInputElement): boolean {
     return true;
   }
   return authorChange(tg);
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+/**
+ * The voter's bell: a notification when the vote closes (src/app/push.ts). Only where notifications can be
+ * offered, and on a vote that can close: open, not one of the site's own boards.
+ */
+function bellHTML(b: Board): string {
+  const v = b.view;
+  if (!v || b.isOwner || v.status !== 'open' || v.official || !pushReady()) return '';
+  const on = pushAsked(b.alias, 'voter');
+  return `<button class="btn sm ghost bell" type="button" data-action="b-notify" aria-pressed="${on}" title="${esc(t(on ? 'notifyOnHint' : 'notifyMeHint'))}">${bellSvg}<span>${t(on ? 'notifyOn' : 'notifyMe')}</span></button>`;
+}
+
+/** Every bell on screen (the board's head, the end-of-vote page), as things stand. */
+function renderBell(): void {
+  const b = boardState();
+  for (const el of $$('.b-bell')) el.innerHTML = b ? bellHTML(b) : '';
+}
+
+/** The bell was tapped: straight to the browser's prompt, which needs the tap. */
+export function boardNotify(): void {
+  const b = boardState();
+  if (!b?.view) return;
+  void togglePush(b.alias, 'voter').then(() => {
+    if (boardState() === b) renderBell();
+  });
 }
 
 // ─── Items ──────────────────────────────────────────────────────────────────
@@ -972,6 +1011,7 @@ export async function boardWithdraw(): Promise<void> {
     return;
   }
   saveOwner(b.alias, null);
+  forgetPush(b.alias);
   copy.items = copy.items.map(({ pic: _, ...it }) => ({
     ...it,
     img: pictures.get(it.id) ?? (it.img?.startsWith('data:') ? it.img : null),
@@ -1002,6 +1042,7 @@ export function boardUnlink(): void {
   if (!b || !local) return;
   delete local.pub;
   saveOwner(b.alias, null);
+  forgetPush(b.alias);
   save();
   leaveBoard();
   open(local.id, 'duel', { replace: true });

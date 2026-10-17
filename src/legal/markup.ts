@@ -99,7 +99,7 @@ export function legalBody(lang: Lang, opts: LegalOpts): string {
         [
           p('privShort'),
           sub('device', 'deviceTitle', p('device1', 'device2')),
-          sub('boards', 'boardsTitle', p('boards1', 'boards2', 'boards3')),
+          sub('boards', 'boardsTitle', p('boards1', 'boards2', 'boards3', 'boards4')),
           sub('measurement', 'countTitle', `${p('count1', 'count2', 'count3', 'count4')}\n        ${counter}`),
           sub('cookies', 'cookiesTitle', p('cookies1')),
           sub('logs', 'logsTitle', p('logs1')),

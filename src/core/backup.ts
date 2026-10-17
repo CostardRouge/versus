@@ -10,6 +10,7 @@ import {
   VOTER_RE,
 } from './board.ts';
 import { DEMOS } from './demos.ts';
+import { IMG_RE } from './images.ts';
 import { parseJoined } from './joined.ts';
 import { LABEL_MAX, TITLE_MAX } from './model.ts';
 import { METHOD_KEYS } from './scoring.ts';
@@ -96,8 +97,6 @@ export type ImportError = 'not-versus' | 'newer' | 'empty';
 export type Parsed = { ok: true; value: Backup } | { ok: false; error: ImportError };
 
 const ID_RE = /^[\w-]{1,40}$/;
-/** Images are stored as data URLs (items.ts downscales them to JPEG); nothing else may reach an src or url(). */
-const IMG_RE = /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 const clip = (s: string, max: number): string => Array.from(s.trim()).slice(0, max).join('').trim();
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);

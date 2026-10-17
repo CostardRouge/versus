@@ -502,6 +502,7 @@ describe('motion', () => {
       crowd: null,
       owner: false,
       view: 'podium',
+      bell: '',
     });
     document.body.append(host);
     mountFinale('play', () => {});
@@ -558,6 +559,7 @@ describe('figures a screen reader can tell apart', () => {
       },
       owner: false,
       view: 'duo',
+      bell: '',
     });
     const neck = host.querySelector('.fin-neck');
     expect(neck?.getAttribute('role')).toBe('img');
