@@ -10,7 +10,8 @@
 //
 // `node .github/release.mjs check` validates that shape (the pull request gate). `publish` (on main) creates, for
 // every section without a GitHub Release, its tag v<version> and its Release: at the section's commit for a backfill,
-// at the pushed commit for package.json's version. It never moves nor deletes a tag that exists.
+// at the pushed commit for package.json's version. `backfill` publishes the backfilled sections only, with a token
+// allowed to tag old commits (second-brain's backfill-releases.yml). Neither moves nor deletes a tag that exists.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -153,11 +154,17 @@ function check() {
   console.log(`CHANGELOG.md and package.json agree on ${pkg} (${n} release${n === 1 ? '' : 's'}).`);
 }
 
-function publish() {
+/**
+ * `publish` (release.yml, on main): every section without a Release, package.json's version first, at the pushed
+ * commit. GitHub refuses the workflow's own token a new tag on a commit whose .github/workflows differ from the default
+ * branch's, which every backfill is, so a refused backfill is only a warning there.
+ * `backfill` (second-brain's backfill-releases.yml, with the maintainer's token): the backfilled sections only.
+ */
+function publish(backfillOnly) {
   const { pkg, changelog, tags, errors } = load();
   if (errors.length) fail(errors);
   const sha = process.env.GITHUB_SHA;
-  if (!sha) fail(['GITHUB_SHA is not set: publish runs in GitHub Actions only']);
+  if (!backfillOnly && !sha) fail(['GITHUB_SHA is not set: publish runs in GitHub Actions only']);
   const released = new Set(
     JSON.parse(
       execFileSync('gh', ['release', 'list', '--limit', '1000', '--json', 'tagName'], { encoding: 'utf8' }),
@@ -171,7 +178,10 @@ function publish() {
   const named = new Map();
   for (const s of [...changelog.sections].reverse()) if (s.codename) named.set(minorOf(s), s.codename);
   // package.json's version first: it is why a release pull request merges, and a backfill must never hold it back.
-  const order = [...changelog.sections].reverse().sort((a, b) => (b.version === pkg) - (a.version === pkg));
+  const order = [...changelog.sections]
+    .reverse()
+    .filter((s) => !backfillOnly || s.commit)
+    .sort((a, b) => (b.version === pkg) - (a.version === pkg));
   const skipped = [];
   for (const s of order) {
     const tag = `v${s.version}`;
@@ -186,9 +196,7 @@ function publish() {
     try {
       execFileSync('gh', args, { input: notes, stdio: ['pipe', 'inherit', 'inherit'] });
     } catch (e) {
-      if (s.version === pkg) throw e;
-      // GitHub refuses the workflow's own token a new tag on a commit whose .github/workflows differ from the
-      // default branch's (it would "change" workflows): a backfill needs RELEASE_TOKEN, see release.yml.
+      if (s.version === pkg || backfillOnly) throw e;
       skipped.push(tag);
       continue;
     }
@@ -196,13 +204,13 @@ function publish() {
   }
   if (skipped.length)
     console.log(
-      `::warning title=Backfill not published::${skipped.join(', ')}: a tag on an older commit needs a token ` +
-        'allowed to change workflows. Set the RELEASE_TOKEN secret (fine-grained, this repository, Contents and ' +
-        'Workflows: read and write), then run the Release workflow again.',
+      `::warning title=Backfill waiting::${skipped.join(', ')}: a tag on an older commit needs the maintainer's ` +
+        'token. second-brain\'s "Backfill releases" workflow publishes them (COMMON-PROJECT-SPEC, C13).',
     );
 }
 
 const mode = process.argv[2];
 if (mode === 'check') check();
-else if (mode === 'publish') publish();
-else if (mode !== undefined) fail([`unknown mode ${mode}: check or publish`]);
+else if (mode === 'publish') publish(false);
+else if (mode === 'backfill') publish(true);
+else if (mode !== undefined) fail([`unknown mode ${mode}: check, publish or backfill`]);

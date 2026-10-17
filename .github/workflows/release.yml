@@ -6,9 +6,8 @@ name: Release
 # release pull request's merge commit for package.json's version, the named commit for a backfilled one. Merging a
 # pull request that does not bump the version publishes nothing.
 # A backfilled tag points at an older commit, whose .github/workflows differ from main's: GitHub refuses that to the
-# workflow's own token. The RELEASE_TOKEN secret (a fine-grained token on this repository, Contents and Workflows:
-# read and write) lifts it; without it, backfills are skipped with a warning and the rest is published. Once the secret
-# is set, "Run workflow" (workflow_dispatch) publishes what was skipped, no merge needed.
+# workflow's own token, so backfills are skipped here with a warning and published by second-brain's "Backfill
+# releases" workflow, which holds the maintainer's token. "Run workflow" re-runs publish on main by hand.
 
 on:
   pull_request:
@@ -47,4 +46,4 @@ jobs:
 
       - run: node .github/release.mjs publish
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
