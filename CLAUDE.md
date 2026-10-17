@@ -24,6 +24,7 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 npm install
 npm run dev          # Vite dev server
 npm run check        # lint + typecheck + tests + build (what CI runs); run before every commit
+node .github/release.mjs check  # CHANGELOG.md against package.json's version (CI runs it on every PR)
 npm run coverage     # tests with coverage (src/core must stay ≥ 90% lines/functions/statements, ≥ 75% branches)
 npm run e2e          # end-to-end tests in Chromium (Playwright, tests/e2e; the API and WebSocket faked per test)
 npm run format       # Biome auto-fix
@@ -124,6 +125,7 @@ src/app/              UI: renders HTML strings, one delegated listener per event
   pwa.ts              registers the service worker (production only), update bar, install button, persistent storage
   backup.ts           export (share sheet on phones, download elsewhere) and import (file picked or dropped)
   header.ts, format.ts  static header texts and theme / score, record and date formatting
+  version.ts          the build's version, read from package.json, closing the about footer (Versions and releases)
   storage.ts          guarded localStorage access, prefs, migration from prototype keys, unreadable rankings set aside
 src/landing/          the home page: markup.ts renders it at build time (pure strings, like frame.ts: the demo frames'
                       HTML, shared with the script), data.ts (its items, EN/FR), sprite.ts (pastry drawings), strings.ts
@@ -255,8 +257,44 @@ A change a returning reader does not need — tooling, a typo, a refactor —
 carries no block. A question, an exploration or an explanation changes no
 state and writes no block.
 
+## Versions and releases
+
+The project carries **one version**, `version` in the root `package.json`, in
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html): `MAJOR.MINOR.PATCH`.
+`CHANGELOG.md` says what each release brings to the people who use the
+project, newest first, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+shape. **It is written in English, like the code, even where the app speaks
+French.** Each release has a **codename**: here a pastry (1.0.0 Chocolatine), from the home page's world.
+
+- **Every pull request that changes what users get** adds its lines under
+  `## [Unreleased]` (`### Added`, `### Changed`, `### Fixed`, `### Removed`,
+  `### Security`), written for a user, not a developer. Tooling, a refactor or
+  a test adds nothing there. It does not touch the version.
+- **A release is its own pull request**, made when the owner asks for one: it
+  moves the `Unreleased` lines under `## [x.y.z] - YYYY-MM-DD — Codename` and
+  sets `package.json` to the same version, nothing else. PATCH for fixes only;
+  MINOR for anything new; MAJOR when something users relied on stops working
+  (stored data that does not carry over, a link, a protocol, a removed
+  feature). Before 1.0.0, MINOR covers both. A new MINOR or MAJOR takes a new
+  codename, never reused; a PATCH keeps its minor's. When a milestone ends or
+  `Unreleased` holds something worth announcing, say so in the final message:
+  the owner decides when to release.
+- **Never tag nor publish a release by hand.** On `main`,
+  `.github/workflows/release.yml` gives every section that has none its tag
+  `vX.Y.Z` and its GitHub Release; on every pull request its `check` job
+  refuses a `CHANGELOG.md` that disagrees with `package.json` or breaks the
+  shape. Run `node .github/release.mjs check` before pushing a release.
+- **A backfilled release** — a version given after the fact to a past state —
+  is a section placed at its rank in the file, with
+  `<!-- commit: <full sha> -->` right under its heading; the workflow tags that
+  commit. It never rewrites a section that already has its release.
+- **A repo that serves a page shows its version** where a user can find it (a
+  footer, an about line, a settings screen), read from `package.json` at build
+  time, so a phone in hand says which build it runs.
+
 ## Where to look next
 
+- `CHANGELOG.md`: what each release brought, newest first (see Versions and releases above).
 - `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
 - `docs/roadmap.md`: done, next, later, open questions.
 - `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates, moderation, pictures, templates.
