@@ -2,7 +2,7 @@ import { trackEvent } from '../audience';
 import { buildDemo, DEMOS, relabelDemos } from '../core/demos';
 import { mkRank } from '../core/model';
 import { parseBoardHash } from '../core/published';
-import { parseOwnerFragment, parseRoute } from '../core/route';
+import { lastRanking, parseOwnerFragment, parseRoute, parseShortcut, type Shortcut } from '../core/route';
 import { methodOf } from '../core/scoring';
 import { parseDuelQuery } from '../core/share';
 import type { Item, Ranking } from '../core/types';
@@ -270,11 +270,33 @@ export function routeFromURL(): void {
   route();
   booted = true;
 }
+/** A shortcut on the app's icon: a new ranking, or the last one. False when there is nothing to resume. */
+function runShortcut(s: Shortcut): boolean {
+  trackEvent('shortcut-used', { which: s });
+  if (s === 'new') {
+    newRank();
+    return true;
+  }
+  const r = lastRanking(S.ranks);
+  if (!r) {
+    toast(t('nothingToResume'));
+    return false;
+  }
+  // A published ranking opens its board.
+  open(r.id, 'duel', { replace: true });
+  return true;
+}
 function route(): void {
   const stashed = takeStash();
   // The stashed path stays under the app's folder, on this origin; anything else is dropped.
   const target = stashed === null ? null : stashedURL(stashed);
   if (target) history.replaceState(null, '', target);
+  const shortcut = parseShortcut(location.search);
+  if (shortcut) {
+    // Read once: Back must not run it again.
+    history.replaceState(null, '', location.pathname + location.hash);
+    if (runShortcut(shortcut)) return;
+  }
   let owner: string | null = null;
   const legacy = parseBoardHash(location.hash);
   if (legacy) {

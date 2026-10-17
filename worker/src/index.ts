@@ -11,6 +11,7 @@ import { newAlias, newOwnerToken, sameSecret } from './random';
 import { isFilter, listBoards, popularBoards, totals } from './registry';
 import { ensureTemplates, sitemap, templatePage } from './templates';
 import { verifyTurnstile } from './turnstile';
+import { vapidKeys } from './webpush';
 
 export { BoardObject } from './board-object';
 
@@ -37,7 +38,11 @@ export { BoardObject } from './board-object';
  *   POST   /api/boards/:alias/report            { voter, reason, note? }: a visitor reports the board
  *   PUT    /api/boards/:alias/items/:id/image   the picture an item announced (`pic: 'pending'`): a JPEG, kept
  *                                               for the admin's review                             (owner)
- *   GET    /api/config                          { images }: whether pictures may be published (`review`) or not
+ *   POST   /api/boards/:alias/push              { subscription, role, lang }: notify this browser, a voter when
+ *                                               the vote closes, the author (owner token) of milestones and pictures
+ *   DELETE /api/boards/:alias/push              { endpoint, role? }: stop notifying it
+ *   GET    /api/config                          { images, push }: whether pictures may be published (`review`) or
+ *                                               not, and the public key for notifications (null when off)
  *   POST   /api/csp-report                      a browser's report of what the content security policy blocks
  *                                               (or would): logged, 204
  *
@@ -180,7 +185,7 @@ async function cspReport(req: Request, env: Env): Promise<Response> {
 }
 
 const config = (env: Env): Response =>
-  Response.json({ images: imagePolicy(env) } satisfies ServerConfig, {
+  Response.json({ images: imagePolicy(env), push: vapidKeys(env)?.publicKey ?? null } satisfies ServerConfig, {
     headers: { 'Cache-Control': 'public, max-age=300' },
   });
 
@@ -290,6 +295,13 @@ async function board(req: Request, env: Env, alias: string, rest: string[]): Pro
     if (m !== 'POST') return error('not_found');
     const body = await readJson(req);
     return body === null ? error('too_large') : reply(await stub.report(body));
+  }
+  if (action === 'push' && id === undefined) {
+    if ((m !== 'POST' && m !== 'DELETE') || !vapidKeys(env)) return error('not_found');
+    const body = await readJson(req);
+    if (body === null) return error('too_large');
+    if (m === 'DELETE') return reply(await stub.unsubscribePush(body));
+    return reply(await stub.subscribePush(bearer(req), body, new URL(req.url).origin));
   }
   if (action === undefined) {
     if (m === 'GET') {

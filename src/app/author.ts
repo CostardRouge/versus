@@ -37,6 +37,7 @@ import {
 } from './editor';
 import { errorKey, OWNER_ERRORS } from './errors';
 import { optionsHTML, readSettings, visibilityHTML } from './publish';
+import { pushAsked, pushReady, togglePush } from './push';
 import {
   addBoardItem,
   addBoardItems,
@@ -278,6 +279,7 @@ export async function authorSettings(problem?: string): Promise<void> {
     </div>
     ${visibilityHTML('b', v.settings)}
     <fieldset class="set"><legend>${t('moreOptions')}</legend>${optionsHTML('b', v.settings)}</fieldset>
+    ${notifyHTML(b)}
     <div class="b-set-row">
       <button class="btn sm" type="button" data-action="${closed ? 'b-reopen' : 'b-close'}">${closed ? t('reopenVote') : t('closeVote')}</button>
       <button class="btn sm danger" type="button" data-action="b-withdraw">${t('withdraw')}</button>
@@ -323,10 +325,25 @@ export async function authorNewAdminLink(): Promise<void> {
   }
 }
 
+/** The author's notifications (src/app/push.ts): voters coming in, pictures reviewed. Where they can be offered. */
+function notifyHTML(b: Authored): string {
+  if (!pushReady()) return '';
+  const on = pushAsked(b.alias, 'owner');
+  const label = t(b.pictures ? 'notifyOwnerPictures' : 'notifyOwner');
+  return `<label class="opt b-notify"><input type="checkbox" id="b-push" ${on ? 'checked' : ''}> ${label}</label>`;
+}
+
 /** The author's fields beside the items pane: the title, the settings. True when the change was theirs. */
 export function authorChange(tg: HTMLInputElement): boolean {
-  if (!authored()) return false;
-  if (tg.id === 'rank-title') void authorRetitle(tg);
+  const b = authored();
+  if (!b) return false;
+  if (tg.id === 'b-push') {
+    // Not a setting of the board, so not part of the draft applied on Done: it acts at once, straight from the tap
+    // (the browser's permission prompt needs it).
+    void togglePush(b.alias, 'owner', b.owner).then((on) => {
+      tg.checked = on;
+    });
+  } else if (tg.id === 'rank-title') void authorRetitle(tg);
   else if (tg.closest('#b-settings')) {
     if (settingsForm) settingsForm.draft = readSettings($('#b-settings') ?? tg, 'b');
   } else return false;

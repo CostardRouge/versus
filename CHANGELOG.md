@@ -8,6 +8,17 @@ Codenames are pastries.
 
 ## [Unreleased]
 
+### Added
+
+- Notifications for published boards: a voter can be told when a vote closes, and an author as voters come in and
+  when a picture is reviewed (asked on a tap; on iPhone and iPad, in the app added to the home screen).
+- Share to Versus from other apps: photos, a list or a Versus file go into a new ranking or one you pick (Android).
+- Shortcuts on the installed app's icon (New ranking, Resume) and screenshots in its install dialog.
+
+### Changed
+
+- Pictures are kept in the browser's database instead of its small local storage, so a ranking can hold many more.
+
 ## [1.0.0] - 2026-10-17 — Chocolatine
 
 The first numbered release: Versus as it is live today at versus.steevepommier.com.

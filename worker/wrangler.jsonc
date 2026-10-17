@@ -28,5 +28,6 @@
     { "name": "SUMMARY_LIMIT", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } },
     { "name": "CSP_LIMIT", "namespace_id": "1004", "simple": { "limit": 10, "period": 60 } }
   ]
-  // Secrets, set with `wrangler secret put`: ADMIN_TOKEN (admin API), TURNSTILE_SECRET (publication check).
+  // Secrets, set with `wrangler secret put`: ADMIN_TOKEN (admin API), TURNSTILE_SECRET (publication check),
+  // VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY (notifications, made with `npm run vapid`).
 }
