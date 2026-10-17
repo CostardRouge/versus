@@ -15,8 +15,11 @@ import type { Lang } from '../i18n/index.ts';
 /** `t()` in the app, the English messages at build time. */
 export type Text = (key: MsgKey) => string;
 
-/** `lang` picks the legal notice the section links to, from the app's folder. */
-export function aboutHTML(tx: Text, opts: { h1: boolean; publish: boolean; lang: Lang }): string {
+/**
+ * `lang` picks the legal notice the section links to, from the app's folder. `version` closes the footer line in the
+ * app (CHANGELOG.md); the static copy goes without, crawlers have no use for it.
+ */
+export function aboutHTML(tx: Text, opts: { h1: boolean; publish: boolean; lang: Lang; version?: string }): string {
   const top = opts.h1 ? 'h1' : 'h2';
   const sub = opts.h1 ? 'h2' : 'h3';
   const method = (k: MethodKey) =>
@@ -39,6 +42,6 @@ export function aboutHTML(tx: Text, opts: { h1: boolean; publish: boolean; lang:
           <p>${tx('aboutPrivate')}</p>${opts.publish ? `\n          <${sub}>${tx('aboutPublishTitle')}</${sub}>\n          <p>${tx('aboutPublish')}</p>` : ''}
         </div>
       </div>
-      <p class="about-foot"><a href="../${HOME_PATH[opts.lang]}">${tx('aboutHome')}</a> · ${tx('aboutBy')} <a href="${LINKS.author.url}">${LINKS.author.name}</a> · <a href="${LINKS.source}">${tx('aboutSource')}</a> · <a href="../${LEGAL_PATH[opts.lang]}">${tx('aboutLegal')}</a></p>
+      <p class="about-foot"><a href="../${HOME_PATH[opts.lang]}">${tx('aboutHome')}</a> · ${tx('aboutBy')} <a href="${LINKS.author.url}">${LINKS.author.name}</a> · <a href="${LINKS.source}">${tx('aboutSource')}</a> · <a href="../${LEGAL_PATH[opts.lang]}">${tx('aboutLegal')}</a>${opts.version ? ` · <span class="mono">v${opts.version}</span>` : ''}</p>
     </section>`;
 }

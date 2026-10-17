@@ -18,6 +18,7 @@ import { iosHomeScreen } from './pwa';
 import { online } from './remote';
 import { routeURL } from './router';
 import { localData, S, stat } from './state';
+import { VERSION } from './version';
 
 function tileHTML(it: Item | undefined, i: number, ranked: boolean): string {
   const cls = `tile${i === 0 ? ' first' : ''}`;
@@ -230,7 +231,7 @@ export function galleryHTML(): string {
       <button class="link" type="button" data-action="toggle-demos">${hide ? t('showDemos') : t('hideDemos')}</button>
     </div>
     ${hide ? '' : `<div class="g-grid">${demos.map(rcardHTML).join('')}</div>`}
-    ${aboutHTML(t, { h1: false, publish: online(), lang: getLang() })}
+    ${aboutHTML(t, { h1: false, publish: online(), lang: getLang(), version: VERSION })}
     ${hintsHTML()}
   </section>`;
 }

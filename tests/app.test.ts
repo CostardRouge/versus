@@ -38,6 +38,11 @@ describe('app', () => {
     expect(document.title).toBe('Versus — Rank anything by comparing two items at a time');
   });
 
+  it('closes the page text with the release it was built from', () => {
+    const { version } = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as { version: string };
+    expect($('.gallery .about-foot')?.textContent).toContain(`v${version}`);
+  });
+
   it('switches to French and back', () => {
     click('[data-action="lang"][data-l="fr"]');
     expect(getLang()).toBe('fr');
