@@ -8,6 +8,10 @@ Codenames are pastries.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-17 — Croissant
+
+The installed app does more: notifications, sharing from other apps, shortcuts, and room for many more pictures.
+
 ### Added
 
 - Notifications for published boards: a voter can be told when a vote closes, and an author as voters come in and
