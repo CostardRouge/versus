@@ -47,6 +47,7 @@ This file is the **always-loaded index**. The detail lives in the topic files of
 - Audience measurement and legal: self-hosted Umami, declinable, a few anonymous events listed in the legal notice — D93–D96.
 - Tests: unit, jsdom and workerd suites, and two end-to-end suites (a faked API, the real Worker) — D49, D134.
 - The project reports its state to the owner's register through a Registry block in each pull request (D122) and carries one SemVer version with `CHANGELOG.md` as the source, pastries as codenames (D123).
+- The portfolio standard, `COMMON-PROJECT-SPEC.md` in `second-brain`, adopted 2026-10-19: the agent scaffold (this file, `docs/memory/`, the canonical `/memorize`, `AGENTS.md` as a symlink), rules 1 to 4 and the trust-the-disk section in `CLAUDE.md`, the trailer the harness asks for, Node pinned, Biome in the gate, Dependabot, `.gitignore` hygiene and the full icon set (C11); what is in force, what was added and what is n/a — `docs/memory/tooling.md`.
 
 ## Open items (dated; remove when done)
 
@@ -55,6 +56,7 @@ This file is the **always-loaded index**. The detail lives in the topic files of
 - 2026-10-19 — **Trademark and domain check for "Versus"** before a dedicated domain (D3, open since the first day); the subdomain works meanwhile.
 - 2026-10-19 — **More end-to-end tests**: the same scenarios in WebKit (closer to Safari), the offline-and-update scenario of `docs/pwa.md` (two builds), sharing as an image (the canvas, its fonts), the share target. Real iPhones stay a by-hand check.
 - 2026-10-19 — **The owner's gestures, live**: the first real figures in Umami (both hosts, clean paths, events) and the zone's `final slash` rule sparing the subdomains (`docs/analytics.md#left-to-check-live`); Search Console for versus.steevepommier.com (verify, submit the sitemap, request indexing of `/` and `/fr/`); Cloudflare Access in front of `/admin/` and `/api/admin/` and a WAF rate rule on `/api/*` (`docs/online-architecture.md#moderation`).
+- 2026-10-19 — **The Worker's data has no backup** (COMMON-PROJECT-SPEC C18): the visitor's rankings are covered by export and import (D97), but published boards live in their Durable Objects' SQLite, the registry in D1 and pictures and cards in R2, with no dump and no restore path written anywhere. Boards expire after 60 days without activity (`TTL_DAYS`) and the official templates are republished from fixed data, so what a loss would cost is the live boards' votes: whether that is worth a scheduled dump is the owner's call, and the answer belongs in `docs/online-architecture.md`.
 - 2026-10-19 — **No Registry report has reached the register yet**: the `send` job of `registry.yml` runs with `REGISTRE_TOKEN` set (D122, read in its logs), but every push to `main` so far carried no block ("Aucun bloc Registry dans ce push"). The pull request adopting the portfolio standard is the first with one: after its merge, check its `send` job and that the fiche's log took the line; a failure there points at the token.
 
 ## Topic files — read before touching the area
