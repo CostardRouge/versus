@@ -8,6 +8,12 @@ playwright-report/
 .vite/
 .wrangler/
 .dev.vars
+# Local env files and IDE folders; .env.worker stays tracked on purpose (public values only, see its header).
+.env
+.env.local
+.env.*.local
+.idea/
+.vscode/
 .claude/worktrees/
 test-results/
 playwright-report/
