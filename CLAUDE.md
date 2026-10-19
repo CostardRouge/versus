@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Project memory for Claude Code. Read this first, then `docs/` for the full history.
+Instructions for LLM agents (Claude Code, Codex, Cursor, etc.). Agents read this file at the start of every session; these rules override the agent's default behaviour and apply for the whole session, not only the first turn. Read it first, then `MEMORY.md` (imported below) and `docs/` for the full history.
 
 ## What Versus is
 
@@ -17,6 +17,8 @@ A web app to **rank anything by comparing two items at a time** (pairwise compar
 - **Estimate effort in agent time, not developer time.** A full UI rewrite or a port to another stack fits in a day of sessions. Don't argue against an option because of code volume, rewrite size or "double maintenance".
 - **What really costs is what Claude can't do:** the owner's time (testing on real devices, accounts, store listings and reviews, decisions), fees, and regression risk. Weigh options on those, and on product quality.
 - **No stack choice is sacred.** Past choices made to go fast in the POC can be reopened; the owner decides. D24 (no UI framework) was reopened and kept: the web app comes first and stays light (D75).
+- **Several agent sessions may run in parallel** on this repo. Git history must stay readable: one commit = one task, staged file by file (rule 1).
+- **Local sessions: never `git push`** — the owner tests locally and pushes himself. **Cloud / web sessions (ephemeral container): push the working branch and open a pull request**, it is the only way the code gets out. Never push to `main` either way.
 
 ## Commands
 
@@ -222,7 +224,60 @@ docs/                 decisions, roadmap, published boards model, online archite
 - Pair selection favors items with few duels, close positions and unseen pairs, and avoids the previous duel's items.
 - Items: text, image (downscaled to 640 px JPEG 0.82 data URL), or fill (`solid` | `gradient`, 2–3 hex stops). Typing or pasting `#hex` creates a color item. A color item whose label equals its code follows the color when edited. On a published board an image is a picture sent for review (`pic`), then an address under `/img/`.
 
-## Report the project's state (MANDATORY)
+## Rule 1 — Automatic commit at the end of every task (MANDATORY)
+
+As soon as a task requested by the user is finished (feature, fix, refactor, content…), the agent MUST create a commit before handing back. No need to ask permission: it is the expected behaviour.
+
+### Exact procedure
+
+1. **Check the state**: `git status --porcelain` and `git diff --stat`.
+2. **Select only the task's files**:
+   - Stage file by file with `git add <path>` (never `git add -A`, `git add .` or `git commit -a`).
+   - A modified file unrelated to the task (parallel session, tooling noise) stays **unstaged**. Do not touch it, stash it or reset it.
+   - If one file holds changes from this task AND another, prefer `git add -p <file>` to stage only the relevant hunks. If inextricable, stage the whole file and say so in the commit body ("also contains …").
+   - Never stage: `.env`, `.env.local` and any secret file, `.dev.vars` (the Worker's local secrets), `.idea/`, `.vscode/`, `dist/`, `coverage/`, `.wrangler/`, `node_modules/`, `test-results/`, `playwright-report/`, `.DS_Store` — unless the task is explicitly about them. `.env.worker` is the one tracked env file, on purpose: it holds the Worker build's public `VITE_API_URL` and nothing secret ever goes in it. If one of the others turns out to be *tracked*, say so: it must be untracked and gitignored, not carefully avoided at every commit.
+   - Check with `git diff --cached --stat` before committing.
+3. **Commit with a readable message** (format below). Always use a HEREDOC to keep title + body, and end it with the attribution trailer(s) your harness asks for:
+
+   ```bash
+   git commit -m "$(cat <<'EOF'
+   Imperative title, ≤ 72 characters, no trailing period
+
+   Why this change, what it does concretely, non-obvious decisions.
+   One line per idea. Mention the files/areas touched if useful.
+
+   Co-Authored-By: …
+   EOF
+   )"
+   ```
+
+4. **Push only from a cloud session** (see "How this project is built"). End the reply with a recap: short hash + commit title + the list of files that were modified but deliberately **left uncommitted**, if any.
+5. If a git hook changes or refuses something: read the output, fix, recommit. Never `--no-verify`. (There is no hook in this repo today.)
+
+### Commit message format
+
+- **Title**: English imperative, clear sentence, ≤ 72 chars, no `feat:`-style prefix, no trailing period. Real examples from this repo: `Leave backfills to second-brain's workflow and its single token`, `Release 1.1.0 — Croissant`. A few older titles carry an `Area:` scope prefix (`PWA:`, `Duel:`); that is drift, not the convention.
+- **Blank line**, then a **body**, mandatory whenever the title is not enough: the *why*, the *how* in 2–6 lines, the trade-offs, what remains to do. The body is what lets someone find, weeks later, which feature produced this diff. A decision it rests on is a D row in `docs/decisions.md`, named by number.
+- A commit **never** mixes two tasks. If a session handles several distinct tasks, make several successive commits.
+- No empty commit, no "WIP" commit, no commit for an unfinished task. If the task is interrupted, leave the work uncommitted and say so.
+
+### When is a task "finished"?
+
+- The requested code is written **and** `npm run check` is green (lint, typecheck, tests, build: what CI's `verify` job runs), `npm run e2e` too after a change to the UI, the Worker or the service worker (CI's `e2e` job), and `node .github/release.mjs check` when `CHANGELOG.md` or `package.json` moved. A change to what renders also gets looked at in a browser (Playwright's Chromium is at hand, phone and desktop sizes, both themes).
+- A plain question, an exploration or an explanation produces **no** commit (nothing to commit).
+
+## Rule 2 — Project memory in `MEMORY.md` + `docs/memory/` (MANDATORY)
+
+The repo carries its own long-term memory, read locally and in the cloud alike: `MEMORY.md` at the root is the always-loaded index (imported below), and the topic files its table lists are loaded on demand, never imported — the `docs/*.md` this project kept from its first day (decisions as D-numbered rows of `docs/decisions.md`, the roadmap, published boards, the online architecture, SEO, PWA, audience measurement) and `docs/memory/<topic>.md` for what fits none of them.
+
+- **Read `MEMORY.md`, then the topic file(s) for the area you are about to touch, before acting** — to understand previous choices and not re-propose what was rejected.
+- **Every task writes to memory by default, in the same commit** (rule 1): what a future agent should know that is in neither the code nor `git log` — a decision and its reason (a structural one as a new D row in `docs/decisions.md`, which memory points at rather than restates), an explicit rejection, a trap and its remedy, a working preference. Update the existing entry rather than adding a near-duplicate, delete what became false, date each entry `YYYY-MM-DD`. **If, exceptionally, there is nothing worth keeping, say so explicitly in the final message** — silence is not an option.
+- English, dense, factual; no session narration, nothing the diff, `git log` or this file already says, each fact stated once; no test counts.
+- The project command `/memorize` (`.claude/commands/memorize.md`) does this consolidation on demand over a whole conversation.
+
+@MEMORY.md
+
+## Rule 3 — Report the project's state (MANDATORY)
 
 The register of what is open is the private `second-brain` repository: one
 folder per project, filed by group and domain and found by its slug (`versus`
@@ -284,7 +339,7 @@ A change a returning reader does not need — tooling, a typo, a refactor —
 carries no block. A question, an exploration or an explanation changes no
 state and writes no block.
 
-## Versions and releases
+## Rule 4 — Versions and releases (MANDATORY)
 
 The project carries **one version**, `version` in the root `package.json`, in
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html): `MAJOR.MINOR.PATCH`.
@@ -323,12 +378,28 @@ French.** Each release has a **codename**: here a pastry (1.0.0 Chocolatine), fr
   footer, an about line, a settings screen), read from `package.json` at build
   time, so a phone in hand says which build it runs.
 
-## Where to look next
+## Verification — trust the disk, not the context
 
-- `CHANGELOG.md`: what each release brought, newest first (see Versions and releases above).
-- `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling).
+- A tool answering "success" is not proof. Before saying a change is done, prove it through the repo: `git status --porcelain`, `git diff`, `grep` for the expected value, `git show HEAD:<file>` compared to the file on disk.
+- What you hold in context (an earlier `Read`, an old `ls`, a summarised conversation) can be **stale**. Signature: `git status` clean right after an announced change. Re-read from disk before concluding.
+- Never state an absence ("this feature is missing", "that file does not exist") without a `git`/`grep` check made in the current turn.
+
+## Other rules
+
+- Never rewrite history (`rebase -i`, `commit --amend`, `reset --hard`, `push --force`, `filter-repo`) without an explicit request. Do not modify `.git/config`, the hooks or branch settings.
+- The project's own rules — business logic in `src/core`, every text through `t()`, addresses, sharing, pictures, moderation, storage keys, SEO in `build/site.ts` — are the Conventions and Key domain rules above. A new rule of that kind goes there, and the decision behind it as a D row in `docs/decisions.md`.
+- Never put a secret in a `VITE_` variable or in `.env.worker`: a `VITE_` value ends up in the browser bundle. The Worker's secrets go through `wrangler secret put` (locally `.dev.vars`, ignored).
+
+## Related files
+
+- `AGENTS.md`: a symlink to this file, for tools that do not read `CLAUDE.md`.
+- `MEMORY.md` + `docs/memory/`: the project's long-term memory (rule 2); `.claude/commands/memorize.md` consolidates a conversation into it.
+- `CHANGELOG.md`: what each release brought, newest first (rule 4); `.github/release.mjs` + `.github/workflows/release.yml` tag and publish it.
+- `docs/decisions.md`: what was decided and why (design, naming, scoring, tooling), one D row per decision.
 - `docs/roadmap.md`: done, next, later, open questions.
 - `docs/published-boards.md`: agreed behavior of published (shared) boards: lifecycle, voting rules, visibility, live updates, moderation, pictures, templates.
 - `docs/online-architecture.md`: backend for published boards on Cloudflare (`worker/`), how to deploy it.
 - `docs/seo.md`: head tags, JSON-LD, icons, social card, manifest, robots, sitemap, llms.txt; decisions and what the owner has to do (Search Console, `SITE_URL`).
+- `docs/pwa.md`: the installable, offline app: the service worker, updates, export and import, images in IndexedDB, the share target, shortcuts, notifications.
 - `docs/analytics.md`: audience measurement (Umami, what is sent and never sent, how it loads, settings) and the legal notice; what is left to check live.
+- `COMMON-PROJECT-SPEC.md` in the private `second-brain` repo: where rules 1 to 4 come from, adopted here on 2026-10-19.
