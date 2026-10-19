@@ -52,7 +52,8 @@ build/                build-time only (never shipped): site.ts = every sitewide 
                       language, colors, icons, social cards, author); seo.ts = head tags per page (hreflang), JSON-LD, manifest,
                       robots, sitemap, llms.txt, _headers; seo-plugin.ts = the Vite plugin filling each page; pwa.ts + pwa-plugin.ts = build the service worker
                       as sw.js with its precache list and content version; analytics.ts = the Umami settings written into each page's head
-scripts/icons.ts      draws public/ icons (ico, svg, 96/192/512, maskable, apple-touch, the icon shortcuts', the notifications' badge) and og.png / og-fr.png from build/site.ts
+scripts/icons.ts      draws public/ icons (ico, svg, favicons 16/32, 96/192/512, maskable 192/512, apple-touch without alpha, the icon shortcuts',
+                      the notifications' badge) and og.png / og-fr.png from build/site.ts: the portfolio's icon set (COMMON-PROJECT-SPEC C11)
 scripts/vapid.ts      makes the notifications' VAPID key pair for the owner to set as Worker secrets (never committed)
 scripts/screenshots.ts  takes the manifest's screenshots (SCREENSHOTS in build/site.ts) of the real app on the demos: Vite's dev server,
                       Playwright's Chromium, Math.random seeded so the duels are the same every run (D130)

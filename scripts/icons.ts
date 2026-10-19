@@ -11,13 +11,16 @@
 import { Buffer } from 'node:buffer';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { crc32, deflateSync } from 'node:zlib';
 import { Resvg } from '@resvg/resvg-js';
 import satori from 'satori';
 import {
   CARD_COPY,
   COLORS,
+  faviconIcon,
   ICONS,
   LANGUAGES,
+  maskableIcon,
   NAME,
   OG_IMAGES,
   pngIcon,
@@ -61,6 +64,43 @@ const render = (node: Node, width: number, height: number) =>
 
 const png = (svg: string, width: number): Buffer =>
   Buffer.from(new Resvg(svg, { fitTo: { mode: 'width', value: width } }).render().asPng());
+
+/**
+ * An RGB PNG, without an alpha channel, for the touch icon: iOS paints a transparent pixel black under its mask,
+ * and a file that carries no alpha cannot have one. resvg only writes RGBA, so its pixels are repacked here (a
+ * filter byte of 0 before each row, one IDAT); a drawing that leaves any pixel translucent is refused, not shipped.
+ */
+function opaquePng(svg: string, width: number): Buffer {
+  const { width: w, height: h, pixels } = new Resvg(svg, { fitTo: { mode: 'width', value: width } }).render();
+  const row = 1 + w * 3;
+  const raw = Buffer.alloc(row * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (pixels[i + 3] !== 255) throw new Error(`pixel (${x}, ${y}) is not opaque: a touch icon must be`);
+      pixels.copy(raw, y * row + 1 + x * 3, i, i + 3);
+    }
+  }
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(w, 0);
+  header.writeUInt32BE(h, 4);
+  // 8 bits per channel, colour type 2 (RGB), compression 0, filter 0, no interlace.
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(raw, { level: 9 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 const write = (name: string, data: string | Buffer): void => {
   writeFileSync(new URL(name, out), data);
@@ -335,9 +375,11 @@ async function socialCard(markSvg: string, lang: SiteLang): Promise<string> {
 const markSvg = await mark();
 write(ICONS.svg, markSvg);
 for (const legacy of ICONS.legacy) write(legacy, markSvg);
+for (const size of ICONS.favicons) write(faviconIcon(size), png(markSvg, size));
 for (const size of ICONS.png) write(pngIcon(size), png(markSvg, size));
-write(ICONS.maskable, png(await tile(0.8), 512));
-write(ICONS.apple, png(await tile(1), ICONS.appleSize));
+const maskable = await tile(0.8);
+for (const size of ICONS.maskable) write(maskableIcon(size), png(maskable, size));
+write(ICONS.apple, opaquePng(await tile(1), ICONS.appleSize));
 write(ICONS.ico, ico(ICONS.icoSizes.map((size) => ({ size, data: png(markSvg, size) }))));
 write(ICONS.badge, png(await badge(), ICONS.badgeSize));
 for (const s of SHORTCUTS)

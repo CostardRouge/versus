@@ -148,17 +148,24 @@ export const COLORS = {
 } as const;
 
 /**
- * Icon files written by `npm run icons` into public/ and declared by the head and the manifest. Google shows a
- * favicon in results only if it is a multiple of 48 px, hence 48 (in the .ico), 96 and 192; 180 is what iOS
- * wants for the home screen, 512 what Android wants for installs and splash screens. Like the social card,
- * a redesigned icon gets new file names: search engines cache favicons by URL for months.
+ * Icon files written by `npm run icons` into public/ and declared by the head and the manifest: the set every
+ * repository of the portfolio ships (COMMON-PROJECT-SPEC C11). 16 and 32 px PNGs for the browsers that still
+ * prefer a raster to the SVG in the tab; 48 (in the .ico), 96 and 192 for Google, which shows a favicon in results
+ * from 8 px up and recommends more than 48; 180 for the iOS home screen (full bleed and opaque: a transparent pixel
+ * comes back black under its mask); 512 for Android installs and splash screens, with a maskable variant at 192
+ * and 512 whose mark stays inside the 80 % safe zone. Like the social card, a redesigned icon gets new file names:
+ * search engines cache favicons by URL for months.
  */
 export const ICONS = {
   svg: 'icon.svg',
   ico: 'favicon.ico',
   icoSizes: [16, 32, 48],
+  /** The tab's raster favicons, `favicon-<size>.png`. */
+  favicons: [16, 32],
+  /** The app icons, `icon-<size>.png`. */
   png: [96, 192, 512],
-  maskable: 'icon-maskable-512.png',
+  /** The maskable icons, `icon-maskable-<size>.png`. */
+  maskable: [192, 512],
   apple: 'apple-touch-icon.png',
   appleSize: 180,
   /** A notification's badge (src/sw/sw.ts): the mark as a white silhouette, which Android tints in its status bar. */
@@ -169,6 +176,8 @@ export const ICONS = {
 } as const;
 
 export const pngIcon = (size: number): string => `icon-${size}.png`;
+export const faviconIcon = (size: number): string => `favicon-${size}.png`;
+export const maskableIcon = (size: number): string => `icon-maskable-${size}.png`;
 
 /**
  * Shortcuts on the installed app's icon (a long press on Android, a right click on desktop). Each opens the app

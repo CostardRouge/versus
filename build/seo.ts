@@ -10,6 +10,7 @@ import {
   DESCRIPTION,
   DESCRIPTIONS,
   FEATURES,
+  faviconIcon,
   HOMES,
   ICONS,
   type IndexedKind,
@@ -20,6 +21,7 @@ import {
   LICENSE_URL,
   LOCALES,
   METHODS,
+  maskableIcon,
   NAME,
   OG_IMAGES,
   PAGES,
@@ -248,9 +250,13 @@ export function headTags(url: string, page: PageKey = 'home'): string[] {
     `<meta name="theme-color" content="${COLORS.bgDark}" media="(prefers-color-scheme: dark)" />`,
     ...(VERIFICATION.google ? [meta('name', 'google-site-verification', VERIFICATION.google)] : []),
     ...(VERIFICATION.bing ? [meta('name', 'msvalidate.01', VERIFICATION.bing)] : []),
-    // Icons: .ico for the probes that ignore the head, SVG for current browsers, PNG multiples of 48 for Google.
+    // Icons (COMMON-PROJECT-SPEC C11): .ico for the probes that ignore the head, SVG for current browsers, 16 and
+    // 32 px PNGs for the browsers that prefer a raster in the tab, PNG multiples of 48 for Google's results.
     link({ rel: 'icon', href: `${root}${ICONS.ico}`, sizes: '48x48' }),
     link({ rel: 'icon', href: `${root}${ICONS.svg}`, type: 'image/svg+xml', sizes: 'any' }),
+    ...ICONS.favicons.map((size) =>
+      link({ rel: 'icon', href: `${root}${faviconIcon(size)}`, type: 'image/png', sizes: `${size}x${size}` }),
+    ),
     ...ICONS.png
       .filter((size) => size % 48 === 0)
       .map((size) =>
@@ -337,8 +343,13 @@ export function manifest(): Record<string, unknown> {
         type: 'image/png',
         purpose: 'any',
       })),
-      // Its own file, not "any maskable": launchers crop to a circle, so the mark sits inside the safe zone.
-      { src: `./${ICONS.maskable}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      // Their own files, not "any maskable": launchers crop to a circle, so the mark sits inside the safe zone.
+      ...ICONS.maskable.map((size) => ({
+        src: `./${maskableIcon(size)}`,
+        sizes: `${size}x${size}`,
+        type: 'image/png',
+        purpose: 'maskable',
+      })),
     ],
     screenshots: SCREENSHOTS.map((s) => {
       const z = SCREEN_SIZES[s.form];
