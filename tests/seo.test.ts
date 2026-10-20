@@ -31,12 +31,14 @@ import {
   DEFAULT_SITE_URL,
   DESCRIPTION,
   DESCRIPTIONS,
+  faviconIcon,
   HOMES,
   ICONS,
   LANGUAGES,
   LEGAL_DESCRIPTIONS,
   LEGAL_TITLES,
   METHODS,
+  maskableIcon,
   NAME,
   OG_IMAGE,
   OG_IMAGES,
@@ -142,10 +144,13 @@ describe('head', () => {
     }
   });
 
-  it('declares raster favicons in multiples of 48 px only (what Google accepts)', () => {
+  it('declares PNG favicons at 16 and 32 px for the tab, and multiples of 48 px beyond for Google', () => {
     const sizes = [...head.matchAll(/rel="icon"[^>]*sizes="(\d+)x\d+"/g)].map((m) => Number(m[1]));
-    expect(sizes.length).toBeGreaterThan(1);
-    for (const size of sizes) expect(size % 48).toBe(0);
+    expect(sizes.filter((s) => s < 48).sort((a, b) => a - b)).toEqual([...ICONS.favicons]);
+    for (const size of ICONS.favicons) expect(head).toContain(`href="./${faviconIcon(size)}"`);
+    const large = sizes.filter((s) => s >= 48);
+    expect(large.length).toBeGreaterThan(1);
+    for (const size of large) expect(size % 48).toBe(0);
   });
 
   it('escapes the JSON-LD for a <script> element', () => {
@@ -313,9 +318,15 @@ describe('page text', () => {
 
 describe('icons', () => {
   it('matches every PNG to its declared size', () => {
+    for (const size of ICONS.favicons) expect(pngFile(faviconIcon(size))).toEqual([size, size]);
     for (const size of ICONS.png) expect(pngFile(pngIcon(size))).toEqual([size, size]);
-    expect(pngFile(ICONS.maskable)).toEqual([512, 512]);
+    for (const size of ICONS.maskable) expect(pngFile(maskableIcon(size))).toEqual([size, size]);
     expect(pngFile(ICONS.apple)).toEqual([ICONS.appleSize, ICONS.appleSize]);
+  });
+
+  it('ships the touch icon without an alpha channel: iOS paints a transparent pixel black', () => {
+    // The IHDR chunk's colour type: 2 is RGB, 6 would be RGBA.
+    expect(readFileSync(publicFile(ICONS.apple))[25]).toBe(2);
   });
 
   it('packs 16, 32 and 48 px PNGs in favicon.ico', () => {
@@ -341,10 +352,12 @@ describe('icons', () => {
     }
   });
 
-  it('lists only existing files in the manifest, with a separate maskable icon', () => {
-    const icons = manifest().icons as { src: string; purpose: string }[];
+  it('lists only existing files in the manifest, with separate maskable icons at 192 and 512 px', () => {
+    const icons = manifest().icons as { src: string; sizes: string; purpose: string }[];
     for (const icon of icons) expect(existsSync(publicFile(icon.src.replace('./', ''))), icon.src).toBe(true);
-    expect(icons.filter((i) => i.purpose === 'maskable')).toHaveLength(1);
+    expect(icons.filter((i) => i.purpose === 'maskable').map((i) => i.sizes)).toEqual(
+      ICONS.maskable.map((s) => `${s}x${s}`),
+    );
     expect(icons.some((i) => i.purpose.includes('any') && i.purpose.includes('maskable'))).toBe(false);
   });
 });

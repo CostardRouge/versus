@@ -8,6 +8,11 @@ Codenames are pastries.
 
 ## [Unreleased]
 
+### Added
+
+- Favicons at 16 and 32 px for the browsers that show a bitmap in the tab, and a 192 px maskable icon for Android
+  launchers, completing the icon set.
+
 ## [1.1.0] - 2026-10-17 — Croissant
 
 The installed app does more: notifications, sharing from other apps, shortcuts, and room for many more pictures.
