@@ -30,6 +30,22 @@
 .card-b .side-tag {
   background: var(--b-ink);
 }
+/* The letter is drawn, not written: with an empty alternative it is not part of the card's text, so every word
+   on the card stays inside its name (WCAG 2.5.3). */
+.card-a .side-tag::before {
+  content: "A" / "";
+}
+.card-b .side-tag::before {
+  content: "B" / "";
+}
+@supports not (content: "x" / "") {
+  .card-a .side-tag::before {
+    content: "A";
+  }
+  .card-b .side-tag::before {
+    content: "B";
+  }
+}
 .vs {
   display: flex;
   flex-direction: column;

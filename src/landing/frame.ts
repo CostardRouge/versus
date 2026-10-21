@@ -61,9 +61,9 @@ export function thumbHTML(it: ShowItem, lang: Lang): string {
   return `<span class="th" aria-hidden="true">${mediaHTML(it)}</span>`;
 }
 
-function cardInner(it: ShowItem, side: 'a' | 'b', lang: Lang): string {
+function cardInner(it: ShowItem, lang: Lang): string {
   const label = esc(it.label[lang]);
-  const tag = `<span class="side-tag" aria-hidden="true">${side.toUpperCase()}</span>`;
+  const tag = `<span class="side-tag" aria-hidden="true"></span>`;
   if (isText(it)) return `${tag}<span class="txt ${sizeClass(it.label[lang])}">${label}</span>`;
   if (it.fill) {
     return `${tag}${mediaHTML(it)}<span class="cap" style="${fillText(it.fill)}">${label}<small>${fillCode(it.fill)}</small></span>`;
@@ -73,8 +73,10 @@ function cardInner(it: ShowItem, side: 'a' | 'b', lang: Lang): string {
 
 export function cardHTML(id: string, side: 'a' | 'b', S: Strings): string {
   const it = item(id);
-  const aria = esc(fill(S.pickAria, { side: side.toUpperCase(), label: it.label[S.lang] }));
-  return `<button type="button" class="card card-${side}${isText(it) ? ' is-txt' : ''}" data-side="${side}" style="--h:${hueOf(it.label.en)}" aria-label="${aria}">${cardInner(it, side, S.lang)}</button>`;
+  // The name holds every word on the card (WCAG 2.5.3): a color's code too.
+  const label = it.fill ? `${it.label[S.lang]}, ${fillCode(it.fill)}` : it.label[S.lang];
+  const aria = esc(fill(S.pickAria, { side: side.toUpperCase(), label }));
+  return `<button type="button" class="card card-${side}${isText(it) ? ' is-txt' : ''}" data-side="${side}" style="--h:${hueOf(it.label.en)}" aria-label="${aria}">${cardInner(it, S.lang)}</button>`;
 }
 
 /** Roster rows, best first. */

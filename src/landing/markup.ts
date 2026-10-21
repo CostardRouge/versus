@@ -139,7 +139,7 @@ export function navHTML(lang: Lang, S: Strings, links: PageLinks = homeLinks(lan
     : '';
   return `<header class="nav" id="nav">
     <div class="wrap nav-in">
-      <a class="brand" href="${root}${HOME_PATH[lang]}" aria-label="${esc(S.homeAria)}"><span class="brand-mark" aria-hidden="true">vs</span>Versus</a>${inPage}
+      <a class="brand" href="${root}${HOME_PATH[lang]}" aria-label="${esc(S.homeAria)}"><span class="brand-mark" aria-hidden="true"></span>Versus</a>${inPage}
       <nav class="langs" aria-label="${esc(S.langAria)}">${langLink('en')}${langLink('fr')}</nav>
       <a class="btn primary sm nav-cta" href="${root}${APP_PATH}">${esc(S.openApp)}</a>
     </div>
@@ -161,7 +161,7 @@ function hero(lang: Lang, S: Strings): string {
   for (const [a, b, s] of HERO.seed) pushDuel(r, a, b, s);
   const trust = [S.trust1, S.trust2, S.trust3].map((t) => `<li>${svg(CHECK, 15, 2.6)}${esc(t)}</li>`).join('');
   return `<section class="hero wrap" aria-labelledby="hero-h">
-      <p class="hero-chip"><span class="brand-mark" aria-hidden="true">vs</span>${esc(S.heroChip)}</p>
+      <p class="hero-chip"><span class="brand-mark" aria-hidden="true"></span>${esc(S.heroChip)}</p>
       <h1 class="hero-h" id="hero-h">${esc(S.heroRank)} <br><span class="rot" id="rot"><span class="rw ca on">${esc(S.heroAnything)}</span></span> <br>${esc(S.heroTail)}</h1>
       <div class="hero-row">
         <p class="hero-sub">${S.heroSub}</p>
@@ -398,7 +398,7 @@ export function footerHTML(
     `<a href="${links.versions[l]}" hreflang="${l}" lang="${l}" data-lang="${l}"${l === lang ? ' aria-current="page"' : ''}>${l === 'en' ? 'English' : 'Français'}</a>`;
   return `<footer class="foot">
     <div class="wrap foot-in">
-      <p class="foot-brand"><span class="brand"><span class="brand-mark" aria-hidden="true">vs</span>Versus</span><span>${esc(S.tagline)}</span></p>
+      <p class="foot-brand"><span class="brand"><span class="brand-mark" aria-hidden="true"></span>Versus</span><span>${esc(S.tagline)}</span></p>
       <p class="foot-links"><a href="${root}${APP_PATH}">${esc(S.footApp)}</a><a href="${source}">${esc(S.footSource)}</a><span>${esc(S.aboutBy)} <a href="${author.url}">${esc(author.name)}</a></span><a href="${root}${LEGAL_PATH[lang]}">${esc(S.footLegal)}</a></p>
       <nav class="foot-langs" aria-label="${esc(S.footLangAria)}">${lang2('en')}${lang2('fr')}</nav>
     </div>

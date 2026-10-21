@@ -60,7 +60,6 @@ This file is the **always-loaded index**. The detail lives in the topic files of
 - 2026-10-19 — **The Worker's data has no backup** (COMMON-PROJECT-SPEC C18): the visitor's rankings are covered by export and import (D97), but published boards live in their Durable Objects' SQLite, the registry in D1 and pictures and cards in R2, with no dump and no restore path written anywhere. Boards expire after 60 days without activity (`TTL_DAYS`) and the official templates are republished from fixed data, so what a loss would cost is the live boards' votes: whether that is worth a scheduled dump is the owner's call, and the answer belongs in `docs/online-architecture.md`.
 - 2026-10-19 — **No Registry report has reached the register yet**: the `send` job of `registry.yml` runs with `REGISTRE_TOKEN` set (D122, read in its logs), but every push to `main` so far carried no block ("Aucun bloc Registry dans ce push"). The pull request adopting the portfolio standard is the first with one: after its merge, check its `send` job and that the fiche's log took the line; a failure there points at the token.
 
-- 2026-10-21 — **The a11y suite fails under axe-core 4.14** (`label-content-name-mismatch`, WCAG 2.5.3): the visible text of the header's home link and of the duel's pick buttons is missing from their `aria-label` (`docs/memory/tooling.md`). Fix the markup in its own pull request; Dependabot's axe bump stays red until then.
 
 ## Topic files — read before touching the area
 

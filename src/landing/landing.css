@@ -230,6 +230,16 @@ kbd {
   letter-spacing: 0.02em;
 }
 
+/* "vs" is drawn, not written: the brand's visible text is then "Versus", inside its name (WCAG 2.5.3). */
+.brand-mark::before {
+  content: "vs" / "";
+}
+@supports not (content: "x" / "") {
+  .brand-mark::before {
+    content: "vs";
+  }
+}
+
 /* Nav */
 .nav {
   position: sticky;
