@@ -29,14 +29,18 @@ let busy = false;
 
 export function cardHTML(it: Item, side: 'a' | 'b'): string {
   const label = esc(it.label);
+  // The name holds every word on the card (WCAG 2.5.3): a color's code too, when it shows under its name.
+  let name = it.label;
   let inner: string;
   if (it.fill) {
-    const code = namedByCode(it.label, it.fill) ? '' : `<small>${fillCode(it.fill)}</small>`;
+    const shown = !namedByCode(it.label, it.fill);
+    if (shown) name += `, ${fillCode(it.fill)}`;
+    const code = shown ? `<small>${fillCode(it.fill)}</small>` : '';
     inner = `<span class="fillbg" style="background:${fillCSS(it.fill)}"></span><span class="cap" style="${fillText(it.fill)}">${label}${code}</span>`;
   } else if (imageSrc(it))
     inner = `<img src="${esc(imageSrc(it))}" alt="" draggable="false"><span class="shade"></span><span class="cap">${label}</span>`;
   else inner = `<span class="txt ${sizeClass(it.label)}">${label}</span>`;
-  return `<div class="card card-${side}" role="button" tabindex="0" data-side="${side}" data-id="${esc(it.id)}" style="--h:${hueValue(it)}" aria-label="${esc(t('chooseAria', { label: it.label }))}"><span class="side-tag" aria-hidden="true">${side.toUpperCase()}</span>${inner}</div>`;
+  return `<div class="card card-${side}" role="button" tabindex="0" data-side="${side}" data-id="${esc(it.id)}" style="--h:${hueValue(it)}" aria-label="${esc(t('chooseAria', { label: name }))}"><span class="side-tag" aria-hidden="true"></span>${inner}</div>`;
 }
 
 // ─── Duel kit, shared with a board's duel (board.ts) ─────────────────────────

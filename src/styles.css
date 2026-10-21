@@ -1517,6 +1517,15 @@ kbd {
   align-items: center;
   gap: 9px;
 }
+/* "vs" is drawn, not written: the brand's visible text is then "Versus", inside its name (WCAG 2.5.3). */
+.brand-mark::before {
+  content: "vs" / "";
+}
+@supports not (content: "x" / "") {
+  .brand-mark::before {
+    content: "vs";
+  }
+}
 .brand .brand-mark {
   margin: 0;
   width: 28px;

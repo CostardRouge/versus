@@ -13,6 +13,11 @@ Codenames are pastries.
 - Favicons at 16 and 32 px for the browsers that show a bitmap in the tab, and a 192 px maskable icon for Android
   launchers, completing the icon set.
 
+### Fixed
+
+- Screen readers and voice control now name the duel's cards and the Versus logo with the words shown on them,
+  including a color's code, so saying what you see on screen selects it.
+
 ## [1.1.0] - 2026-10-17 — Croissant
 
 The installed app does more: notifications, sharing from other apps, shortcuts, and room for many more pictures.
