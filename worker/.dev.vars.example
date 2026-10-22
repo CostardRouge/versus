@@ -1,0 +1,21 @@
+# The Worker's secrets for local runs. Copy this file to worker/.dev.vars (beside wrangler.jsonc: Wrangler reads
+# .dev.vars from the config's folder, not the repository root) and fill only what you need. .dev.vars is ignored by
+# git; never commit a value, here or anywhere. Every secret is optional: an empty or missing one turns its feature off.
+# Production gets each one with `npx wrangler secret put <NAME> -c worker/wrangler.jsonc` (or the dashboard,
+# Workers & Pages -> versus -> Settings -> Variables and Secrets, type Secret): docs/online-architecture.md#deploying.
+
+# Admin API and the moderation page (/admin/); off (404) when empty. Any long random string: `openssl rand -base64 32`.
+ADMIN_TOKEN=
+
+# Turnstile secret key; when set, publishing and a first vote on an official board need a check. From a Turnstile
+# widget in the Cloudflare dashboard; set it with the site key VITE_TURNSTILE_SITE_KEY at build time, or neither.
+TURNSTILE_SECRET=
+
+# Notifications' key pair (VAPID, base64url); both set or both empty. Made with `npm run vapid` (prints, writes nothing).
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+
+# Not secrets, so not keys here: IMAGES_UPLOAD, CACHE_SECONDS, PUSH_LOCAL, BOARD_TTL_SECONDS and TEMPLATE_INDEX_VOTERS
+# are plain variables (worker/src/env.ts says what each does). wrangler.jsonc declares none; production sets
+# IMAGES_UPLOAD=review as a dashboard variable of type Text, the others are for the tests. Wrangler also reads them
+# from .dev.vars when you want one locally.

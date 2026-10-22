@@ -141,7 +141,7 @@ The `deploy-worker` job in `.github/workflows/ci.yml` runs `npm run worker:deplo
    - `ADMIN_TOKEN`: a long random string (`openssl rand -base64 32`); the admin API and the moderation page (`/admin/`) stay off without it. Then consider Cloudflare Access in front of both (Moderation above);
    - `TURNSTILE_SECRET`: optional, see below;
    - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`: notifications (below).
-   Deploys never delete secrets. One plain variable (type *Text*, or `vars` in `wrangler.jsonc`) turns pictures on: `IMAGES_UPLOAD` = `review` (D114); unset, published rankings take text and colors only.
+   Deploys never delete secrets. Locally, `npm run worker:dev` and `wrangler dev` read them from `worker/.dev.vars` (beside `wrangler.jsonc`, ignored by git): copy `worker/.dev.vars.example`, the tracked template that lists every secret with an empty value and how to make it. One plain variable (type *Text*, or `vars` in `wrangler.jsonc`) turns pictures on: `IMAGES_UPLOAD` = `review` (D114); unset, published rankings take text and colors only.
 5. **Custom domain**: `versus` → *Settings* → *Domains & Routes* → *Add* → *Custom domain*, for example `versus.example.com` on a zone of the account. Cloudflare creates the DNS record and the certificate. Deploys keep it, since the config declares no routes. The workers.dev address stays on. Then set the GitHub variable `SITE_URL` to the new address (`https://versus.example.com/`): the canonical URL, social card, sitemap and llms.txt of both builds move to it on the next deploy (`docs/seo.md`).
 
 ### Turnstile (optional)
