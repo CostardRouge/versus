@@ -30,4 +30,5 @@
   ]
   // Secrets, set with `wrangler secret put`: ADMIN_TOKEN (admin API), TURNSTILE_SECRET (publication check),
   // VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY (notifications, made with `npm run vapid`).
+  // Locally they go in worker/.dev.vars (ignored), copied from the template worker/.dev.vars.example.
 }

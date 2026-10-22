@@ -389,7 +389,7 @@ French.** Each release has a **codename**: here a pastry (1.0.0 Chocolatine), fr
 
 - Never rewrite history (`rebase -i`, `commit --amend`, `reset --hard`, `push --force`, `filter-repo`) without an explicit request. Do not modify `.git/config`, the hooks or branch settings.
 - The project's own rules — business logic in `src/core`, every text through `t()`, addresses, sharing, pictures, moderation, storage keys, SEO in `build/site.ts` — are the Conventions and Key domain rules above. A new rule of that kind goes there, and the decision behind it as a D row in `docs/decisions.md`.
-- Never put a secret in a `VITE_` variable or in `.env.worker`: a `VITE_` value ends up in the browser bundle. The Worker's secrets go through `wrangler secret put` (locally `.dev.vars`, ignored).
+- Never put a secret in a `VITE_` variable or in `.env.worker`: a `VITE_` value ends up in the browser bundle. The Worker's secrets go through `wrangler secret put` (locally `worker/.dev.vars`, ignored, copied from the tracked template `worker/.dev.vars.example`, every key empty; never a value in the template).
 
 ## Related files
 
