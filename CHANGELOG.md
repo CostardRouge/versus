@@ -8,6 +8,8 @@ Codenames are pastries.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-22 — Brioche
+
 ### Added
 
 - Favicons at 16 and 32 px for the browsers that show a bitmap in the tab, and a 192 px maskable icon for Android
