@@ -33,7 +33,7 @@ Rank anything by comparing two items at a time. Add text, images or colors, pick
 
 ## Development
 
-Requires Node.js 22 or newer; the project is developed and built on Node 24 (see `.nvmrc`).
+Requires Node.js 22 or newer; the project is developed and built on Node 26 (see `.nvmrc`).
 
 ```bash
 npm install
