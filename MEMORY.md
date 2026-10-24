@@ -32,7 +32,7 @@ This file is the **always-loaded index**. The detail lives in the topic files of
 
 - Name and identity: Versus, never "Elo" in the product; cobalt A, coral B, three fonts; light and dark — D1, D2, D5, D10.
 - Scoring: four methods on one duel history, Bradley-Terry default, no TrueSkill, a 1500-centered scale — D11–D17.
-- Engineering: Vite + TypeScript with no framework (reopened and kept), a pure `src/core` shared with the Worker, Biome, strict TS, a 90 % coverage floor on the core, one CI workflow deploying from `main` — D24–D27; Node 24 pinned, the floor at 22 — D121.
+- Engineering: Vite + TypeScript with no framework (reopened and kept), a pure `src/core` shared with the Worker, Biome, strict TS, a 90 % coverage floor on the core, one CI workflow deploying from `main` — D24–D27; Node 26 pinned, the floor at 22 — D121.
 - Data: `localStorage` with a migration on every shape change, images in IndexedDB behind `idb:` references, demos as fixed seeded data — D18–D20, D124–D126.
 - Addresses: every view has a real path under `app/`, the author's token only in the fragment, a duel link in the query read once — D92 (replacing D51), D105.
 - Published boards: born local, one voice per pair, server-assigned pairs, visibility enforced by the server, items editable by the author with their votes kept or reset — D35–D48, D57, D116.

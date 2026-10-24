@@ -37,7 +37,7 @@ npm run worker:dev   # the whole app + API on :8787 (worker build mode, local D1
 npm run worker:deploy  # build, deploy the Worker, apply D1 migrations (needs a Cloudflare login)
 ```
 
-Node 24 (`.nvmrc`; `engines` keeps the floor at 22). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script, Playwright (`@playwright/test`) for the end-to-end tests and the screenshots script (dev only). No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D75).
+Node 26 (`.nvmrc`; `engines` keeps the floor at 22). Stack: Vite 8, TypeScript 7 (strict, `noUncheckedIndexedAccess`), Biome 2 (lint + format), Vitest 5 (+ jsdom for the app smoke test), Wrangler 4 for the Worker, fonts self-hosted with Fontsource, satori + resvg for the icons script, Playwright (`@playwright/test`) for the end-to-end tests and the screenshots script (dev only). No UI framework: the web app stays light, with as few runtime dependencies as possible (D24, D75).
 
 ## Code map
 
