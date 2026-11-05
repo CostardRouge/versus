@@ -53,10 +53,20 @@ const FONTS = [
 type Node = { type: string; props: Record<string, unknown> };
 type Style = Record<string, string | number>;
 
-/** Element helper. Falsy children are dropped and a single child passed bare: satori reads any array as several. */
+/**
+ * Element helper. Falsy children are dropped and a single child passed bare: satori reads any array as several.
+ * Every box is border-box, as the app's CSS and satori before 0.63 have it: satori's own layout engine (0.63)
+ * follows CSS's content-box default, which grew the cards by their padding and pushed the card's button off canvas.
+ */
 const h = (type: string, style: Style = {}, ...children: unknown[]): Node => {
   const kept = children.flat().filter((c) => c !== false && c != null && c !== '');
-  return { type, props: { style: { display: 'flex', ...style }, children: kept.length === 1 ? kept[0] : kept } };
+  return {
+    type,
+    props: {
+      style: { display: 'flex', boxSizing: 'border-box', ...style },
+      children: kept.length === 1 ? kept[0] : kept,
+    },
+  };
 };
 
 const render = (node: Node, width: number, height: number) =>
